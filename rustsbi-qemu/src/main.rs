@@ -16,7 +16,7 @@ mod feature;
 use core::panic::PanicInfo;
 use buddy_system_allocator::LockedHeap;
 
-use rustsbi::println;
+use rustsbi::{print, println};
 
 const SBI_HEAP_SIZE: usize = 64 * 1024;
 static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
@@ -50,7 +50,29 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         println!("[rustsbi] Implementation: RustSBI-QEMU Version {}", env!("CARGO_PKG_VERSION"));
         unsafe { count_harts::init_hart_count(dtb_pa) };
     }
-    println!("[rustsbi] enter supervisor 0x80200000");
+    // 把S的中断全部委托给S层
+    unsafe {
+        use riscv::register::{mideleg, medeleg, mie};
+        mideleg::set_sext();
+        mideleg::set_stimer();
+        mideleg::set_ssoft();
+        medeleg::set_instruction_misaligned();
+        medeleg::set_breakpoint();
+        medeleg::set_user_env_call();
+        medeleg::set_instruction_page_fault();
+        medeleg::set_load_page_fault();
+        medeleg::set_store_page_fault();
+        medeleg::set_instruction_fault();
+        medeleg::set_load_fault();
+        medeleg::set_store_fault();
+        mie::set_mext();
+        // 不打开mie::set_mtimer
+        mie::set_msoft();
+    }
+    if hartid == 0 {
+        print_misa_medeleg_mideleg();
+        println!("[rustsbi] enter supervisor 0x80200000");
+    }
     execute::execute_supervisor(0x80200000, hartid, dtb_pa);
 }
 
@@ -80,6 +102,27 @@ fn init_clint() {
 fn init_test_device() {
     use rustsbi::init_reset;
     init_reset(test_device::Reset);
+}
+
+fn print_misa_medeleg_mideleg() {
+    use riscv::register::{misa::{self, MXL}, medeleg, mideleg};
+    let isa = misa::read();
+    if let Some(isa) = isa {
+        let mxl_str = match isa.mxl() {
+            MXL::XLEN32 => "RV32",
+            MXL::XLEN64 => "RV64",
+            MXL::XLEN128 => "RV128",
+        };
+        print!("[rustsbi] misa: {}", mxl_str);
+        for ext in 'A'..='Z' {
+            if isa.has_extension(ext) {
+                print!("{}", ext);
+            }
+        }
+        println!("");
+    }
+    println!("[rustsbi] mideleg: {:#x}", mideleg::read().bits());
+    println!("[rustsbi] medeleg: {:#x}", medeleg::read().bits());
 }
 
 const BOOT_STACK_SIZE: usize = 4096 * 4 * 8;
