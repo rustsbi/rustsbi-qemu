@@ -9,7 +9,9 @@ mod clint;
 mod ns16550a;
 mod test_device;
 mod execute;
+mod runtime;
 mod count_harts;
+mod feature;
 
 use core::panic::PanicInfo;
 use buddy_system_allocator::LockedHeap;
@@ -37,7 +39,7 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    execute::init();
+    runtime::init();
     if hartid == 0 {
         init_heap();
         init_legacy_stdio();
