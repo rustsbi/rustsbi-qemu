@@ -12,20 +12,12 @@ mod clint;
 mod ns16550a;
 mod test_device;
 mod execute;
+mod count_harts;
 
 use core::panic::PanicInfo;
 use buddy_system_allocator::LockedHeap;
 
-use rustsbi::{print, println};
-
-use riscv::register::{
-    mcause::{self, Exception, Interrupt, Trap},
-    medeleg, mepc, mhartid, mideleg, mie, mip, misa::{self, MXL},
-    mstatus::{self, MPP, SPP},
-    mtval,
-    mtvec::{self, TrapMode},
-    stvec, scause, stval, sepc,
-};
+use rustsbi::println;
 
 const SBI_HEAP_SIZE: usize = 64 * 1024;
 static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
@@ -35,7 +27,7 @@ static HEAP: LockedHeap<32> = LockedHeap::empty();
 #[cfg_attr(not(test), panic_handler)]
 #[allow(unused)]
 fn panic(info: &PanicInfo) -> ! {
-    let hart_id = mhartid::read();
+    let hart_id = riscv::register::mhartid::read();
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
     println!("[rustsbi-panic] hart {} {}", hart_id, info);
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
@@ -50,18 +42,45 @@ fn panic(info: &PanicInfo) -> ! {
 extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
     execute::init();
     if hartid == 0 {
-        unsafe {
-            HEAP.lock().init(
-                HEAP_SPACE.as_ptr() as usize, SBI_HEAP_SIZE
-            )
-        }
-        let serial = ns16550a::Ns16550a::new(0x10000000, 0, 11_059_200, 115200);
-        use rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal;
-        init_legacy_stdio_embedded_hal(serial);
-
+        init_heap();
+        init_legacy_stdio();
+        init_clint();
+        init_test_device();
+        println!("[rustsbi] RustSBI version {}", rustsbi::VERSION);
+        println!("{}", rustsbi::LOGO);
+        println!("[rustsbi] Implementation: RustSBI-QEMU Version {}", env!("CARGO_PKG_VERSION"));
+        unsafe { count_harts::init_hart_count(dtb_pa) };
     }
     println!("Hello world!");
     loop {}
+}
+
+fn init_heap() {
+    unsafe {
+        HEAP.lock().init(
+            HEAP_SPACE.as_ptr() as usize, SBI_HEAP_SIZE
+        )
+    }
+}
+
+fn init_legacy_stdio() {
+    let serial = ns16550a::Ns16550a::new(0x10000000, 0, 11_059_200, 115200);
+    use rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal;
+    init_legacy_stdio_embedded_hal(serial);
+}
+
+fn init_clint() {
+    let clint = clint::Clint::new(0x2000000 as *mut u8);
+    use rustsbi::init_ipi;
+    init_ipi(clint);
+    let clint = clint::Clint::new(0x2000000 as *mut u8);
+    use rustsbi::init_timer;
+    init_timer(clint);
+}
+
+fn init_test_device() {
+    use rustsbi::init_reset;
+    init_reset(test_device::Reset);
 }
 
 const BOOT_STACK_SIZE: usize = 4096 * 4 * 8;
