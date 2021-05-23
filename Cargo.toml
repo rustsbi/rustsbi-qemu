@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "rustsbi-qemu",
+    "xtask"
+]
+default-members = ["xtask"]

@@ -1,0 +1,16 @@
+[package]
+name = "rustsbi-qemu"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rustsbi = "0.2.0-alpha.3"
+buddy_system_allocator = "0.8"
+lazy_static = { version = "1", features = ["spin_no_std"] }
+spin = "0.9"
+riscv = { git = "https://github.com/rust-embedded/riscv", rev = "7e9d2e5b", features = ["inline-asm"] }
+device_tree = { git = "https://github.com/rcore-os/device_tree-rs/" }
+embedded-hal = "1.0.0-alpha.1"
+nb = "1"
