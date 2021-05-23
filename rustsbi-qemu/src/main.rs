@@ -48,8 +48,8 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         println!("[rustsbi] Implementation: RustSBI-QEMU Version {}", env!("CARGO_PKG_VERSION"));
         unsafe { count_harts::init_hart_count(dtb_pa) };
     }
-    println!("Hello world!");
-    execute::execute_supervisor(0x80200000);
+    println!("[rustsbi] enter supervisor 0x80200000");
+    execute::execute_supervisor(0x80200000, hartid, dtb_pa);
 }
 
 fn init_heap() {
