@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // 这部分其实是运行时提供的，不应该做到实现库里面
 use rustsbi::SbiRet;
 

@@ -1,10 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions)]
-#![feature(alloc_error_handler)]
-#![feature(llvm_asm)]
 #![feature(asm)]
-#![feature(global_asm)]
 #![feature(generator_trait)]
 #![feature(default_alloc_error_handler)]
 
@@ -52,22 +49,7 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         unsafe { count_harts::init_hart_count(dtb_pa) };
     }
     println!("Hello world!");
-    unsafe { 
-        riscv::register::mstatus::set_mpp(riscv::register::mstatus::MPP::Supervisor);
-        riscv::register::mepc::write(s_mode_start as usize);
-        rustsbi::enter_privileged(hartid, dtb_pa) 
-    }
-}
-#[naked]
-#[link_section = ".text"] // must add link section for all naked functions
-unsafe extern "C" fn s_mode_start() -> ! {
-    asm!("
-1:  auipc ra, %pcrel_hi(1f)
-    ld ra, %pcrel_lo(1b)(ra)
-    jr ra
-.align  3
-1:  .dword 0x80200000
-    ", options(noreturn))
+    execute::execute_supervisor(0x80200000);
 }
 
 fn init_heap() {

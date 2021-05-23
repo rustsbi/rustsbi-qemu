@@ -230,6 +230,7 @@ fn xtask_gdb(xtask_env: &XtaskEnv) {
         .current_dir(dist_dir(xtask_env))
         .args(&["--eval-command", "file rustsbi-qemu"])
         .args(&["--eval-command", "target remote localhost:1234"])
+        .arg("-q")
         .status().unwrap();
     
     if !status.success() {

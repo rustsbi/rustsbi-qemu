@@ -7,6 +7,7 @@ use core::{
     pin::Pin,
     ops::{Generator, GeneratorState},
 };
+use rustsbi::println;
 
 pub fn init() {
     let mut addr = from_supervisor_save as usize;
@@ -16,12 +17,41 @@ pub fn init() {
     unsafe { mtvec::write(addr, TrapMode::Direct) };
 }
 
+pub fn execute_supervisor(supervisor_mepc: usize) -> ! {
+    let mut rt = Runtime::new_supervisor(supervisor_mepc);
+    loop {
+        match Pin::new(&mut rt).resume(()) {
+            GeneratorState::Yielded(MachineTrap::SbiCall()) => {
+                let ctx = rt.context_mut();
+                println!("{} {} {:?}", ctx.a7, ctx.a6, [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5]);
+                ctx.mepc = ctx.mepc.wrapping_add(4)
+            },
+            GeneratorState::Yielded(MachineTrap::IllegalInstruction(a)) => {
+                let ctx = rt.context_mut();
+                println!("[kernel] Illegal instruction {:x} in {:#x}, core dumped.", a, ctx.mepc);
+                use rustsbi::Reset;
+                crate::test_device::Reset.system_reset(
+                    rustsbi::reset::RESET_TYPE_SHUTDOWN,
+                    rustsbi::reset::RESET_REASON_NO_REASON
+                );
+            },
+            GeneratorState::Complete(()) => {
+                use rustsbi::Reset;
+                crate::test_device::Reset.system_reset(
+                    rustsbi::reset::RESET_TYPE_SHUTDOWN,
+                    rustsbi::reset::RESET_REASON_NO_REASON
+                );
+            }
+        }
+    }
+}
+
 pub struct Runtime {
     context: SupervisorContext, 
 }
 
 impl Runtime {
-    pub fn new_user(supervisor_mepc: usize) -> Self {
+    pub fn new_supervisor(supervisor_mepc: usize) -> Self {
         let context: SupervisorContext = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
         let mut ans = Runtime { context };
         ans.prepare_supervisor(supervisor_mepc);
@@ -149,8 +179,8 @@ pub unsafe extern "C" fn to_supervisor_restore(_supervisor_context: *mut Supervi
         "mv     sp, a0", // 新sp:特权级上下文
         "ld     t0, 31*8(sp)
         ld      t1, 32*8(sp)
-        csrw    sstatus, t0
-        csrw    sepc, t1",
+        csrw    mstatus, t0
+        csrw    mepc, t1",
         "ld     ra, 0*8(sp)
         ld      gp, 2*8(sp)
         ld      tp, 3*8(sp)
@@ -226,9 +256,9 @@ pub unsafe extern "C" fn from_supervisor_save() -> ! {
         sd      t4, 28*8(sp)
         sd      t5, 29*8(sp)
         sd      t6, 30*8(sp)",
-        "csrr   t0, sstatus
+        "csrr   t0, mstatus
         sd      t0, 31*8(sp)",
-        "csrr   t1, sepc
+        "csrr   t1, mepc
         sd      t1, 32*8(sp)",
         // mscratch:特权级栈,sp:特权级上下文
         "csrrw  t2, mscratch, sp", // 新mscratch:特权级上下文,t2:特权级栈
