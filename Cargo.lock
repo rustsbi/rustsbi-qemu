@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "rustsbi-qemu"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "buddy_system_allocator",
  "device_tree",
