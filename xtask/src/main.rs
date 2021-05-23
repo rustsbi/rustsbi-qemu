@@ -39,6 +39,12 @@ fn main() {
             (about: "Run QEMU")
             (@arg release: --release "Build artifacts in release mode, with optimizations")
         )
+        (@subcommand debug =>
+            (about: "Debug with QEMU and GDB stub")
+        )
+        (@subcommand gdb =>
+            (about: "Run GDB debugger")
+        )
     ).get_matches();
     let mut xtask_env = XtaskEnv {
         compile_mode: CompileMode::Debug,
@@ -50,19 +56,31 @@ fn main() {
         }
         xtask_build_sbi(&xtask_env);
         xtask_binary_sbi(&xtask_env);
+        xtask_build_test_kernel(&xtask_env);
+        xtask_binary_test_kernel(&xtask_env);
     } else if let Some(matches) = matches.subcommand_matches("qemu") {
         if matches.is_present("release") {
             xtask_env.compile_mode = CompileMode::Release;
         }
         xtask_build_sbi(&xtask_env);
         xtask_binary_sbi(&xtask_env);
-        xtask_qemu(&xtask_env);
+        xtask_build_test_kernel(&xtask_env);
+        xtask_binary_test_kernel(&xtask_env);
+        xtask_qemu_run(&xtask_env);
+    }  else if let Some(_matches) = matches.subcommand_matches("debug") {
+        xtask_build_sbi(&xtask_env);
+        xtask_binary_sbi(&xtask_env);
+        xtask_build_test_kernel(&xtask_env);
+        xtask_binary_test_kernel(&xtask_env);
+        xtask_qemu_debug(&xtask_env);
     } else if let Some(_matches) = matches.subcommand_matches("asm") {
         xtask_build_sbi(&xtask_env);
         xtask_asm_sbi(&xtask_env);
     } else if let Some(_matches) = matches.subcommand_matches("size") {
         xtask_build_sbi(&xtask_env);
         xtask_size_sbi(&xtask_env);
+    } else if let Some(_matches) = matches.subcommand_matches("gdb") {
+        xtask_gdb(&xtask_env);
     } else {
         println!("Use `cargo qemu` to run, `cargo xtask --help` for help")
     }
@@ -78,6 +96,25 @@ fn xtask_build_sbi(xtask_env: &XtaskEnv) {
         CompileMode::Release => { command.arg("--release"); },
     }
     command.args(&["--package", "rustsbi-qemu"]);
+    command.args(&["--target", DEFAULT_TARGET]);
+    let status = command
+        .status().unwrap();
+    if !status.success() {
+        println!("cargo build failed");
+        process::exit(1);
+    }
+}
+
+fn xtask_build_test_kernel(xtask_env: &XtaskEnv) {
+    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let mut command = Command::new(cargo);
+    command.current_dir(project_root().join("test-kernel"));
+    command.arg("build");
+    match xtask_env.compile_mode {
+        CompileMode::Debug => {},
+        CompileMode::Release => { command.arg("--release"); },
+    }
+    command.args(&["--package", "test-kernel"]);
     command.args(&["--target", DEFAULT_TARGET]);
     let status = command
         .status().unwrap();
@@ -131,7 +168,23 @@ build: firmware
     }
 }
 
-fn xtask_qemu(xtask_env: &XtaskEnv) {
+fn xtask_binary_test_kernel(xtask_env: &XtaskEnv) {
+    let objcopy = "rust-objcopy";
+    let status = Command::new(objcopy)
+        .current_dir(dist_dir(xtask_env))
+        .arg("test-kernel")
+        .arg("--binary-architecture=riscv64")
+        .arg("--strip-all")
+        .args(&["-O", "binary", "test-kernel.bin"])
+        .status().unwrap();
+
+    if !status.success() {
+        println!("objcopy binary failed");
+        process::exit(1);
+    }
+}
+
+fn xtask_qemu_run(xtask_env: &XtaskEnv) {
     /*
     qemu: build
     @qemu-system-riscv64 \
@@ -145,9 +198,38 @@ fn xtask_qemu(xtask_env: &XtaskEnv) {
     let status = Command::new("qemu-system-riscv64")
         .current_dir(dist_dir(xtask_env))
         .args(&["-machine", "virt"])
-        .args(&["-bios", "none"])
+        .args(&["-bios", "rustsbi-qemu.bin"])
         .arg("-nographic")
-        .args(&["-device", "loader,file=rustsbi-qemu.bin,addr=0x80000000"])
+        .args(&["-device", "loader,file=test-kernel.bin,addr=0x80200000"])
+        .status().unwrap();
+    
+    if !status.success() {
+        println!("qemu failed");
+        process::exit(1);
+    }
+}
+
+fn xtask_qemu_debug(xtask_env: &XtaskEnv) {
+    let status = Command::new("qemu-system-riscv64")
+        .current_dir(dist_dir(xtask_env))
+        .args(&["-machine", "virt"])
+        .args(&["-bios", "rustsbi-qemu.bin"])
+        .arg("-nographic")
+        .args(&["-device", "loader,file=test-kernel.bin,addr=0x80200000"])
+        .args(&["-gdb", "tcp::1234", "-S"])
+        .status().unwrap();
+    
+    if !status.success() {
+        println!("qemu failed");
+        process::exit(1);
+    }
+}
+
+fn xtask_gdb(xtask_env: &XtaskEnv) {
+    let status = Command::new("riscv64-unknown-elf-gdb")
+        .current_dir(dist_dir(xtask_env))
+        .args(&["--eval-command", "file rustsbi-qemu"])
+        .args(&["--eval-command", "target remote localhost:1234"])
         .status().unwrap();
     
     if !status.success() {

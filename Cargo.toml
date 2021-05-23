@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "rustsbi-qemu",
+    "test-kernel",
     "xtask"
 ]
 default-members = ["xtask"]
