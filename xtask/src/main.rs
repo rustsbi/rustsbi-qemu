@@ -199,8 +199,8 @@ fn xtask_qemu_run(xtask_env: &XtaskEnv) {
         .current_dir(dist_dir(xtask_env))
         .args(&["-machine", "virt"])
         .args(&["-bios", "rustsbi-qemu.bin"])
+        .args(&["-kernel", "test-kernel.bin"])
         .arg("-nographic")
-        .args(&["-device", "loader,file=test-kernel.bin,addr=0x80200000"])
         .status().unwrap();
     
     if !status.success() {
@@ -214,8 +214,8 @@ fn xtask_qemu_debug(xtask_env: &XtaskEnv) {
         .current_dir(dist_dir(xtask_env))
         .args(&["-machine", "virt"])
         .args(&["-bios", "rustsbi-qemu.bin"])
+        .args(&["-kernel", "test-kernel.bin"])
         .arg("-nographic")
-        .args(&["-device", "loader,file=test-kernel.bin,addr=0x80200000"])
         .args(&["-gdb", "tcp::1234", "-S"])
         .status().unwrap();
     
