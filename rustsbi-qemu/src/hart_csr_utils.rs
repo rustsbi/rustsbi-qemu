@@ -112,7 +112,7 @@ fn print_pmp() {
         let pmpicfg = PmpCfg::from(*pmpicfg);
         let range = match pmpicfg.a() {
             AddressMatching::Off => continue,
-            AddressMatching::Tor => (0, (usize::MAX << 2) as u128),
+            AddressMatching::Tor => (0, (usize::MAX << 2) as u128 + 3),
             AddressMatching::Na4 => ((*pmpiaddr as u128) << 2, ((*pmpiaddr as u128) << 2) + 4),
             AddressMatching::Napot => napot_pmpaddr_cfg(*pmpiaddr as u128),
         };
