@@ -5,6 +5,8 @@
 #![feature(generator_trait)]
 #![feature(default_alloc_error_handler)]
 
+extern crate alloc;
+
 mod clint;
 mod ns16550a;
 mod test_device;
@@ -12,11 +14,12 @@ mod execute;
 mod runtime;
 mod count_harts;
 mod feature;
+mod hart_csr_utils;
 
 use core::panic::PanicInfo;
 use buddy_system_allocator::LockedHeap;
 
-use rustsbi::{print, println};
+use rustsbi::println;
 
 const SBI_HEAP_SIZE: usize = 64 * 1024;
 static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
@@ -50,27 +53,9 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         println!("[rustsbi] Implementation: RustSBI-QEMU Version {}", env!("CARGO_PKG_VERSION"));
         unsafe { count_harts::init_hart_count(dtb_pa) };
     }
-    // 把S的中断全部委托给S层
-    unsafe {
-        use riscv::register::{mideleg, medeleg, mie};
-        mideleg::set_sext();
-        mideleg::set_stimer();
-        mideleg::set_ssoft();
-        medeleg::set_instruction_misaligned();
-        medeleg::set_breakpoint();
-        medeleg::set_user_env_call();
-        medeleg::set_instruction_page_fault();
-        medeleg::set_load_page_fault();
-        medeleg::set_store_page_fault();
-        medeleg::set_instruction_fault();
-        medeleg::set_load_fault();
-        medeleg::set_store_fault();
-        mie::set_mext();
-        // 不打开mie::set_mtimer
-        mie::set_msoft();
-    }
+    delegate_interrupt_exception();
     if hartid == 0 {
-        print_misa_medeleg_mideleg();
+        hart_csr_utils::print_misa_medeleg_mideleg();
         println!("[rustsbi] enter supervisor 0x80200000");
     }
     execute::execute_supervisor(0x80200000, hartid, dtb_pa);
@@ -104,26 +89,28 @@ fn init_test_device() {
     init_reset(test_device::Reset);
 }
 
-fn print_misa_medeleg_mideleg() {
-    use riscv::register::{misa::{self, MXL}, medeleg, mideleg};
-    let isa = misa::read();
-    if let Some(isa) = isa {
-        let mxl_str = match isa.mxl() {
-            MXL::XLEN32 => "RV32",
-            MXL::XLEN64 => "RV64",
-            MXL::XLEN128 => "RV128",
-        };
-        print!("[rustsbi] misa: {}", mxl_str);
-        for ext in 'A'..='Z' {
-            if isa.has_extension(ext) {
-                print!("{}", ext);
-            }
-        }
-        println!("");
+// 委托终端；把S的中断全部委托给S层
+fn delegate_interrupt_exception() {
+    use riscv::register::{mideleg, medeleg, mie};
+    unsafe {
+        mideleg::set_sext();
+        mideleg::set_stimer();
+        mideleg::set_ssoft();
+        medeleg::set_instruction_misaligned();
+        medeleg::set_breakpoint();
+        medeleg::set_user_env_call();
+        medeleg::set_instruction_page_fault();
+        medeleg::set_load_page_fault();
+        medeleg::set_store_page_fault();
+        medeleg::set_instruction_fault();
+        medeleg::set_load_fault();
+        medeleg::set_store_fault();
+        mie::set_mext();
+        // 不打开mie::set_mtimer
+        mie::set_msoft();
     }
-    println!("[rustsbi] mideleg: {:#x}", mideleg::read().bits());
-    println!("[rustsbi] medeleg: {:#x}", medeleg::read().bits());
 }
+
 
 const HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const STACK_SIZE: usize = 8 * HART_STACK_SIZE; // assume 8 cores in QEMU
