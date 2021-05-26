@@ -147,11 +147,7 @@ unsafe extern "C" fn entry() -> ! {
     bnez    t1, 1b
     ",
     // 2. jump to rust_main (absolute address)
-    "
-1:  auipc   t0, %pcrel_hi({rust_main})
-    addi    t0, t0, %pcrel_lo(1b)
-    jr      t0
-    ", 
+    "j      {rust_main}", 
     per_hart_stack_size = const HART_STACK_SIZE,
     stack = sym STACK, 
     rust_main = sym rust_main,
