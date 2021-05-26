@@ -14,3 +14,5 @@ riscv = { git = "https://github.com/rust-embedded/riscv", rev = "7e9d2e5b", feat
 device_tree = { git = "https://github.com/rcore-os/device_tree-rs/" }
 embedded-hal = "1.0.0-alpha.1"
 nb = "1"
+bitflags = "1"
+bit_field = "0.10"

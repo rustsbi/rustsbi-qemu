@@ -32,7 +32,7 @@ SECTIONS
     . = ALIGN(4K);
     edata = .;
     .bss : {
-        *(.bss.stack)
+        *(.bss.uninit)
         sbss = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)

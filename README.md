@@ -22,11 +22,14 @@ xtask: mode: Debug
 |  |\  \----.|  `--'  |.----)   |      |  |  .----)   |   |  |_)  ||  |
 | _| `._____| \______/ |_______/       |__|  |_______/    |______/ |__|
 
-[rustsbi] Implementation: RustSBI-QEMU Version 0.1.0
+[rustsbi] Implementation: RustSBI-QEMU Version 0.0.1
 [rustsbi-dtb] Hart count: cluster0 with 1 cores
 [rustsbi] misa: RV64ACDFIMSU
-[rustsbi] mideleg: 0x222
-[rustsbi] medeleg: 0xb1ab
+[rustsbi] mideleg: ssoft, stimer, sext (0x222)
+[rustsbi] medeleg: ima, ia, bkpt, la, sa, uecall, ipage, lpage, spage (0xb1ab)
+[rustsbi] pmp0: 0x80000000 ..= 0x800fffff (rwx)
+[rustsbi] pmp1: 0x80200000 ..= 0x802fffff (rwx)
+[rustsbi] pmp2: 0x0 ..= 0xfffffffffffffffc (---)
 [rustsbi] enter supervisor 0x80200000
 << Test-kernel: Hart id = 0, DTB physical address = 0x87e00000
 >> Test-kernel: Testing base extension
@@ -38,7 +41,7 @@ xtask: mode: Debug
 << Test-kernel: Device marchid: 0
 << Test-kernel: Device mimpid: 0
 >> Test-kernel: Testing SBI instruction emulation
-<< Test-kernel: Current time: 289cc0
+<< Test-kernel: Current time: 31918a
 >> Test-kernel: Trigger illegal exception
 << Test-kernel: Value of scause: Exception(IllegalInstruction)
 << Test-kernel: Illegal exception delegate success

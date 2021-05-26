@@ -209,6 +209,8 @@ dependencies = [
 name = "rustsbi-qemu"
 version = "0.0.1"
 dependencies = [
+ "bit_field",
+ "bitflags",
  "buddy_system_allocator",
  "device_tree",
  "embedded-hal",

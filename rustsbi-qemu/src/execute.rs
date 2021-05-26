@@ -19,6 +19,7 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
             },
             GeneratorState::Yielded(MachineTrap::IllegalInstruction()) => {
                 let ctx = rt.context_mut();
+                // FIXME: get_vaddr_u32这个过程可能出错。
                 let ins = unsafe { get_vaddr_u32(ctx.mepc) } as usize;
                 if !emulate_illegal_instruction(ctx, ins) {
                     unsafe {

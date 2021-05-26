@@ -21,10 +21,17 @@ use buddy_system_allocator::LockedHeap;
 
 use rustsbi::println;
 
-const SBI_HEAP_SIZE: usize = 64 * 1024;
+
+const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
+const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
+#[link_section = ".bss.uninit"]
+static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+
+const SBI_HEAP_SIZE: usize = 64 * 1024; // 64KiB
+#[link_section = ".bss.uninit"]
 static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
 #[global_allocator]
-static HEAP: LockedHeap<32> = LockedHeap::empty();
+static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
 
 #[cfg_attr(not(test), panic_handler)]
 #[allow(unused)]
@@ -54,8 +61,9 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         unsafe { count_harts::init_hart_count(dtb_pa) };
     }
     delegate_interrupt_exception();
+    set_pmp();
     if hartid == 0 {
-        hart_csr_utils::print_misa_medeleg_mideleg();
+        hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor 0x80200000");
     }
     execute::execute_supervisor(0x80200000, hartid, dtb_pa);
@@ -63,7 +71,7 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
 
 fn init_heap() {
     unsafe {
-        HEAP.lock().init(
+        SBI_HEAP.lock().init(
             HEAP_SPACE.as_ptr() as usize, SBI_HEAP_SIZE
         )
     }
@@ -111,12 +119,18 @@ fn delegate_interrupt_exception() {
     }
 }
 
-
-const HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
-const STACK_SIZE: usize = 8 * HART_STACK_SIZE; // assume 8 cores in QEMU
-
-#[link_section = ".bss.stack"]
-static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+fn set_pmp() {
+    unsafe { asm!(
+        "li     {tmp}, ((0x08 << 16) |(0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A; 
+        "csrw   0x3A0, {tmp}",
+        "li     {tmp}, ((0x0000000080000000 >> 2) | 0x3ffff)", // 0 = 0x0000000080000000-0x000000008001ffff
+        "csrw   0x3B0, {tmp}",
+        "li     {tmp}, ((0x0000000080200000 >> 2) | 0x3ffff)", // 1 = 0x0000000080200000-0x000000008021ffff
+        "csrw   0x3B1, {tmp}",
+        "sfence.vma",
+        tmp = out(reg) _
+    ) };
+}
 
 #[naked]
 #[link_section = ".text.entry"] 
@@ -135,8 +149,8 @@ unsafe extern "C" fn entry() -> ! {
     ",
     // 2. jump to rust_main (absolute address)
     "j      {rust_main}", 
-    per_hart_stack_size = const HART_STACK_SIZE,
-    stack = sym STACK, 
+    per_hart_stack_size = const PER_HART_STACK_SIZE,
+    stack = sym SBI_STACK, 
     rust_main = sym rust_main,
     options(noreturn))
 }
