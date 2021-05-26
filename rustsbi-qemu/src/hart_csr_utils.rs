@@ -60,7 +60,7 @@ fn print_medeleg() {
         delegs.push("ima")
     }
     if medeleg.instruction_fault() {
-        delegs.push("if")
+        delegs.push("ia") // instruction access
     }
     if medeleg.illegal_instruction() {
         delegs.push("illinsn")
@@ -72,13 +72,13 @@ fn print_medeleg() {
         delegs.push("lma")
     }
     if medeleg.load_fault() {
-        delegs.push("lf")
+        delegs.push("la") // load access
     }
     if medeleg.store_misaligned() {
         delegs.push("sma")
     }
     if medeleg.store_fault() {
-        delegs.push("sf")
+        delegs.push("sa") // store access
     }
     if medeleg.user_env_call() {
         delegs.push("uecall")
