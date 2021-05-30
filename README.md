@@ -8,8 +8,7 @@ cargo qemu
 
 When running `cargo qemu`, the test kernel will build and run. Expected output should be:
 
-
-```shell
+```
 xtask: mode: Debug
    Compiling rustsbi-qemu v0.1.0 (D:\RustProjects\rustsbi-qemu\rustsbi-qemu)
     Finished dev [unoptimized + debuginfo] target(s) in 1.09s
@@ -46,6 +45,27 @@ xtask: mode: Debug
 << Test-kernel: Value of scause: Exception(IllegalInstruction)
 << Test-kernel: Illegal exception delegate success
 << Test-kernel: SBI test SUCCESS, shutdown
+```
+
+## Run test kernel
+
+Run with:
+
+```shell
+cargo test
+```
+
+It will run RustSBI-QEMU with a test kernel. The test kernel will test all SBI functions, 
+its command emulation and other features. If it succeeds, there would be output like:
+
+```
+running 1 test
+    Finished dev [unoptimized + debuginfo] target(s) in 0.14s
+   Compiling test-kernel v0.1.0 (D:\RustProjects\rustsbi-qemu\test-kernel)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.61s
+test run_test_kernel ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
 ```
 
 ## License 

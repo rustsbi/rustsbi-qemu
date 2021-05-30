@@ -255,3 +255,32 @@ fn dist_dir(xtask_env: &XtaskEnv) -> PathBuf {
     };
     path_buf
 }
+
+#[test]
+fn run_test_kernel() {
+    let xtask_env = XtaskEnv {
+        compile_mode: CompileMode::Debug,
+    };
+    xtask_build_sbi(&xtask_env);
+    xtask_binary_sbi(&xtask_env);
+    xtask_build_test_kernel(&xtask_env);
+    xtask_binary_test_kernel(&xtask_env);
+    let child = Command::new("qemu-system-riscv64")
+        .current_dir(dist_dir(&xtask_env))
+        .args(&["-machine", "virt"])
+        .args(&["-bios", "rustsbi-qemu.bin"])
+        .args(&["-kernel", "test-kernel.bin"])
+        .arg("-nographic")
+        .stdout(process::Stdio::piped())
+        .spawn().expect("spawn child process");
+    let output = child
+        .wait_with_output()
+        .expect("wait on child");
+    let string = String::from_utf8(output.stdout)
+        .expect("utf-8 output");
+    println!("{}", string);
+    let last_line = string.lines().last();
+    assert!(last_line.is_some(), "some outuput");
+    assert_eq!(last_line.unwrap(), "<< Test-kernel: SBI test SUCCESS, shutdown", "success output");
+    assert!(output.status.success(), "success exit code");
+}
