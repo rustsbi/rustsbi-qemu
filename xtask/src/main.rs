@@ -31,9 +31,11 @@ fn main() {
         )
         (@subcommand asm =>
             (about: "View asm code for project")
+            (@arg release: --release "Build artifacts in release mode, with optimizations")
         )
         (@subcommand size =>
             (about: "View size for project")
+            (@arg release: --release "Build artifacts in release mode, with optimizations")
         )
         (@subcommand qemu =>
             (about: "Run QEMU")
@@ -49,7 +51,7 @@ fn main() {
     let mut xtask_env = XtaskEnv {
         compile_mode: CompileMode::Debug,
     };
-    println!("xtask: mode: {:?}", xtask_env.compile_mode);
+    eprintln!("xtask: mode: {:?}", xtask_env.compile_mode);
     if let Some(matches) = matches.subcommand_matches("make") {
         if matches.is_present("release") {
             xtask_env.compile_mode = CompileMode::Release;
@@ -73,16 +75,22 @@ fn main() {
         xtask_build_test_kernel(&xtask_env);
         xtask_binary_test_kernel(&xtask_env);
         xtask_qemu_debug(&xtask_env);
-    } else if let Some(_matches) = matches.subcommand_matches("asm") {
+    } else if let Some(matches) = matches.subcommand_matches("asm") {
+        if matches.is_present("release") {
+            xtask_env.compile_mode = CompileMode::Release;
+        }
         xtask_build_sbi(&xtask_env);
         xtask_asm_sbi(&xtask_env);
-    } else if let Some(_matches) = matches.subcommand_matches("size") {
+    } else if let Some(matches) = matches.subcommand_matches("size") {
+        if matches.is_present("release") {
+            xtask_env.compile_mode = CompileMode::Release;
+        }
         xtask_build_sbi(&xtask_env);
         xtask_size_sbi(&xtask_env);
     } else if let Some(_matches) = matches.subcommand_matches("gdb") {
         xtask_gdb(&xtask_env);
     } else {
-        println!("Use `cargo qemu` to run, `cargo xtask --help` for help")
+        eprintln!("Use `cargo qemu` to run, `cargo xtask --help` for help")
     }
 }
 
