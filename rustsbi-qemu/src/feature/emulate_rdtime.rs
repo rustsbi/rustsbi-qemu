@@ -1,5 +1,5 @@
-use crate::runtime::SupervisorContext;
 use crate::clint;
+use crate::runtime::SupervisorContext;
 
 #[inline]
 pub fn emulate_rdtime(ctx: &mut SupervisorContext, ins: usize) -> bool {
@@ -19,8 +19,9 @@ pub fn emulate_rdtime(ctx: &mut SupervisorContext, ins: usize) -> bool {
 fn set_register_xi(ctx: &mut SupervisorContext, i: u8, data: usize) {
     let registers = unsafe { &mut *(ctx as *mut _ as *mut [usize; 31]) };
     assert!(i <= 31, "i should be valid register target");
-    if i == 0 { // x0, don't modify
-        return
+    if i == 0 {
+        // x0, don't modify
+        return;
     }
     registers[(i - 1) as usize] = data;
 }

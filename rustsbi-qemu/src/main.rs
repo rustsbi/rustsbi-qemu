@@ -8,19 +8,18 @@
 extern crate alloc;
 
 mod clint;
-mod ns16550a;
-mod test_device;
-mod execute;
-mod runtime;
 mod count_harts;
+mod execute;
 mod feature;
 mod hart_csr_utils;
+mod ns16550a;
+mod runtime;
+mod test_device;
 
-use core::panic::PanicInfo;
 use buddy_system_allocator::LockedHeap;
+use core::panic::PanicInfo;
 
 use rustsbi::println;
-
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
@@ -43,9 +42,9 @@ fn panic(info: &PanicInfo) -> ! {
     use rustsbi::Reset;
     test_device::Reset.system_reset(
         rustsbi::reset::RESET_TYPE_SHUTDOWN,
-        rustsbi::reset::RESET_REASON_SYSTEM_FAILURE
+        rustsbi::reset::RESET_REASON_SYSTEM_FAILURE,
     );
-    loop { }
+    loop {}
 }
 
 extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
@@ -57,7 +56,10 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         init_test_device();
         println!("[rustsbi] RustSBI version {}", rustsbi::VERSION);
         println!("{}", rustsbi::LOGO);
-        println!("[rustsbi] Implementation: RustSBI-QEMU Version {}", env!("CARGO_PKG_VERSION"));
+        println!(
+            "[rustsbi] Implementation: RustSBI-QEMU Version {}",
+            env!("CARGO_PKG_VERSION")
+        );
         unsafe { count_harts::init_hart_count(dtb_pa) };
     }
     delegate_interrupt_exception();
@@ -71,9 +73,9 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
 
 fn init_heap() {
     unsafe {
-        SBI_HEAP.lock().init(
-            HEAP_SPACE.as_ptr() as usize, SBI_HEAP_SIZE
-        )
+        SBI_HEAP
+            .lock()
+            .init(HEAP_SPACE.as_ptr() as usize, SBI_HEAP_SIZE)
     }
 }
 
@@ -99,7 +101,7 @@ fn init_test_device() {
 
 // 委托终端；把S的中断全部委托给S层
 fn delegate_interrupt_exception() {
-    use riscv::register::{mideleg, medeleg, mie};
+    use riscv::register::{medeleg, mideleg, mie};
     unsafe {
         mideleg::set_sext();
         mideleg::set_stimer();
@@ -121,20 +123,22 @@ fn delegate_interrupt_exception() {
 
 fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
-    unsafe { asm!(
-        "li     {tmp}, ((0x08 << 16) |(0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A; 
-        "csrw   0x3A0, {tmp}",
-        "li     {tmp}, ((0x0000000080000000 >> 2) | 0x3ffff)", // 0 = 0x0000000080000000-0x000000008001ffff
-        "csrw   0x3B0, {tmp}",
-        "li     {tmp}, ((0x0000000080200000 >> 2) | 0x1fffff)", // 1 = 0x0000000080200000-0x000000008021ffff
-        "csrw   0x3B1, {tmp}",
-        "sfence.vma",
-        tmp = out(reg) _
-    ) };
+    unsafe {
+        asm!(
+            "li     {tmp}, ((0x08 << 16) |(0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A;
+            "csrw   0x3A0, {tmp}",
+            "li     {tmp}, ((0x0000000080000000 >> 2) | 0x3ffff)", // 0 = 0x0000000080000000-0x000000008001ffff
+            "csrw   0x3B0, {tmp}",
+            "li     {tmp}, ((0x0000000080200000 >> 2) | 0x1fffff)", // 1 = 0x0000000080200000-0x000000008021ffff
+            "csrw   0x3B1, {tmp}",
+            "sfence.vma",
+            tmp = out(reg) _
+        )
+    };
 }
 
 #[naked]
-#[link_section = ".text.entry"] 
+#[link_section = ".text.entry"]
 #[export_name = "_start"]
 unsafe extern "C" fn entry() -> ! {
     asm!(
@@ -151,7 +155,7 @@ unsafe extern "C" fn entry() -> ! {
     // 2. jump to rust_main (absolute address)
     "j      {rust_main}", 
     per_hart_stack_size = const PER_HART_STACK_SIZE,
-    stack = sym SBI_STACK, 
+    stack = sym SBI_STACK,
     rust_main = sym rust_main,
     options(noreturn))
 }

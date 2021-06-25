@@ -1,8 +1,11 @@
-use alloc::vec::Vec;
 use alloc::format;
-use riscv::register::{misa::{self, MXL}, medeleg, mideleg};
-use rustsbi::{print, println};
+use alloc::vec::Vec;
 use bit_field::BitField;
+use riscv::register::{
+    medeleg, mideleg,
+    misa::{self, MXL},
+};
+use rustsbi::{print, println};
 
 pub fn print_hart_csrs() {
     print_misa();
@@ -52,7 +55,11 @@ fn print_mideleg() {
     if mideleg.sext() {
         delegs.push("sext")
     }
-    println!("[rustsbi] mideleg: {} ({:#x})", delegs.join(", "), mideleg.bits());
+    println!(
+        "[rustsbi] mideleg: {} ({:#x})",
+        delegs.join(", "),
+        mideleg.bits()
+    );
 }
 
 #[inline]
@@ -101,7 +108,11 @@ fn print_medeleg() {
     if medeleg.store_page_fault() {
         delegs.push("spage")
     }
-    println!("[rustsbi] medeleg: {} ({:#x})", delegs.join(", "), medeleg.bits());
+    println!(
+        "[rustsbi] medeleg: {} ({:#x})",
+        delegs.join(", "),
+        medeleg.bits()
+    );
 }
 
 #[cfg(target_pointer_width = "64")]
@@ -117,16 +128,13 @@ fn print_pmp() {
             AddressMatching::Napot => napot_pmpaddr_cfg(*pmpiaddr as u128),
         };
         let range = format!("{:#x} ..= {:#x}", range.0, range.1);
-        let privilege = format!("{}{}{}", 
+        let privilege = format!(
+            "{}{}{}",
             if pmpicfg.r() { "r" } else { "-" },
             if pmpicfg.w() { "w" } else { "-" },
             if pmpicfg.x() { "x" } else { "-" },
         );
-        let l = if pmpicfg.l() {
-            "l, "
-        } else {
-            ""
-        };
+        let l = if pmpicfg.l() { "l, " } else { "" };
         println!("[rustsbi] pmp{}: {} ({}{})", i, range, privilege, l);
     }
 }
@@ -134,14 +142,14 @@ fn print_pmp() {
 fn napot_pmpaddr_cfg(input: u128) -> (u128, u128) {
     let trailing_ones = input.trailing_ones();
     if trailing_ones == 0 {
-        return (input, input)
+        return (input, input);
     }
     let mask = (1 << trailing_ones) - 1;
     ((input - mask) << 2, ((input + 1) << 2) - 1)
-} 
+}
 
 struct PmpCfg {
-    bits: u8
+    bits: u8,
 }
 
 impl From<u8> for PmpCfg {
@@ -170,7 +178,7 @@ impl PmpCfg {
             1 => AddressMatching::Tor,
             2 => AddressMatching::Na4,
             3 => AddressMatching::Napot,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
     #[inline]
@@ -197,7 +205,7 @@ unsafe fn pmps<const L: usize>() -> [(u8, usize); L] {
     let cfgs_in_pmpcfg: usize = xlen / 8;
     let pmpcfg_max_id: usize = L / cfgs_in_pmpcfg;
     let mut ans = [(0, 0); L];
-    for i in (0..pmpcfg_max_id).step_by(xlen / 32) { 
+    for i in (0..pmpcfg_max_id).step_by(xlen / 32) {
         let pmpcfgi = pmpcfg_r(i).to_le_bytes();
         for j in 0..cfgs_in_pmpcfg {
             let pmpaddr_id = i * 4 + j;
