@@ -49,6 +49,17 @@ xtask: mode: Debug
 
 ## Run test kernel
 
+### Requirements
+
+`cargo-binutils` and `llvm-tools-preview` are needed
+
+```
+cargo install cargo-binutils
+rustup component add llvm-tools-preview
+```
+
+### Run
+
 Run with:
 
 ```shell
