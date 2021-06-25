@@ -57,6 +57,7 @@ impl Generator for Runtime {
         let trap = match mcause::read().cause() {
             Trap::Exception(Exception::SupervisorEnvCall) => MachineTrap::SbiCall(),
             Trap::Exception(Exception::IllegalInstruction) => MachineTrap::IllegalInstruction(),
+            Trap::Interrupt(Interrupt::MachineTimer) => MachineTrap::MachineTimer(),
             e => panic!(
                 "unhandled exception: {:?}! mtval: {:#x?}, ctx: {:#x?}",
                 e, mtval, self.context
@@ -70,6 +71,7 @@ impl Generator for Runtime {
 pub enum MachineTrap {
     SbiCall(),
     IllegalInstruction(),
+    MachineTimer(),
 }
 
 #[derive(Debug)]

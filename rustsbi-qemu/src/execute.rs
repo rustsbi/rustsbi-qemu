@@ -4,6 +4,7 @@ use core::{
     ops::{Generator, GeneratorState},
     pin::Pin,
 };
+use riscv::register::{mie, mip};
 
 pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, a0, a1);
@@ -31,6 +32,10 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
                     }
                 }
             }
+            GeneratorState::Yielded(MachineTrap::MachineTimer()) => unsafe {
+                mip::set_stimer();
+                mie::clear_mtimer();
+            },
             GeneratorState::Complete(()) => {
                 use rustsbi::Reset;
                 crate::test_device::Reset.system_reset(
