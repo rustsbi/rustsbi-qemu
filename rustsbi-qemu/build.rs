@@ -1,6 +1,6 @@
 use std::env;
-use std::io::Write;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 fn main() {
