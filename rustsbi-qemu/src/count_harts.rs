@@ -1,5 +1,5 @@
-use rustsbi::println;
 use device_tree::{DeviceTree, Node};
+use rustsbi::println;
 const DEVICE_TREE_MAGIC: u32 = 0xD00DFEED;
 
 lazy_static::lazy_static! {
@@ -12,9 +12,9 @@ pub unsafe fn init_hart_count(dtb_pa: usize) {
 }
 
 #[repr(C)]
-struct DtbHeader { 
-    magic: u32, 
-    size: u32 
+struct DtbHeader {
+    magic: u32,
+    size: u32,
 }
 
 unsafe fn count_harts(dtb_pa: usize) -> usize {
@@ -27,7 +27,7 @@ unsafe fn count_harts(dtb_pa: usize) -> usize {
         let data = core::slice::from_raw_parts(dtb_pa as *const u8, size as usize);
         if let Ok(dt) = DeviceTree::load(data) {
             if let Some(cpu_map) = dt.find("/cpus/cpu-map") {
-                return enumerate_cpu_map(cpu_map)
+                return enumerate_cpu_map(cpu_map);
             }
         }
     }

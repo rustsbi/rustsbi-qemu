@@ -7,10 +7,17 @@
 mod console;
 mod sbi;
 
-use riscv::register::{sepc, stvec::{self, TrapMode}, scause::{self, Trap, Exception}};
+use riscv::register::{
+    scause::{self, Exception, Trap},
+    sepc,
+    stvec::{self, TrapMode},
+};
 
 pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    println!("<< Test-kernel: Hart id = {}, DTB physical address = {:#x}", hartid, dtb_pa);
+    println!(
+        "<< Test-kernel: Hart id = {}, DTB physical address = {:#x}",
+        hartid, dtb_pa
+    );
     test_base_extension();
     test_sbi_ins_emulation();
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
@@ -25,15 +32,29 @@ fn test_base_extension() {
     let base_version = sbi::probe_extension(sbi::EXTENSION_BASE);
     if base_version == 0 {
         println!("!! Test-kernel: no base extension probed; SBI call returned value '0'");
-        println!("!! Test-kernel: This SBI implementation may only have legacy extension implemented");
+        println!(
+            "!! Test-kernel: This SBI implementation may only have legacy extension implemented"
+        );
         println!("!! Test-kernel: SBI test FAILED due to no base extension found");
         sbi::shutdown()
     }
     println!("<< Test-kernel: Base extension version: {:x}", base_version);
-    println!("<< Test-kernel: SBI specification version: {:x}", sbi::get_spec_version());
-    println!("<< Test-kernel: SBI implementation Id: {:x}", sbi::get_sbi_impl_id());
-    println!("<< Test-kernel: SBI implementation version: {:x}", sbi::get_sbi_impl_version());
-    println!("<< Test-kernel: Device mvendorid: {:x}", sbi::get_mvendorid());
+    println!(
+        "<< Test-kernel: SBI specification version: {:x}",
+        sbi::get_spec_version()
+    );
+    println!(
+        "<< Test-kernel: SBI implementation Id: {:x}",
+        sbi::get_sbi_impl_id()
+    );
+    println!(
+        "<< Test-kernel: SBI implementation version: {:x}",
+        sbi::get_sbi_impl_version()
+    );
+    println!(
+        "<< Test-kernel: Device mvendorid: {:x}",
+        sbi::get_mvendorid()
+    );
     println!("<< Test-kernel: Device marchid: {:x}", sbi::get_marchid());
     println!("<< Test-kernel: Device mimpid: {:x}", sbi::get_mimpid());
 }
@@ -70,7 +91,7 @@ const BOOT_STACK_SIZE: usize = 4096 * 4 * 8;
 static mut BOOT_STACK: [u8; BOOT_STACK_SIZE] = [0; BOOT_STACK_SIZE];
 
 #[naked]
-#[link_section = ".text.entry"] 
+#[link_section = ".text.entry"]
 #[export_name = "_start"]
 unsafe extern "C" fn entry() -> ! {
     asm!("
@@ -91,7 +112,6 @@ unsafe extern "C" fn entry() -> ! {
     rust_main = sym rust_main,
     options(noreturn))
 }
-
 
 #[cfg(target_pointer_width = "128")]
 macro_rules! define_store_load {

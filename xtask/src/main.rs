@@ -17,10 +17,10 @@ struct XtaskEnv {
 #[derive(Debug)]
 enum CompileMode {
     Debug,
-    Release
+    Release,
 }
 
-fn main() {    
+fn main() {
     let matches = clap_app!(xtask =>
         (version: crate_version!())
         (author: crate_authors!())
@@ -47,7 +47,8 @@ fn main() {
         (@subcommand gdb =>
             (about: "Run GDB debugger")
         )
-    ).get_matches();
+    )
+    .get_matches();
     let mut xtask_env = XtaskEnv {
         compile_mode: CompileMode::Debug,
     };
@@ -69,7 +70,7 @@ fn main() {
         xtask_build_test_kernel(&xtask_env);
         xtask_binary_test_kernel(&xtask_env);
         xtask_qemu_run(&xtask_env);
-    }  else if let Some(_matches) = matches.subcommand_matches("debug") {
+    } else if let Some(_matches) = matches.subcommand_matches("debug") {
         xtask_build_sbi(&xtask_env);
         xtask_binary_sbi(&xtask_env);
         xtask_build_test_kernel(&xtask_env);
@@ -100,13 +101,14 @@ fn xtask_build_sbi(xtask_env: &XtaskEnv) {
     command.current_dir(project_root().join("rustsbi-qemu"));
     command.arg("build");
     match xtask_env.compile_mode {
-        CompileMode::Debug => {},
-        CompileMode::Release => { command.arg("--release"); },
+        CompileMode::Debug => {}
+        CompileMode::Release => {
+            command.arg("--release");
+        }
     }
     command.args(&["--package", "rustsbi-qemu"]);
     command.args(&["--target", DEFAULT_TARGET]);
-    let status = command
-        .status().unwrap();
+    let status = command.status().unwrap();
     if !status.success() {
         println!("cargo build failed");
         process::exit(1);
@@ -119,13 +121,14 @@ fn xtask_build_test_kernel(xtask_env: &XtaskEnv) {
     command.current_dir(project_root().join("test-kernel"));
     command.arg("build");
     match xtask_env.compile_mode {
-        CompileMode::Debug => {},
-        CompileMode::Release => { command.arg("--release"); },
+        CompileMode::Debug => {}
+        CompileMode::Release => {
+            command.arg("--release");
+        }
     }
     command.args(&["--package", "test-kernel"]);
     command.args(&["--target", DEFAULT_TARGET]);
-    let status = command
-        .status().unwrap();
+    let status = command.status().unwrap();
     if !status.success() {
         println!("cargo build failed");
         process::exit(1);
@@ -139,28 +142,30 @@ fn xtask_asm_sbi(xtask_env: &XtaskEnv) {
         .current_dir(dist_dir(xtask_env))
         .arg("-d")
         .arg("rustsbi-qemu")
-        .status().unwrap();
+        .status()
+        .unwrap();
 }
 
 fn xtask_size_sbi(xtask_env: &XtaskEnv) {
-    // @{{size}} -A -x {{test-kernel-elf}} 
+    // @{{size}} -A -x {{test-kernel-elf}}
     let size = "rust-size";
     Command::new(size)
         .current_dir(dist_dir(xtask_env))
         .arg("-A")
         .arg("-x")
         .arg("rustsbi-qemu")
-        .status().unwrap();
+        .status()
+        .unwrap();
 }
 
 fn xtask_binary_sbi(xtask_env: &XtaskEnv) {
     /*
-    objdump := "riscv64-unknown-elf-objdump"
-objcopy := "rust-objcopy --binary-architecture=riscv64"
+        objdump := "riscv64-unknown-elf-objdump"
+    objcopy := "rust-objcopy --binary-architecture=riscv64"
 
-build: firmware
-    @{{objcopy}} {{test-kernel-elf}} --strip-all -O binary {{test-kernel-bin}}
- */
+    build: firmware
+        @{{objcopy}} {{test-kernel-elf}} --strip-all -O binary {{test-kernel-bin}}
+     */
     let objcopy = "rust-objcopy";
     let status = Command::new(objcopy)
         .current_dir(dist_dir(xtask_env))
@@ -168,7 +173,8 @@ build: firmware
         .arg("--binary-architecture=riscv64")
         .arg("--strip-all")
         .args(&["-O", "binary", "rustsbi-qemu.bin"])
-        .status().unwrap();
+        .status()
+        .unwrap();
 
     if !status.success() {
         println!("objcopy binary failed");
@@ -184,7 +190,8 @@ fn xtask_binary_test_kernel(xtask_env: &XtaskEnv) {
         .arg("--binary-architecture=riscv64")
         .arg("--strip-all")
         .args(&["-O", "binary", "test-kernel.bin"])
-        .status().unwrap();
+        .status()
+        .unwrap();
 
     if !status.success() {
         println!("objcopy binary failed");
@@ -209,8 +216,9 @@ fn xtask_qemu_run(xtask_env: &XtaskEnv) {
         .args(&["-bios", "rustsbi-qemu.bin"])
         .args(&["-kernel", "test-kernel.bin"])
         .arg("-nographic")
-        .status().unwrap();
-    
+        .status()
+        .unwrap();
+
     if !status.success() {
         println!("qemu failed");
         process::exit(1);
@@ -225,8 +233,9 @@ fn xtask_qemu_debug(xtask_env: &XtaskEnv) {
         .args(&["-kernel", "test-kernel.bin"])
         .arg("-nographic")
         .args(&["-gdb", "tcp::1234", "-S"])
-        .status().unwrap();
-    
+        .status()
+        .unwrap();
+
     if !status.success() {
         println!("qemu failed");
         process::exit(1);
@@ -239,8 +248,9 @@ fn xtask_gdb(xtask_env: &XtaskEnv) {
         .args(&["--eval-command", "file rustsbi-qemu"])
         .args(&["--eval-command", "target remote localhost:1234"])
         .arg("-q")
-        .status().unwrap();
-    
+        .status()
+        .unwrap();
+
     if !status.success() {
         println!("qemu failed");
         process::exit(1);
@@ -280,15 +290,17 @@ fn run_test_kernel() {
         .args(&["-kernel", "test-kernel.bin"])
         .arg("-nographic")
         .stdout(process::Stdio::piped())
-        .spawn().expect("spawn child process");
-    let output = child
-        .wait_with_output()
-        .expect("wait on child");
-    let string = String::from_utf8(output.stdout)
-        .expect("utf-8 output");
+        .spawn()
+        .expect("spawn child process");
+    let output = child.wait_with_output().expect("wait on child");
+    let string = String::from_utf8(output.stdout).expect("utf-8 output");
     println!("{}", string);
     let last_line = string.lines().last();
     assert!(last_line.is_some(), "some outuput");
-    assert_eq!(last_line.unwrap(), "<< Test-kernel: SBI test SUCCESS, shutdown", "success output");
+    assert_eq!(
+        last_line.unwrap(),
+        "<< Test-kernel: SBI test SUCCESS, shutdown",
+        "success output"
+    );
     assert!(output.status.success(), "success exit code");
 }

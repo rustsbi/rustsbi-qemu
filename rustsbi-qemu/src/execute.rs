@@ -1,9 +1,10 @@
-use core::{
-    pin::Pin,
-    ops::{Generator, GeneratorState},
-};
-use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
 use crate::feature;
+use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
+use core::{
+    ops::{Generator, GeneratorState},
+    pin::Pin,
+};
+use riscv::register::{mie, mip};
 
 pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, a0, a1);
@@ -16,7 +17,7 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
                 ctx.a0 = ans.error;
                 ctx.a1 = ans.value;
                 ctx.mepc = ctx.mepc.wrapping_add(4);
-            },
+            }
             GeneratorState::Yielded(MachineTrap::IllegalInstruction()) => {
                 let ctx = rt.context_mut();
                 // FIXME: get_vaddr_u32这个过程可能出错。
@@ -30,12 +31,16 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
                         }
                     }
                 }
+            }
+            GeneratorState::Yielded(MachineTrap::MachineTimer()) => unsafe {
+                mip::set_stimer();
+                mie::clear_mtimer();
             },
             GeneratorState::Complete(()) => {
                 use rustsbi::Reset;
                 crate::test_device::Reset.system_reset(
                     rustsbi::reset::RESET_TYPE_SHUTDOWN,
-                    rustsbi::reset::RESET_REASON_NO_REASON
+                    rustsbi::reset::RESET_REASON_NO_REASON,
                 );
             }
         }
@@ -72,10 +77,13 @@ unsafe fn should_transfer_illegal_instruction(ctx: &mut SupervisorContext) -> bo
 
 unsafe fn do_transfer_illegal_instruction(ctx: &mut SupervisorContext) {
     use riscv::register::{
-        scause, stval, mtval, sepc, mstatus::{self, MPP, SPP}, stvec
+        mstatus::{self, MPP, SPP},
+        mtval, scause, sepc, stval, stvec,
     };
     // 设置S层异常原因为：非法指令
-    scause::set(scause::Trap::Exception(scause::Exception::IllegalInstruction));
+    scause::set(scause::Trap::Exception(
+        scause::Exception::IllegalInstruction,
+    ));
     // 填写异常指令的指令内容
     stval::write(mtval::read());
     // 填写S层需要返回到的地址，这里的mepc会被随后的代码覆盖掉
