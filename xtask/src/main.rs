@@ -1,7 +1,7 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    process::{self, Command},
+    process::{self, Command, Stdio},
 };
 
 #[macro_use]
@@ -137,7 +137,7 @@ fn xtask_build_test_kernel(xtask_env: &XtaskEnv) {
 
 fn xtask_asm_sbi(xtask_env: &XtaskEnv) {
     // @{{objdump}} -D {{test-kernel-elf}} | less
-    let objdump = "rust-objdump";
+    let objdump = check_tool("objdump").expect("Objdump tool not found");
     Command::new(objdump)
         .current_dir(dist_dir(xtask_env))
         .arg("-d")
@@ -148,7 +148,7 @@ fn xtask_asm_sbi(xtask_env: &XtaskEnv) {
 
 fn xtask_size_sbi(xtask_env: &XtaskEnv) {
     // @{{size}} -A -x {{test-kernel-elf}}
-    let size = "rust-size";
+    let size = check_tool("size").expect("Size tool not found");
     Command::new(size)
         .current_dir(dist_dir(xtask_env))
         .arg("-A")
@@ -166,7 +166,7 @@ fn xtask_binary_sbi(xtask_env: &XtaskEnv) {
     build: firmware
         @{{objcopy}} {{test-kernel-elf}} --strip-all -O binary {{test-kernel-bin}}
      */
-    let objcopy = "rust-objcopy";
+    let objcopy = check_tool("objcopy").expect("Objcopy tool not found");
     let status = Command::new(objcopy)
         .current_dir(dist_dir(xtask_env))
         .arg("rustsbi-qemu")
@@ -183,7 +183,7 @@ fn xtask_binary_sbi(xtask_env: &XtaskEnv) {
 }
 
 fn xtask_binary_test_kernel(xtask_env: &XtaskEnv) {
-    let objcopy = "rust-objcopy";
+    let objcopy = check_tool("objcopy").expect("Objcopy tool not found");
     let status = Command::new(objcopy)
         .current_dir(dist_dir(xtask_env))
         .arg("test-kernel")
@@ -272,6 +272,40 @@ fn dist_dir(xtask_env: &XtaskEnv) -> PathBuf {
         CompileMode::Release => path_buf.join("release"),
     };
     path_buf
+}
+
+fn check_tool<S: AsRef<str>>(tool: S) -> Option<String> {
+    // check the `rust-x` tool
+    if let Ok(status) = Command::new(format!("rust-{}", tool.as_ref()))
+        .arg("--version")
+        .stdout(Stdio::null())
+        .status()
+    {
+        if status.success() {
+            return Some(format!("rust-{}", tool.as_ref()));
+        }
+    }
+    // check the `riscv64-linux-gnu-x` tool
+    if let Ok(status) = Command::new(format!("riscv64-linux-gnu-{}", tool.as_ref()))
+        .arg("--version")
+        .stdout(Stdio::null())
+        .status()
+    {
+        if status.success() {
+            return Some(format!("riscv64-linux-gnu-{}", tool.as_ref()));
+        }
+    }
+    // check `riscv64-unknown-elf-x` tool
+    if let Ok(status) = Command::new(format!("riscv64-unknown-elf-{}", tool.as_ref()))
+        .arg("--version")
+        .stdout(Stdio::null())
+        .status()
+    {
+        if status.success() {
+            return Some(format!("riscv64-unknown-elf-{}", tool.as_ref()));
+        }
+    }
+    return None;
 }
 
 #[test]
