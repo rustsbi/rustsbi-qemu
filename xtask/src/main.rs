@@ -7,6 +7,7 @@ use std::{
 #[macro_use]
 extern crate clap;
 
+// 不要修改DEFAULT_TARGET；如果你需要编译到别的目标，请使用--target编译选项！
 const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
 
 #[derive(Debug)]
