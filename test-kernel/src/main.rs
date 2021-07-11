@@ -61,8 +61,15 @@ fn test_base_extension() {
 
 fn test_sbi_ins_emulation() {
     println!(">> Test-kernel: Testing SBI instruction emulation");
-    let time = riscv::register::time::read64();
-    println!("<< Test-kernel: Current time: {:x}", time);
+    let time_start = riscv::register::time::read64();
+    println!("<< Test-kernel: Current time: {:x}", time_start);
+    let time_end = riscv::register::time::read64();
+    if time_end > time_start {
+        println!("<< Test-kernel: Time after operation: {:x}", time_end);
+    } else {
+        println!("!! Test-kernel: SBI test FAILED due to incorrect time counter");
+        sbi::shutdown()
+    }
 }
 
 pub extern "C" fn rust_trap_exception() {
