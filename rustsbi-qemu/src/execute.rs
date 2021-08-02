@@ -5,6 +5,7 @@ use core::{
     pin::Pin,
 };
 use riscv::register::{mie, mip};
+use rustsbi::println;
 
 pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, a0, a1);
@@ -35,6 +36,13 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
             GeneratorState::Yielded(MachineTrap::MachineTimer()) => unsafe {
                 mip::set_stimer();
                 mie::clear_mtimer();
+            },
+            GeneratorState::Yielded(MachineTrap::MachineExternal()) => {
+                println!("[rustsbi] unhandled machine external interrupt");
+            }
+            GeneratorState::Yielded(MachineTrap::MachineSoft()) => unsafe {
+                mip::set_ssoft();
+                mie::clear_msoft();
             },
             GeneratorState::Complete(()) => {
                 use rustsbi::Reset;
