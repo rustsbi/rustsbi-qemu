@@ -37,7 +37,7 @@ impl Read<u8> for Ns16550a {
     // 其实是可能出错的，overrun啊，这些
     type Error = Infallible;
 
-    fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
+    fn read(&mut self) -> nb::Result<u8, Self::Error> {
         let pending =
             unsafe { read_volatile((self.base + (offsets::LSR << self.shift)) as *const u8) }
                 & masks::DR;
@@ -54,13 +54,13 @@ impl Read<u8> for Ns16550a {
 impl Write<u8> for Ns16550a {
     type Error = Infallible;
 
-    fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
+    fn write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         // 写，但是不刷新
         unsafe { write_volatile((self.base + (offsets::THR << self.shift)) as *mut u8, word) };
         Ok(())
     }
 
-    fn try_flush(&mut self) -> nb::Result<(), Self::Error> {
+    fn flush(&mut self) -> nb::Result<(), Self::Error> {
         let pending =
             unsafe { read_volatile((self.base + (offsets::LSR << self.shift)) as *const u8) }
                 & masks::THRE;
