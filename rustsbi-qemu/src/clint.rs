@@ -21,21 +21,21 @@ impl Clint {
         }
     }
 
-    pub fn set_timer(&mut self, hart_id: usize, instant: u64) {
+    pub fn set_timer(&self, hart_id: usize, instant: u64) {
         unsafe {
             let base = self.base as *mut u8;
             core::ptr::write_volatile((base.offset(0x4000) as *mut u64).add(hart_id), instant);
         }
     }
 
-    pub fn send_soft(&mut self, hart_id: usize) {
+    pub fn send_soft(&self, hart_id: usize) {
         unsafe {
             let base = self.base as *mut u8;
             core::ptr::write_volatile((base as *mut u32).add(hart_id), 1);
         }
     }
 
-    pub fn clear_soft(&mut self, hart_id: usize) {
+    pub fn clear_soft(&self, hart_id: usize) {
         unsafe {
             let base = self.base as *mut u8;
             core::ptr::write_volatile((base as *mut u32).add(hart_id), 0);
@@ -51,7 +51,7 @@ impl Ipi for Clint {
         *crate::count_harts::MAX_HART_ID.lock()
     }
 
-    fn send_ipi_many(&mut self, hart_mask: HartMask) -> SbiRet {
+    fn send_ipi_many(&self, hart_mask: HartMask) -> SbiRet {
         // println!("[rustsbi] send ipi many, {:?}", hart_mask);
         for i in 0..=self.max_hart_id() {
             if hart_mask.has_bit(i) {
@@ -63,7 +63,7 @@ impl Ipi for Clint {
 }
 
 impl Timer for Clint {
-    fn set_timer(&mut self, time_value: u64) {
+    fn set_timer(&self, time_value: u64) {
         let this_mhartid = riscv::register::mhartid::read();
         self.set_timer(this_mhartid, time_value);
     }
