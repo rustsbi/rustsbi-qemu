@@ -1,5 +1,4 @@
 use device_tree::{DeviceTree, Node};
-use rustsbi::println;
 const DEVICE_TREE_MAGIC: u32 = 0xD00DFEED;
 
 lazy_static::lazy_static! {

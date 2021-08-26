@@ -7,6 +7,9 @@
 
 extern crate alloc;
 
+#[macro_use]
+extern crate rustsbi;
+
 mod clint;
 mod count_harts;
 mod execute;
@@ -15,11 +18,10 @@ mod hart_csr_utils;
 mod ns16550a;
 mod runtime;
 mod test_device;
+mod qemu_hsm;
 
 use buddy_system_allocator::LockedHeap;
 use core::panic::PanicInfo;
-
-use rustsbi::println;
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
@@ -47,7 +49,11 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
+lazy_static::lazy_static! {
+    pub static ref HSM: qemu_hsm::QemuHsm = qemu_hsm::QemuHsm::new();
+}
+
+extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
     runtime::init();
     if hartid == 0 {
         init_heap();
@@ -60,15 +66,31 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
             "[rustsbi] Implementation: RustSBI-QEMU Version {}",
             env!("CARGO_PKG_VERSION")
         );
-        unsafe { count_harts::init_hart_count(dtb_pa) };
+        unsafe { count_harts::init_hart_count(opqaue) };
+        // initialize hsm module
+        rustsbi::init_hsm(HSM.clone());
+    } else {
+        qemu_hsm::pause();
     }
     delegate_interrupt_exception();
     set_pmp();
+    unsafe { // enable wake by ipi
+        riscv::register::mstatus::set_mie();
+    }
     if hartid == 0 {
+        // print hart csr configuration
         hart_csr_utils::print_hart_csrs();
+        // start other harts
+        let clint = clint::Clint::new(0x2000000 as *mut u8);
+        let max_hart_id = * { count_harts::MAX_HART_ID.lock() };
+        for target_hart_id in 0..=max_hart_id {
+            if target_hart_id != 0 {
+                clint.send_soft(target_hart_id);
+            }
+        }
         println!("[rustsbi] enter supervisor 0x80200000");
     }
-    execute::execute_supervisor(0x80200000, hartid, dtb_pa);
+    execute::execute_supervisor(0x80200000, hartid, opqaue, HSM.clone());
 }
 
 fn init_heap() {
@@ -143,7 +165,7 @@ fn set_pmp() {
 #[naked]
 #[link_section = ".text.entry"]
 #[export_name = "_start"]
-unsafe extern "C" fn entry() -> ! {
+unsafe extern "C" fn entry(_a0: usize, _a1: usize) -> ! {
     asm!(
     // 1. set sp
     // sp = bootstack + (hartid + 1) * HART_STACK_SIZE

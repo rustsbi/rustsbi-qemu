@@ -58,6 +58,7 @@ impl Generator for Runtime {
             Trap::Exception(Exception::SupervisorEnvCall) => MachineTrap::SbiCall(),
             Trap::Exception(Exception::IllegalInstruction) => MachineTrap::IllegalInstruction(),
             Trap::Interrupt(Interrupt::MachineTimer) => MachineTrap::MachineTimer(),
+            Trap::Interrupt(Interrupt::MachineSoft) => MachineTrap::MachineSoft(),
             e => panic!(
                 "unhandled exception: {:?}! mtval: {:#x?}, ctx: {:#x?}",
                 e, mtval, self.context
@@ -72,6 +73,7 @@ pub enum MachineTrap {
     SbiCall(),
     IllegalInstruction(),
     MachineTimer(),
+    MachineSoft(),
 }
 
 #[derive(Debug)]
