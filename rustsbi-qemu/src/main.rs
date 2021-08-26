@@ -128,11 +128,11 @@ fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
     unsafe {
         asm!(
-            "li     {tmp}, ((0x08 << 16) |(0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A;
+            "li     {tmp}, ((0x08 << 16) | (0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A;
             "csrw   0x3A0, {tmp}",
-            "li     {tmp}, ((0x0000000080000000 >> 2) | 0x3ffff)", // 0 = 0x0000000080000000-0x000000008001ffff
+            "li     {tmp}, ((0x0000000010001000 >> 2) | 0x3ff)", // 0 = 0x0000000010001000-0x0000000010001fff
             "csrw   0x3B0, {tmp}",
-            "li     {tmp}, ((0x0000000080200000 >> 2) | 0x1fffff)", // 1 = 0x0000000080200000-0x000000008021ffff
+            "li     {tmp}, ((0x0000000080000000 >> 2) | 0x3ffffff)", // 1 = 0x0000000080000000-0x000000008fffffff
             "csrw   0x3B1, {tmp}",
             "sfence.vma",
             tmp = out(reg) _
@@ -156,7 +156,7 @@ unsafe extern "C" fn entry() -> ! {
     bnez    t1, 1b
     ",
     // 2. jump to rust_main (absolute address)
-    "j      {rust_main}", 
+    "j      {rust_main}",
     per_hart_stack_size = const PER_HART_STACK_SIZE,
     stack = sym SBI_STACK,
     rust_main = sym rust_main,
