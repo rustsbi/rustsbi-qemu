@@ -74,6 +74,10 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
     }
     delegate_interrupt_exception();
     set_pmp();
+    unsafe { // enable wake by ipi
+        riscv::register::mie::set_msoft();
+        riscv::register::mstatus::set_mie();
+    }
     if hartid == 0 {
         // print hart csr configuration
         hart_csr_utils::print_hart_csrs();
@@ -87,7 +91,6 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         }
         println!("[rustsbi] enter supervisor 0x80200000");
     }
-    HSM.override_record_start(hartid);
     execute::execute_supervisor(0x80200000, hartid, opqaue, HSM.clone());
 }
 

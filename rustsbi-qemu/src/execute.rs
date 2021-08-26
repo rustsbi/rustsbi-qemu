@@ -9,6 +9,7 @@ use riscv::register::{mie, mip, scause::{Trap, Exception}};
 
 pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: QemuHsm) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, a0, a1);
+    hsm.override_record_start();
     loop {
         match Pin::new(&mut rt).resume(()) {
             GeneratorState::Yielded(MachineTrap::SbiCall()) => {
