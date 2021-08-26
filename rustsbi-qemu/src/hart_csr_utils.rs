@@ -5,7 +5,6 @@ use riscv::register::{
     medeleg, mideleg,
     misa::{self, MXL},
 };
-use rustsbi::{print, println};
 
 pub fn print_hart_csrs() {
     print_misa();
