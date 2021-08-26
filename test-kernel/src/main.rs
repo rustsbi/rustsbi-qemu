@@ -43,7 +43,8 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
     unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
     if hartid != 3 {
         println!("<< Test-kernel: test for hart {} success, wake another hart", hartid);
-        let sbi_ret = sbi::send_ipi(0b10, hartid); // wake hartid + 1
+        let bv: usize = 0b10;
+        let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
         println!(">> Wake, sbi return value {:?}", sbi_ret);
         loop {} // wait for machine shutdown
     } else {

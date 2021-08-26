@@ -52,6 +52,7 @@ impl Ipi for Clint {
     }
 
     fn send_ipi_many(&mut self, hart_mask: HartMask) -> SbiRet {
+        // println!("[rustsbi] send ipi many, {:?}", hart_mask);
         for i in 0..=self.max_hart_id() {
             if hart_mask.has_bit(i) {
                 self.send_soft(i);
