@@ -68,7 +68,7 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                     hsm.record_current_stop_finished();
                     pause();
                 },
-                None => println!("[rustsbi] warning: machine soft interrupt with no hart state monitor command"),
+                None => panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command"),
             },
             GeneratorState::Complete(()) => {
                 use rustsbi::Reset;

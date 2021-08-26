@@ -216,7 +216,7 @@ fn xtask_qemu_run(xtask_env: &XtaskEnv) {
         .args(&["-machine", "virt"])
         .args(&["-bios", "rustsbi-qemu.bin"])
         .args(&["-kernel", "test-kernel.bin"])
-        .args(&["-smp", "4"]) // 4 cores
+        .args(&["-smp", "8"]) // 8 cores
         .arg("-nographic")
         .status()
         .unwrap();
@@ -233,7 +233,7 @@ fn xtask_qemu_debug(xtask_env: &XtaskEnv) {
         .args(&["-machine", "virt"])
         .args(&["-bios", "rustsbi-qemu.bin"])
         .args(&["-kernel", "test-kernel.bin"])
-        .args(&["-smp", "4"]) // 4 cores
+        .args(&["-smp", "8"]) // 8 cores
         .arg("-nographic")
         .args(&["-gdb", "tcp::1234", "-S"])
         .status()
@@ -325,7 +325,7 @@ fn run_test_kernel() {
         .args(&["-machine", "virt"])
         .args(&["-bios", "rustsbi-qemu.bin"])
         .args(&["-kernel", "test-kernel.bin"])
-        .args(&["-smp", "4"]) // 4 cores
+        .args(&["-smp", "8"]) // 8 cores
         .arg("-nographic")
         .stdout(process::Stdio::piped())
         .spawn()

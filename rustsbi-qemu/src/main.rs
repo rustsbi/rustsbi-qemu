@@ -75,7 +75,6 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
     delegate_interrupt_exception();
     set_pmp();
     unsafe { // enable wake by ipi
-        riscv::register::mie::set_msoft();
         riscv::register::mstatus::set_mie();
     }
     if hartid == 0 {
@@ -84,7 +83,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         // start other harts
         let mut clint = clint::Clint::new(0x2000000 as *mut u8);
         let max_hart_id = * { count_harts::MAX_HART_ID.lock() };
-        for target_hart_id in 0..max_hart_id {
+        for target_hart_id in 0..=max_hart_id {
             if target_hart_id != 0 {
                 clint.send_soft(target_hart_id);
             }

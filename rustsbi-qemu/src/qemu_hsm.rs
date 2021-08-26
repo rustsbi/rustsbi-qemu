@@ -196,6 +196,7 @@ pub fn pause() {
         let hartid = mhartid::read();
         let mut clint = Clint::new(0x2000000 as *mut u8);
         clint.clear_soft(hartid); // Clear IPI
+        let prev_msoft = mie::read().msoft();
         mie::set_msoft(); // Start listening for software interrupts
         loop {
             wfi();
@@ -203,7 +204,9 @@ pub fn pause() {
                 break;
             }
         }
-        mie::clear_msoft(); // Stop listening for software interrupts
+        if !prev_msoft {
+            mie::clear_msoft(); // Stop listening for software interrupts
+        }
         clint.clear_soft(hartid); // Clear IPI
     } 
 }
