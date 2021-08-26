@@ -247,8 +247,9 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.2.0-alpha.5"
-source = "git+https://github.com/rustsbi/rustsbi?rev=674c8ee9#674c8ee900b41f8d8332d4dc6b64619f02c37d11"
+version = "0.2.0-alpha.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b350640a94b4dfa01b74a08c1ff424d6ba1c12466359702ce71fe6643e0f82d0"
 dependencies = [
  "embedded-hal",
  "lazy_static",
