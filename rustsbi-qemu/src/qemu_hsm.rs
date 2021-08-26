@@ -101,7 +101,7 @@ impl rustsbi::Hsm for QemuHsm {
         drop(config_lock);
         drop(state_lock);
         // now, start the target hart
-        let mut clint = crate::clint::Clint::new(0x2000000 as *mut u8);
+        let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
         clint.send_soft(hart_id);
         SbiRet::ok(0)
     }
@@ -126,7 +126,7 @@ impl rustsbi::Hsm for QemuHsm {
         drop(config_lock);
         drop(state_lock); 
         // stop the target hart
-        let mut clint = crate::clint::Clint::new(0x2000000 as *mut u8);
+        let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
         clint.send_soft(hart_id);
         SbiRet::ok(0)
     }
