@@ -51,13 +51,6 @@ impl QemuHsm {
             last_command: Arc::new(spin::Mutex::new(HashMap::new())),
         }
     }
-    // should be called by SBI implementation itself only
-    pub(crate) fn override_record_start(&self) {
-        let hart_id = riscv::register::mhartid::read();
-        println!("hsm: hart [{}] start", hart_id);
-        self.state.lock().entry(hart_id)
-            .insert(AtomicU8::new(HsmState::Started as u8));
-    }
     // return last command by current hart id
     pub(crate) fn last_command(&self) -> Option<HsmCommand> {
         let hart_id = riscv::register::mhartid::read();
@@ -68,29 +61,13 @@ impl QemuHsm {
     }
     pub(crate) fn record_current_stop_finished(&self) {
         let hart_id = riscv::register::mhartid::read();
-        let mut state_lock = self.state.lock();
-        let _current_state = state_lock.entry(hart_id)
-            .or_insert(AtomicU8::new(HsmState::Stopped as u8))
-            .compare_exchange(
-                HsmState::StopPending as u8,
-                HsmState::Stopped as u8,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ); 
-        drop(state_lock);
+        self.state.lock().entry(hart_id)
+            .insert(AtomicU8::new(HsmState::Stopped as u8));
     }
     pub(crate) fn record_current_start_finished(&self) {
         let hart_id = riscv::register::mhartid::read();
-        let mut state_lock = self.state.lock();
-        let _current_state = state_lock.entry(hart_id)
-            .or_insert(AtomicU8::new(HsmState::Stopped as u8))
-            .compare_exchange(
-                HsmState::StartPending as u8,
-                HsmState::Started as u8,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ); 
-        drop(state_lock);
+        self.state.lock().entry(hart_id)
+            .insert(AtomicU8::new(HsmState::Started as u8));
     }
 }
 
