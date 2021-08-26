@@ -1,18 +1,20 @@
 use crate::feature;
+use crate::qemu_hsm::{QemuHsm, HsmCommand, pause};
 use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
 use core::{
     ops::{Generator, GeneratorState},
     pin::Pin,
 };
-use riscv::register::{mie, mip};
+use riscv::register::{mie, mip, scause::{Trap, Exception}};
 
-pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
+pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: QemuHsm) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, a0, a1);
+    hsm.record_current_start_finished();
     loop {
         match Pin::new(&mut rt).resume(()) {
             GeneratorState::Yielded(MachineTrap::SbiCall()) => {
                 let ctx = rt.context_mut();
-                let param = [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4];
+                let param = [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5];
                 let ans = rustsbi::ecall(ctx.a7, ctx.a6, param);
                 ctx.a0 = ans.error;
                 ctx.a1 = ans.value;
@@ -24,8 +26,8 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
                 let ins = unsafe { get_vaddr_u32(ctx.mepc) } as usize;
                 if !emulate_illegal_instruction(ctx, ins) {
                     unsafe {
-                        if should_transfer_illegal_instruction(ctx) {
-                            do_transfer_illegal_instruction(ctx)
+                        if feature::should_transfer_trap(ctx) {
+                            feature::do_transfer_trap(ctx, Trap::Exception(Exception::IllegalInstruction))
                         } else {
                             fail_illegal_instruction(ctx, ins)
                         }
@@ -35,6 +37,38 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> ! {
             GeneratorState::Yielded(MachineTrap::MachineTimer()) => unsafe {
                 mip::set_stimer();
                 mie::clear_mtimer();
+            },
+            GeneratorState::Yielded(MachineTrap::MachineSoft()) => match hsm.last_command() {
+                Some(HsmCommand::Start(start_addr, opaque)) => {
+                    unsafe {
+                        riscv::register::satp::write(0);
+                        riscv::register::sstatus::clear_sie();
+                    }
+                    hsm.record_current_start_finished();
+                    match () {
+                        #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+                        () => unsafe {
+                            asm!(
+                                "csrr   a0, mhartid",
+                                "jr     {start_addr}",
+                                start_addr = in(reg) start_addr,
+                                in("a1") opaque,
+                                options(noreturn)
+                            )
+                        },
+                        #[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
+                        () => {
+                            drop((start_addr, opaque));
+                            unimplemented!("not RISC-V instruction set architecture")
+                        }
+                    };
+                },
+                Some(HsmCommand::Stop) => {
+                    // no hart stop command in qemu, record stop state and pause
+                    hsm.record_current_stop_finished();
+                    pause();
+                },
+                None => panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command"),
             },
             GeneratorState::Complete(()) => {
                 use rustsbi::Reset;
@@ -68,37 +102,6 @@ fn emulate_illegal_instruction(ctx: &mut SupervisorContext, ins: usize) -> bool 
         return true;
     }
     false
-}
-
-unsafe fn should_transfer_illegal_instruction(ctx: &mut SupervisorContext) -> bool {
-    use riscv::register::mstatus::MPP;
-    ctx.mstatus.mpp() != MPP::Machine
-}
-
-unsafe fn do_transfer_illegal_instruction(ctx: &mut SupervisorContext) {
-    use riscv::register::{
-        mstatus::{self, MPP, SPP},
-        mtval, scause, sepc, stval, stvec,
-    };
-    // 设置S层异常原因为：非法指令
-    scause::set(scause::Trap::Exception(
-        scause::Exception::IllegalInstruction,
-    ));
-    // 填写异常指令的指令内容
-    stval::write(mtval::read());
-    // 填写S层需要返回到的地址，这里的mepc会被随后的代码覆盖掉
-    sepc::write(ctx.mepc);
-    // 设置中断位
-    mstatus::set_mpp(MPP::Supervisor);
-    mstatus::set_spp(SPP::Supervisor);
-    if mstatus::read().sie() {
-        mstatus::set_spie()
-    }
-    mstatus::clear_sie();
-    ctx.mstatus = mstatus::read();
-    // 设置返回地址，返回到S层
-    // 注意，无论是Direct还是Vectored模式，所有异常的向量偏移都是0，不需要处理中断向量，跳转到入口地址即可
-    ctx.mepc = stvec::read().address();
 }
 
 // 真·非法指令异常，是M层出现的
