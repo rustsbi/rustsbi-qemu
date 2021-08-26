@@ -27,7 +27,14 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         test_base_extension();
         test_sbi_ins_emulation();
     } 
-    if hartid != 0 {
+    if hartid == 0 {
+        let sbi_ret = sbi::hart_stop(1);
+        println!(">> Stop hart 1, return value {:?}", sbi_ret);
+        for i in 0..4 {
+            let sbi_ret = sbi::hart_get_status(i);
+            println!(">> Hart {} state return value: {:?}", i, sbi_ret);
+        }
+    } else {
         let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
         println!(">> Start test for hart {}, suspend return value {:?}", hartid, sbi_ret);
     }

@@ -52,7 +52,8 @@ impl QemuHsm {
         }
     }
     // should be called by SBI implementation itself only
-    pub(crate) fn override_record_start(&self, hart_id: usize) {
+    pub(crate) fn override_record_start(&self) {
+        let hart_id = riscv::register::mhartid::read();
         println!("hsm: hart [{}] start", hart_id);
         self.state.lock().entry(hart_id)
             .insert(AtomicU8::new(HsmState::Started as u8));
