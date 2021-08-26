@@ -81,7 +81,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         // print hart csr configuration
         hart_csr_utils::print_hart_csrs();
         // start other harts
-        let mut clint = clint::Clint::new(0x2000000 as *mut u8);
+        let clint = clint::Clint::new(0x2000000 as *mut u8);
         let max_hart_id = * { count_harts::MAX_HART_ID.lock() };
         for target_hart_id in 0..=max_hart_id {
             if target_hart_id != 0 {
