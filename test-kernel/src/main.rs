@@ -6,8 +6,8 @@
 
 #[macro_use]
 mod console;
-mod sbi;
 mod mm;
+mod sbi;
 
 use riscv::register::{
     scause::{self, Exception, Trap},
@@ -16,7 +16,8 @@ use riscv::register::{
 };
 
 pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    if hartid == 0 { // initialization
+    if hartid == 0 {
+        // initialization
         mm::init_heap();
     }
     if hartid == 0 {
@@ -26,7 +27,7 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         );
         test_base_extension();
         test_sbi_ins_emulation();
-    } 
+    }
     if hartid == 0 {
         let sbi_ret = sbi::hart_stop(1);
         println!(">> Stop hart 1, return value {:?}", sbi_ret);
@@ -36,13 +37,19 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         }
     } else {
         let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
-        println!(">> Start test for hart {}, suspend return value {:?}", hartid, sbi_ret);
+        println!(
+            ">> Start test for hart {}, suspend return value {:?}",
+            hartid, sbi_ret
+        );
     }
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
     println!(">> Test-kernel: Trigger illegal exception");
     unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
     if hartid != 3 {
-        println!("<< Test-kernel: test for hart {} success, wake another hart", hartid);
+        println!(
+            "<< Test-kernel: test for hart {} success, wake another hart",
+            hartid
+        );
         let bv: usize = 0b10;
         let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
         println!(">> Wake, sbi return value {:?}", sbi_ret);
@@ -50,7 +57,7 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
     } else {
         println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
         sbi::shutdown()
-    } 
+    }
 }
 
 fn test_base_extension() {
@@ -141,7 +148,7 @@ unsafe extern "C" fn entry() -> ! {
     addi    t0, t0, %pcrel_lo(1b)
     jr      t0
     ", 
-    boot_stack = sym BOOT_STACK, 
+    boot_stack = sym BOOT_STACK,
     rust_main = sym rust_main,
     options(noreturn))
 }
