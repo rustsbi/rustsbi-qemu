@@ -7,9 +7,5 @@ static mut HEAP_SPACE: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 static HEAP: LockedHeap<32> = LockedHeap::empty();
 
 pub fn init_heap() {
-    unsafe {
-        HEAP
-            .lock()
-            .init(HEAP_SPACE.as_ptr() as usize, HEAP_SIZE)
-    }
+    unsafe { HEAP.lock().init(HEAP_SPACE.as_ptr() as usize, HEAP_SIZE) }
 }
