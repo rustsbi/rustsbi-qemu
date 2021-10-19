@@ -148,6 +148,8 @@ fn delegate_interrupt_exception() {
 
 fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
+    // read fdt tree value, parse, and calculate proper pmp configuration for this device tree (issue #7)
+    // integrate with `count_harts`
     unsafe {
         asm!(
             "li     {tmp}, ((0x08 << 16) | (0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A;
