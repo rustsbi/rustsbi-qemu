@@ -121,7 +121,7 @@ fn init_test_device() {
     init_reset(test_device::Reset);
 }
 
-// 委托终端；把S的中断全部委托给S层
+// 委托中断；把S的中断全部委托给S层
 fn delegate_interrupt_exception() {
     use riscv::register::{medeleg, mideleg, mie};
     unsafe {
