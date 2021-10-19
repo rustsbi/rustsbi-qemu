@@ -337,7 +337,7 @@ fn run_test_kernel() {
     assert!(last_line.is_some(), "some outuput");
     assert_eq!(
         last_line.unwrap(),
-        "<< Test-kernel: SBI test SUCCESS, shutdown",
+        "<< Test-kernel: All hart SBI test SUCCESS, shutdown",
         "success output"
     );
     assert!(output.status.success(), "success exit code");
