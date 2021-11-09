@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions)]
-#![feature(asm)]
+#![feature(asm, asm_sym, asm_const)]
 #![feature(generator_trait)]
 #![feature(default_alloc_error_handler)]
 
