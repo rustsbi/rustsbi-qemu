@@ -86,6 +86,24 @@ pub fn get_mimpid() -> usize {
     sbi_call_0(EXTENSION_BASE, FUNCTION_BASE_GET_MIMPID).value
 }
 
+const FUNCTION_SYSTEM_RESET: usize = 0x0;
+
+pub const RESET_TYPE_SHUTDOWN: usize = 0x0000_0000;
+pub const RESET_TYPE_COLD_REBOOT: usize = 0x0000_0001;
+pub const RESET_TYPE_WARM_REBOOT: usize = 0x0000_0002;
+pub const RESET_REASON_NO_REASON: usize = 0x0000_0000;
+pub const RESET_REASON_SYSTEM_FAILURE: usize = 0x0000_0001;
+
+#[inline]
+pub fn reset(reset_type: usize, reset_reason: usize) -> SbiRet {
+    sbi_call_2(EXTENSION_SRST, FUNCTION_SYSTEM_RESET, reset_type, reset_reason)
+}
+
+pub fn shutdown() -> ! {
+    sbi_call_2(EXTENSION_SRST, FUNCTION_SYSTEM_RESET, RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
+    unreachable!()
+}
+
 #[inline(always)]
 fn sbi_call_legacy(which: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
     let ret;
@@ -124,11 +142,6 @@ pub fn console_putchar(c: usize) {
 
 pub fn console_getchar() -> usize {
     sbi_call_legacy(SBI_CONSOLE_GETCHAR, 0, 0, 0)
-}
-
-pub fn shutdown() -> ! {
-    sbi_call_legacy(SBI_SHUTDOWN, 0, 0, 0);
-    unreachable!()
 }
 
 pub fn set_timer(time: usize) {

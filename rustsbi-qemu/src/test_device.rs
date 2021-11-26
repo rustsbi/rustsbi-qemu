@@ -1,25 +1,38 @@
-pub struct Reset;
+// SiFive Test virtual device
+//
+// This is a test finisher memory mapped device used to exit simulation
+//
+// Ref: https://github.com/qemu/qemu/blob/master/hw/misc/sifive_test.c
+use rustsbi::{Reset, SbiRet, reset::{
+    RESET_TYPE_SHUTDOWN, RESET_TYPE_COLD_REBOOT, RESET_TYPE_WARM_REBOOT,
+    RESET_REASON_NO_REASON, RESET_REASON_SYSTEM_FAILURE
+}};
 
+// Zero sized structure for a static write-only device
+pub struct SiFiveTest;
+
+// Write these values to perform test device operations
 const TEST_FAIL: u32 = 0x3333;
 const TEST_PASS: u32 = 0x5555;
 const TEST_RESET: u32 = 0x7777;
 
-impl rustsbi::Reset for Reset {
-    fn system_reset(&self, reset_type: usize, reset_reason: usize) -> rustsbi::SbiRet {
-        // todo: only exit after all harts finished
-        // loop {}
+// On most QEMU host platforms, exit code for a general error is 1
+const QEMU_ERR_EXIT_CODE: u32 = 1;
+
+impl Reset for SiFiveTest {
+    fn system_reset(&self, reset_type: usize, reset_reason: usize) -> SbiRet {
         const VIRT_TEST: *mut u32 = 0x10_0000 as *mut u32;
-        // Fail = 0x3333,
-        // Pass = 0x5555,
-        // Reset = 0x7777,
-        let mut value = match reset_type {
-            rustsbi::reset::RESET_TYPE_SHUTDOWN => TEST_PASS,
-            rustsbi::reset::RESET_TYPE_COLD_REBOOT => TEST_RESET,
-            rustsbi::reset::RESET_TYPE_WARM_REBOOT => TEST_RESET,
-            _ => TEST_FAIL,
-        };
-        if reset_reason == rustsbi::reset::RESET_REASON_SYSTEM_FAILURE {
-            value = TEST_FAIL;
+        let value = match reset_type {
+            RESET_TYPE_SHUTDOWN => match reset_reason {
+                RESET_REASON_NO_REASON => TEST_PASS,
+                RESET_REASON_SYSTEM_FAILURE => TEST_FAIL | (QEMU_ERR_EXIT_CODE << 16),
+                // pass unknown reason from [2, 0xFFFF] to qemu return value output  
+                // reason if reason <= 0xFFFF => TEST_FAIL | (((reason & 0xFFFF) as u32) << 16),
+                _ => return SbiRet::invalid_param(),
+            },
+            RESET_TYPE_COLD_REBOOT => TEST_RESET,
+            RESET_TYPE_WARM_REBOOT => TEST_RESET,
+            _ => return SbiRet::invalid_param(),
         };
         unsafe {
             core::ptr::write_volatile(VIRT_TEST, value);
