@@ -248,31 +248,11 @@ impl rustsbi::Hsm for QemuHsm {
                 // retentive suspend
                 suspend_current_hart(&self);
                 // begin wake process
-                unsafe {
-                    riscv::register::satp::write(0);
-                    riscv::register::sstatus::clear_sie();
-                }
-                // when wake, mark current hart as started
-                let mut state_lock = self.state.lock();
-                state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::Started as u8));
-                drop(state_lock);
-                match () {
-                    #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
-                    () => unsafe {
-                        asm!(
-                            "csrr   a0, mhartid",
-                            "jr     {resume_addr}",
-                            resume_addr = in(reg) resume_addr,
-                            in("a1") opaque,
-                            options(noreturn)
-                        )
-                    },
-                    #[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
-                    () => {
-                        drop((resume_addr, opaque));
-                        unimplemented!("not RISC-V instruction set architecture")
-                    }
-                };
+                // send start command to runtime of current hart
+                let mut config_lock = self.last_command.lock();
+                config_lock.entry(hart_id).insert(HsmCommand::Start(resume_addr, opaque));
+                drop(config_lock);
+                SbiRet { error: 0x233, value: 0x0 } // unreachable, the runtime identifies start command and perform the hart resume
             },
             // There could be other platform specific suspend types; RustSBI-QEMU does not define any
             // platform suspend types. It gives SBI return value as not supported.

@@ -16,9 +16,22 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                 let ctx = rt.context_mut();
                 let param = [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5];
                 let ans = rustsbi::ecall(ctx.a7, ctx.a6, param);
-                ctx.a0 = ans.error;
-                ctx.a1 = ans.value;
-                ctx.mepc = ctx.mepc.wrapping_add(4);
+                if ans.error == 0x233 { // hart non-retentive resume
+                    if let Some(HsmCommand::Start(start_paddr, opaque)) = hsm.last_command() {
+                        unsafe {
+                            riscv::register::satp::write(0);
+                            riscv::register::sstatus::clear_sie();
+                        }
+                        hsm.record_current_start_finished();
+                        ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
+                        ctx.a0 = opaque;
+                        ctx.mepc = start_paddr;
+                    }
+                } else {
+                    ctx.a0 = ans.error;
+                    ctx.a1 = ans.value;
+                    ctx.mepc = ctx.mepc.wrapping_add(4);
+                }
             }
             GeneratorState::Yielded(MachineTrap::IllegalInstruction()) => {
                 let ctx = rt.context_mut();
