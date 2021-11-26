@@ -10,8 +10,8 @@ use riscv::register::{
     scause::{Exception, Trap},
 };
 
-pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: QemuHsm) -> ! {
-    let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, a0, a1);
+pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm: QemuHsm) -> ! {
+    let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, hart_id, a1);
     hsm.record_current_start_finished();
     loop {
         match Pin::new(&mut rt).resume(()) {
@@ -28,7 +28,8 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                         }
                         hsm.record_current_start_finished();
                         ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
-                        ctx.a0 = opaque;
+                        ctx.a0 = hart_id;
+                        ctx.a1 = opaque;
                         ctx.mepc = start_paddr;
                     }
                 } else {
@@ -67,6 +68,17 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                     hsm.record_current_stop_finished();
                     pause();
                     if let Some(HsmCommand::Start(start_paddr, opaque)) = hsm.last_command() {
+                        // Resuming from a non-retentive suspend state is relatively more involved and requires software
+                        // to restore various hart registers and CSRs for all privilege modes.
+                        // Upon resuming from non-retentive suspend state, the hart will jump to supervisor-mode at address
+                        // specified by `resume_addr` with specific registers values described in the table below:
+                        //
+                        // | Register Name | Register Value
+                        // |:--------------|:--------------
+                        // | `satp`        | 0
+                        // | `sstatus.SIE` | 0
+                        // | a0            | hartid
+                        // | a1            | `opaque` parameter
                         unsafe {
                             riscv::register::satp::write(0);
                             riscv::register::sstatus::clear_sie();
@@ -74,7 +86,8 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                         hsm.record_current_start_finished();
                         let ctx = rt.context_mut();
                         ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
-                        ctx.a0 = opaque;
+                        ctx.a0 = hart_id;
+                        ctx.a1 = opaque;
                         ctx.mepc = start_paddr;
                     }
                 }
