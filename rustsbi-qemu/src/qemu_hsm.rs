@@ -230,15 +230,6 @@ impl rustsbi::Hsm for QemuHsm {
             }
             // Resuming from a non-retentive suspend state is relatively more involved and requires software
             // to restore various hart registers and CSRs for all privilege modes.
-            // Upon resuming from non-retentive suspend state, the hart will jump to supervisor-mode at address
-            // specified by `resume_addr` with specific registers values described in the table below:
-            //
-            // | Register Name | Register Value
-            // |:--------------|:--------------
-            // | `satp`        | 0
-            // | `sstatus.SIE` | 0
-            // | a0            | hartid
-            // | a1            | `opaque` parameter
             SUSPEND_NON_RETENTIVE => {
                 // try to set current target hart state to stop pending
                 let hart_id = riscv::register::mhartid::read();
