@@ -138,7 +138,12 @@ pub fn set_timer(time: usize) {
 const FUNCTION_IPI_SEND_IPI: usize = 0x0;
 
 pub fn send_ipi(hart_mask: usize, hart_mask_base: usize) -> SbiRet {
-    sbi_call_2(EXTENSION_IPI, FUNCTION_IPI_SEND_IPI, hart_mask, hart_mask_base)
+    sbi_call_2(
+        EXTENSION_IPI,
+        FUNCTION_IPI_SEND_IPI,
+        hart_mask,
+        hart_mask_base,
+    )
 }
 
 const FUNCTION_HSM_HART_START: usize = 0x0;
@@ -147,7 +152,13 @@ const FUNCTION_HSM_HART_GET_STATUS: usize = 0x2;
 const FUNCTION_HSM_HART_SUSPEND: usize = 0x3;
 
 pub fn hart_start(hartid: usize, start_addr: usize, opaque: usize) -> SbiRet {
-    sbi_call_3(EXTENSION_HSM, FUNCTION_HSM_HART_START, hartid, start_addr, opaque)
+    sbi_call_3(
+        EXTENSION_HSM,
+        FUNCTION_HSM_HART_START,
+        hartid,
+        start_addr,
+        opaque,
+    )
 }
 
 pub fn hart_stop(hartid: usize) -> SbiRet {
@@ -159,7 +170,13 @@ pub fn hart_get_status(hartid: usize) -> SbiRet {
 }
 
 pub fn hart_suspend(suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
-    sbi_call_3(EXTENSION_HSM, FUNCTION_HSM_HART_SUSPEND, suspend_type as usize, resume_addr, opaque)
+    sbi_call_3(
+        EXTENSION_HSM,
+        FUNCTION_HSM_HART_SUSPEND,
+        suspend_type as usize,
+        resume_addr,
+        opaque,
+    )
 }
 
 #[inline(always)]

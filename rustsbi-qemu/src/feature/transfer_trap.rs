@@ -1,6 +1,7 @@
 use crate::runtime::SupervisorContext;
 use riscv::register::{
-    scause, stval, mtval, sepc, mstatus::{self, MPP, SPP}, stvec
+    mstatus::{self, MPP, SPP},
+    mtval, scause, sepc, stval, stvec,
 };
 
 #[inline]

@@ -6,8 +6,8 @@
 
 #[macro_use]
 mod console;
-mod sbi;
 mod mm;
+mod sbi;
 
 use riscv::register::{
     scause::{self, Exception, Trap},
@@ -16,7 +16,8 @@ use riscv::register::{
 };
 
 pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    if hartid == 0 { // initialization
+    if hartid == 0 {
+        // initialization
         mm::init_heap();
     }
     if hartid == 0 {
@@ -169,7 +170,7 @@ unsafe extern "C" fn entry() -> ! {
     addi    t0, t0, %pcrel_lo(1b)
     jr      t0
     ", 
-    boot_stack = sym BOOT_STACK, 
+    boot_stack = sym BOOT_STACK,
     rust_main = sym rust_main,
     options(noreturn))
 }

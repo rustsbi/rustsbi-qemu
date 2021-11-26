@@ -1,11 +1,14 @@
 use crate::feature;
-use crate::qemu_hsm::{QemuHsm, HsmCommand, pause};
+use crate::qemu_hsm::{pause, HsmCommand, QemuHsm};
 use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
 use core::{
     ops::{Generator, GeneratorState},
     pin::Pin,
 };
-use riscv::register::{mie, mip, scause::{Trap, Exception}};
+use riscv::register::{
+    mie, mip,
+    scause::{Exception, Trap},
+};
 
 pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: QemuHsm) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, a0, a1);
@@ -40,7 +43,10 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                 if !emulate_illegal_instruction(ctx, ins) {
                     unsafe {
                         if feature::should_transfer_trap(ctx) {
-                            feature::do_transfer_trap(ctx, Trap::Exception(Exception::IllegalInstruction))
+                            feature::do_transfer_trap(
+                                ctx,
+                                Trap::Exception(Exception::IllegalInstruction),
+                            )
                         } else {
                             fail_illegal_instruction(ctx, ins)
                         }
