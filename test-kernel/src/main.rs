@@ -37,32 +37,46 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
             let sbi_ret = sbi::hart_get_status(i);
             println!(">> Hart {} state return value: {:?}", i, sbi_ret);
         }
-    } else if hartid == 1 || hartid == 2 {
+    } else if hartid == 1 {
         let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
-        println!(">> Start test for hart {}, suspend return value {:?}", hartid, sbi_ret);
+        println!(">> Start test for hart {}, retentive suspend return value {:?}", hartid, sbi_ret);
+    } else if hartid == 2 {
+        /* resume_addr should be physical address, and here pa == va */
+        let sbi_ret = sbi::hart_suspend(0x80000000, hart_2_resume as usize, 0x4567890a);
+        println!(">> Error for non-retentive suspend: {:?}", sbi_ret);
+        loop {}
     } else { // hartid == 3
         loop {}
     }
-    if hartid == 0 || hartid == 1 {
+    if hartid == 0 {
         println!("<< Test-kernel: test for hart {} success, wake another hart", hartid);
         let bv: usize = 0b10;
         let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
-        println!(">> Wake, sbi return value {:?}", sbi_ret);
+        println!(">> Wake hart 1, sbi return value {:?}", sbi_ret);
         loop {} // wait for machine shutdown
-    } else if hartid == 2 {
-        let param = 0x12345678;
-        println!(">> Start hart 3 with parameter {:#x}", param);
-        /* start_addr should be physical address, and here pa == va */
-        let sbi_ret = sbi::hart_start(3, hart_3_start as usize, param);
-        println!(">> SBI return value: {:?}", sbi_ret);
-        loop {} // wait for machine shutdown
-    } else { // hartid == 3
+    } else if hartid == 1 {
+        // send software IPI to activate hart 2
+        let bv: usize = 0b10;
+        let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
+        println!(">> Wake hart 2, sbi return value {:?}", sbi_ret);
+        loop {}
+    } else { // hartid == 2 || hartid == 3
         unreachable!()
     }
 }
 
+extern "C" fn hart_2_resume(param: usize) {
+    println!("<< The parameter passed to hart 2 resume is: {:#x}", param);
+    let param = 0x12345678;
+    println!(">> Start hart 3 with parameter {:#x}", param);
+    /* start_addr should be physical address, and here pa == va */
+    let sbi_ret = sbi::hart_start(3, hart_3_start as usize, param);
+    println!(">> SBI return value: {:?}", sbi_ret);
+    loop {} // wait for machine shutdown
+}
+
 extern "C" fn hart_3_start(param: usize) {
-    println!("<< The parameter passed to hart start is: {:#x}", param);
+    println!("<< The parameter passed to hart 3 start is: {:#x}", param);
     println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
     sbi::shutdown()
 }
