@@ -39,34 +39,22 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                 mie::clear_mtimer();
             },
             GeneratorState::Yielded(MachineTrap::MachineSoft()) => match hsm.last_command() {
-                Some(HsmCommand::Start(start_addr, opaque)) => {
-                    unsafe {
-                        riscv::register::satp::write(0);
-                        riscv::register::sstatus::clear_sie();
-                    }
-                    hsm.record_current_start_finished();
-                    match () {
-                        #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
-                        () => unsafe {
-                            asm!(
-                                "csrr   a0, mhartid",
-                                "jr     {start_addr}",
-                                start_addr = in(reg) start_addr,
-                                in("a1") opaque,
-                                options(noreturn)
-                            )
-                        },
-                        #[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
-                        () => {
-                            drop((start_addr, opaque));
-                            unimplemented!("not RISC-V instruction set architecture")
-                        }
-                    };
-                },
+                Some(HsmCommand::Start(_start_paddr, _opaque)) => panic!("rustsbi-qemu: illegal state"),
                 Some(HsmCommand::Stop) => {
                     // no hart stop command in qemu, record stop state and pause
                     hsm.record_current_stop_finished();
                     pause();
+                    if let Some(HsmCommand::Start(start_paddr, opaque)) = hsm.last_command() {
+                        unsafe {
+                            riscv::register::satp::write(0);
+                            riscv::register::sstatus::clear_sie();
+                        }
+                        hsm.record_current_start_finished();
+                        let ctx = rt.context_mut();
+                        ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
+                        ctx.a0 = opaque;
+                        ctx.mepc = start_paddr;
+                    }
                 },
                 None => panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command"),
             },

@@ -54,11 +54,14 @@ pub struct QemuHsm {
     last_command: Arc<spin::Mutex<HashMap<usize, HsmCommand>>>,
 }
 
-// RustSBI-QEMU HSM command, these commands apply to a given hart. 
+// RustSBI-QEMU HSM command, these commands apply to a remote given hart. 
 // 
 // Should be stored with hart id before software interrupt is invoked.
 // After software interrupt is received, the target hart should handle with HSM command structure
 // and run corresponding HSM procedures.
+//
+// By current version of SBI specification, suspend command only apply to current hart,
+// thus RustSBI does not use remote HSM command in this case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HsmCommand {
     Start(usize, usize),
@@ -160,7 +163,7 @@ impl rustsbi::Hsm for QemuHsm {
                 Ordering::Acquire,
             ); 
         // check current hart state
-        if current_state == Err(HsmState::Started as u8) {
+        if current_state.is_err() {
             return SbiRet::failed() // illegal state
         }
         // fill in the parameter
@@ -190,7 +193,28 @@ impl rustsbi::Hsm for QemuHsm {
             // Resuming from a retentive suspend state is straight forward and the supervisor-mode software 
             // will see SBI suspend call return without any failures.
             SUSPEND_RETENTIVE => {
-                pause(); // pause and wait for machine level ipi
+                // try to set current target hart state to stop pending
+                let hart_id = riscv::register::mhartid::read();
+                let mut state_lock = self.state.lock();
+                let current_state = state_lock.entry(hart_id)
+                    .or_insert(AtomicU8::new(HsmState::Stopped as u8))
+                    .compare_exchange(
+                        HsmState::Started as u8,
+                        HsmState::SuspendPending as u8,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    ); 
+                // check current hart state
+                if current_state.is_err() {
+                    return SbiRet::failed() // illegal state
+                }
+                drop(state_lock);
+                // actual suspend begin
+                suspend_current_hart(&self); // pause and wait for machine level ipi
+                // mark current hart as started
+                let mut state_lock = self.state.lock();
+                state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::Started as u8));
+                drop(state_lock);
                 SbiRet::ok(0)
             },
             // Resuming from a non-retentive suspend state is relatively more involved and requires software 
@@ -205,11 +229,33 @@ impl rustsbi::Hsm for QemuHsm {
             // | a0            | hartid
             // | a1            | `opaque` parameter
             SUSPEND_NON_RETENTIVE => {
-                pause();
+                // try to set current target hart state to stop pending
+                let hart_id = riscv::register::mhartid::read();
+                let mut state_lock = self.state.lock();
+                let current_state = state_lock.entry(hart_id)
+                    .or_insert(AtomicU8::new(HsmState::Stopped as u8))
+                    .compare_exchange(
+                        HsmState::Started as u8,
+                        HsmState::SuspendPending as u8,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    ); 
+                // check current hart state
+                if current_state.is_err() {
+                    return SbiRet::failed() // illegal state
+                }
+                drop(state_lock);
+                // retentive suspend
+                suspend_current_hart(&self);
+                // begin wake process
                 unsafe {
                     riscv::register::satp::write(0);
                     riscv::register::sstatus::clear_sie();
                 }
+                // when wake, mark current hart as started
+                let mut state_lock = self.state.lock();
+                state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::Started as u8));
+                drop(state_lock);
                 match () {
                     #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
                     () => unsafe {
@@ -238,6 +284,39 @@ impl rustsbi::Hsm for QemuHsm {
 const SUSPEND_RETENTIVE: u32 = 0x00000000;
 const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
 
+// Suspend current hart and record resume state when wake
+pub fn suspend_current_hart(hsm: &QemuHsm) {
+    use riscv::asm::wfi;
+    use riscv::register::{mie, mip, mhartid};
+    use crate::clint::Clint;
+    let hart_id = mhartid::read();
+    let clint = Clint::new(0x2000000 as *mut u8);
+    clint.clear_soft(hart_id); // Clear IPI
+    unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
+    let prev_msoft = mie::read().msoft();
+    unsafe { mie::set_msoft() }; // Start listening for software interrupts
+    // mark current state as suspended
+    let mut state_lock = hsm.state.lock();
+    state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::Suspended as u8));
+    drop(state_lock);
+    // actual suspended process
+    loop {
+        unsafe { wfi() };
+        if mip::read().msoft() {
+            break;
+        }
+    }
+    // mark current state as resume pending
+    let mut state_lock = hsm.state.lock();
+    state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::ResumePending as u8));
+    drop(state_lock);
+    // resume
+    if !prev_msoft {
+        unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
+    }
+    clint.clear_soft(hart_id); // Clear IPI
+}
+
 // Pause current hart, wake through inter-processor interrupt
 pub fn pause() {
     use riscv::asm::wfi;
@@ -247,6 +326,7 @@ pub fn pause() {
         let hartid = mhartid::read();
         let clint = Clint::new(0x2000000 as *mut u8);
         clint.clear_soft(hartid); // Clear IPI
+        mip::clear_msoft(); // clear machine software interrupt flag
         let prev_msoft = mie::read().msoft();
         mie::set_msoft(); // Start listening for software interrupts
         loop {
