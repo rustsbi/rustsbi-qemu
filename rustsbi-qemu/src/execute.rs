@@ -19,7 +19,8 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                 let ctx = rt.context_mut();
                 let param = [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5];
                 let ans = rustsbi::ecall(ctx.a7, ctx.a6, param);
-                if ans.error == 0x233 { // hart non-retentive resume
+                if ans.error == 0x233 {
+                    // hart non-retentive resume
                     if let Some(HsmCommand::Start(start_paddr, opaque)) = hsm.last_command() {
                         unsafe {
                             riscv::register::satp::write(0);
@@ -58,7 +59,9 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                 mie::clear_mtimer();
             },
             GeneratorState::Yielded(MachineTrap::MachineSoft()) => match hsm.last_command() {
-                Some(HsmCommand::Start(_start_paddr, _opaque)) => panic!("rustsbi-qemu: illegal state"),
+                Some(HsmCommand::Start(_start_paddr, _opaque)) => {
+                    panic!("rustsbi-qemu: illegal state")
+                }
                 Some(HsmCommand::Stop) => {
                     // no hart stop command in qemu, record stop state and pause
                     hsm.record_current_stop_finished();
@@ -74,8 +77,10 @@ pub fn execute_supervisor(supervisor_mepc: usize, a0: usize, a1: usize, hsm: Qem
                         ctx.a0 = opaque;
                         ctx.mepc = start_paddr;
                     }
-                },
-                None => panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command"),
+                }
+                None => panic!(
+                    "rustsbi-qemu: machine soft interrupt with no hart state monitor command"
+                ),
             },
             GeneratorState::Complete(()) => {
                 use rustsbi::Reset;
