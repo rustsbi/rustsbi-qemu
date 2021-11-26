@@ -30,7 +30,7 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
         println!(">> Test-kernel: Trigger illegal exception");
         unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
-    } 
+    }
     if hartid == 0 {
         let sbi_ret = sbi::hart_stop(3);
         println!(">> Stop hart 3, return value {:?}", sbi_ret);
@@ -40,17 +40,24 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         }
     } else if hartid == 1 {
         let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
-        println!(">> Start test for hart {}, retentive suspend return value {:?}", hartid, sbi_ret);
+        println!(
+            ">> Start test for hart {}, retentive suspend return value {:?}",
+            hartid, sbi_ret
+        );
     } else if hartid == 2 {
         /* resume_addr should be physical address, and here pa == va */
         let sbi_ret = sbi::hart_suspend(0x80000000, hart_2_resume as usize, 0x4567890a);
         println!(">> Error for non-retentive suspend: {:?}", sbi_ret);
         loop {}
-    } else { // hartid == 3
+    } else {
+        // hartid == 3
         loop {}
     }
     if hartid == 0 {
-        println!("<< Test-kernel: test for hart {} success, wake another hart", hartid);
+        println!(
+            "<< Test-kernel: test for hart {} success, wake another hart",
+            hartid
+        );
         let bv: usize = 0b10;
         let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
         println!(">> Wake hart 1, sbi return value {:?}", sbi_ret);
@@ -61,7 +68,8 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
         println!(">> Wake hart 2, sbi return value {:?}", sbi_ret);
         loop {}
-    } else { // hartid == 2 || hartid == 3
+    } else {
+        // hartid == 2 || hartid == 3
         unreachable!()
     }
 }

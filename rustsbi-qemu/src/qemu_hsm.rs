@@ -33,19 +33,19 @@ enum HsmState {
     ResumePending = 6,
 }
 
-// RustSBI-QEMU hart state monitor structure. It stores hart states for all harts, 
-// and last command (see HsmCommand) when hart is requested to procceed HSM functions. 
+// RustSBI-QEMU hart state monitor structure. It stores hart states for all harts,
+// and last command (see HsmCommand) when hart is requested to procceed HSM functions.
 //
 // RustSBI-QEMU makes use of machine software interrupt. Functions should modify `state` to
 // XxxPending before the actual procedure began. Then, caller should store next command structure
 // to `last_command`, and use IPI to invoke software interrupt on machine level.
-// 
+//
 // When target hart received machine software interrupt, it should read and procceed command
 // from `last_command`. Then, after command execution makes progress, it should modify
 // `state` to Xxxed to mark that the HSM function has taken effect.
 //
 // These functions above are defined as asynchronous procedures. That means it returns before
-// acutal procedure has finished. There are functions to read its current state when the target hart 
+// acutal procedure has finished. There are functions to read its current state when the target hart
 // is still in transition or after the transition is done. These functions may read from `last_command`
 // variable at any time.
 #[derive(Clone)]
@@ -54,8 +54,8 @@ pub struct QemuHsm {
     last_command: Arc<spin::Mutex<HashMap<usize, HsmCommand>>>,
 }
 
-// RustSBI-QEMU HSM command, these commands apply to a remote given hart. 
-// 
+// RustSBI-QEMU HSM command, these commands apply to a remote given hart.
+//
 // Should be stored with hart id before software interrupt is invoked.
 // After software interrupt is received, the target hart should handle with HSM command structure
 // and run corresponding HSM procedures.
@@ -87,7 +87,7 @@ impl QemuHsm {
     }
     // Record that current hart id is marked as `Stopped` state.
     // It is used in interrupt handler, when hart stop command is received. Before this function,
-    // the target hart is making preparations to stop; it records state and must stop immediately after 
+    // the target hart is making preparations to stop; it records state and must stop immediately after
     // this function is called.
     pub(crate) fn record_current_stop_finished(&self) {
         let hart_id = riscv::register::mhartid::read();
@@ -98,7 +98,7 @@ impl QemuHsm {
     }
     // Record that current hart id is marked as `Started` state.
     // It is used when hart stop command is received in interrupt handler.
-    // The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started', 
+    // The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started',
     // and should jump to target address right away.
     pub(crate) fn record_current_start_finished(&self) {
         let hart_id = riscv::register::mhartid::read();
@@ -111,7 +111,7 @@ impl QemuHsm {
 
 // Adapt RustSBI interface to RustSBI-QEMU's QemuHsm.
 impl rustsbi::Hsm for QemuHsm {
-    // The supervisor software above RustSBI has called SBI environment to start a given `hart_id` 
+    // The supervisor software above RustSBI has called SBI environment to start a given `hart_id`
     // to address `start_addr` with parameter `opaque`.
     fn hart_start(&self, hart_id: usize, start_addr: usize, opaque: usize) -> SbiRet {
         // previous privileged mode should be user or supervisor; start from machine mode is not supported
@@ -129,21 +129,21 @@ impl rustsbi::Hsm for QemuHsm {
                 HsmState::StartPending as u8,
                 Ordering::AcqRel,
                 Ordering::Acquire,
-            ); 
+            );
         // procceed with invalid hart states.
         // - the given hartid is already started, the compare exchange should fail and suggests current state as `Started`,
         // function should return error as already available.
         if current_state == Err(HsmState::Started as u8) {
-            return SbiRet::already_available()
-        } 
+            return SbiRet::already_available();
+        }
         // - otherwise return invalid parameter, this may be caused for hart is already transitioning from started state
         if current_state != Ok(HsmState::Stopped as u8) {
             return SbiRet::invalid_param();
         }
         // todo: check start address
         /* SBI_ERR_INVALID_ADDRESS: start_addr is not valid possibly due to following reasons:
-        * It is not a valid physical address.
-        * The address is prohibited by PMP to run in supervisor mode. */
+         * It is not a valid physical address.
+         * The address is prohibited by PMP to run in supervisor mode. */
         // fill in the parameter
         let mut config_lock = self.last_command.lock();
         config_lock
@@ -154,8 +154,8 @@ impl rustsbi::Hsm for QemuHsm {
         // now, start the target hart
         let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
         clint.send_soft(hart_id); // this does not block the current function
-        // The following process is going to be handled in software interrupt handler, and
-        // the function returns immediately as starting a hart is defined as an asynchronous procedure.
+                                  // The following process is going to be handled in software interrupt handler, and
+                                  // the function returns immediately as starting a hart is defined as an asynchronous procedure.
         SbiRet::ok(0)
     }
     fn hart_stop(&self, hart_id: usize) -> SbiRet {
@@ -172,7 +172,7 @@ impl rustsbi::Hsm for QemuHsm {
             );
         // check current hart state
         if current_state.is_err() {
-            return SbiRet::failed() // illegal state
+            return SbiRet::failed(); // illegal state
         }
         // fill in the parameter
         let mut config_lock = self.last_command.lock();
@@ -187,12 +187,12 @@ impl rustsbi::Hsm for QemuHsm {
     fn hart_get_status(&self, hart_id: usize) -> SbiRet {
         self.state.lock().get(&hart_id).map_or(
             SbiRet::invalid_param(), // not in `state` map structure, the given hart id is invalid
-            |a| SbiRet::ok(a.load(Ordering::Relaxed) as usize)
+            |a| SbiRet::ok(a.load(Ordering::Relaxed) as usize),
         )
     }
     // Supervisor requested current hart to suspend.
     //
-    // In RustSBI-QEMU, if `suspend_type` is retentive, it pauses the current hart; `resume_addr` 
+    // In RustSBI-QEMU, if `suspend_type` is retentive, it pauses the current hart; `resume_addr`
     // and `opaque` is not used.
     // Otherwise, the current hart discards current supervisor context, and returns to another
     //  `resume_addr` with parameter `opaque`.
@@ -204,24 +204,27 @@ impl rustsbi::Hsm for QemuHsm {
                 // try to set current target hart state to stop pending
                 let hart_id = riscv::register::mhartid::read();
                 let mut state_lock = self.state.lock();
-                let current_state = state_lock.entry(hart_id)
+                let current_state = state_lock
+                    .entry(hart_id)
                     .or_insert(AtomicU8::new(HsmState::Stopped as u8))
                     .compare_exchange(
                         HsmState::Started as u8,
                         HsmState::SuspendPending as u8,
                         Ordering::AcqRel,
                         Ordering::Acquire,
-                    ); 
+                    );
                 // check current hart state
                 if current_state.is_err() {
-                    return SbiRet::failed() // illegal state
+                    return SbiRet::failed(); // illegal state
                 }
                 drop(state_lock);
                 // actual suspend begin
                 suspend_current_hart(&self); // pause and wait for machine level ipi
-                // mark current hart as started
+                                             // mark current hart as started
                 let mut state_lock = self.state.lock();
-                state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::Started as u8));
+                state_lock
+                    .entry(hart_id)
+                    .insert(AtomicU8::new(HsmState::Started as u8));
                 drop(state_lock);
                 SbiRet::ok(0)
             }
@@ -240,17 +243,18 @@ impl rustsbi::Hsm for QemuHsm {
                 // try to set current target hart state to stop pending
                 let hart_id = riscv::register::mhartid::read();
                 let mut state_lock = self.state.lock();
-                let current_state = state_lock.entry(hart_id)
+                let current_state = state_lock
+                    .entry(hart_id)
                     .or_insert(AtomicU8::new(HsmState::Stopped as u8))
                     .compare_exchange(
                         HsmState::Started as u8,
                         HsmState::SuspendPending as u8,
                         Ordering::AcqRel,
                         Ordering::Acquire,
-                    ); 
+                    );
                 // check current hart state
                 if current_state.is_err() {
-                    return SbiRet::failed() // illegal state
+                    return SbiRet::failed(); // illegal state
                 }
                 drop(state_lock);
                 // retentive suspend
@@ -258,13 +262,18 @@ impl rustsbi::Hsm for QemuHsm {
                 // begin wake process
                 // send start command to runtime of current hart
                 let mut config_lock = self.last_command.lock();
-                config_lock.entry(hart_id).insert(HsmCommand::Start(resume_addr, opaque));
+                config_lock
+                    .entry(hart_id)
+                    .insert(HsmCommand::Start(resume_addr, opaque));
                 drop(config_lock);
-                SbiRet { error: 0x233, value: 0x0 } // unreachable, the runtime identifies start command and perform the hart resume
-            },
+                SbiRet {
+                    error: 0x233,
+                    value: 0x0,
+                } // unreachable, the runtime identifies start command and perform the hart resume
+            }
             // There could be other platform specific suspend types; RustSBI-QEMU does not define any
             // platform suspend types. It gives SBI return value as not supported.
-            _ => SbiRet::not_supported()
+            _ => SbiRet::not_supported(),
         }
     }
 }
@@ -274,18 +283,20 @@ const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
 
 // Suspend current hart and record resume state when wake
 pub fn suspend_current_hart(hsm: &QemuHsm) {
-    use riscv::asm::wfi;
-    use riscv::register::{mie, mip, mhartid};
     use crate::clint::Clint;
+    use riscv::asm::wfi;
+    use riscv::register::{mhartid, mie, mip};
     let hart_id = mhartid::read();
     let clint = Clint::new(0x2000000 as *mut u8);
     clint.clear_soft(hart_id); // Clear IPI
     unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
     let prev_msoft = mie::read().msoft();
     unsafe { mie::set_msoft() }; // Start listening for software interrupts
-    // mark current state as suspended
+                                 // mark current state as suspended
     let mut state_lock = hsm.state.lock();
-    state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::Suspended as u8));
+    state_lock
+        .entry(hart_id)
+        .insert(AtomicU8::new(HsmState::Suspended as u8));
     drop(state_lock);
     // actual suspended process
     loop {
@@ -296,7 +307,9 @@ pub fn suspend_current_hart(hsm: &QemuHsm) {
     }
     // mark current state as resume pending
     let mut state_lock = hsm.state.lock();
-    state_lock.entry(hart_id).insert(AtomicU8::new(HsmState::ResumePending as u8));
+    state_lock
+        .entry(hart_id)
+        .insert(AtomicU8::new(HsmState::ResumePending as u8));
     drop(state_lock);
     // resume
     if !prev_msoft {

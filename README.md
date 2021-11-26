@@ -31,7 +31,6 @@ xtask: mode: Debug
 [rustsbi] pmp0: 0x10000000 ..= 0x10001fff (rwx)
 [rustsbi] pmp1: 0x80000000 ..= 0x8fffffff (rwx)
 [rustsbi] pmp2: 0x0 ..= 0xffffffffffffff (---)
-D:\Applications\Scoop\apps\qemu\current\qemu-system-riscv64.exe: clint: invalid write: 00000020
 [rustsbi] enter supervisor 0x80200000
 << Test-kernel: Hart id = 0, DTB physical address = 0x87000000
 >> Test-kernel: Testing base extension
