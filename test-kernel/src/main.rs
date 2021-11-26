@@ -26,31 +26,45 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         );
         test_base_extension();
         test_sbi_ins_emulation();
+        unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
+        println!(">> Test-kernel: Trigger illegal exception");
+        unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
     } 
     if hartid == 0 {
-        let sbi_ret = sbi::hart_stop(1);
-        println!(">> Stop hart 1, return value {:?}", sbi_ret);
+        let sbi_ret = sbi::hart_stop(3);
+        println!(">> Stop hart 3, return value {:?}", sbi_ret);
         for i in 0..4 {
             let sbi_ret = sbi::hart_get_status(i);
             println!(">> Hart {} state return value: {:?}", i, sbi_ret);
         }
-    } else {
+    } else if hartid == 1 || hartid == 2 {
         let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
         println!(">> Start test for hart {}, suspend return value {:?}", hartid, sbi_ret);
+    } else { // hartid == 3
+        loop {}
     }
-    unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
-    println!(">> Test-kernel: Trigger illegal exception");
-    unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
-    if hartid != 3 {
+    if hartid == 0 || hartid == 1 {
         println!("<< Test-kernel: test for hart {} success, wake another hart", hartid);
         let bv: usize = 0b10;
         let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
         println!(">> Wake, sbi return value {:?}", sbi_ret);
         loop {} // wait for machine shutdown
-    } else {
-        println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
-        sbi::shutdown()
-    } 
+    } else if hartid == 2 {
+        let param = 0x12345678;
+        println!(">> Start hart 3 with parameter {:#x}", param);
+        /* start_addr should be physical address, and here pa == va */
+        let sbi_ret = sbi::hart_start(3, hart_3_start as usize, param);
+        println!(">> SBI return value: {:?}", sbi_ret);
+        loop {} // wait for machine shutdown
+    } else { // hartid == 3
+        unreachable!()
+    }
+}
+
+extern "C" fn hart_3_start(param: usize) {
+    println!("<< The parameter passed to hart start is: {:#x}", param);
+    println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
+    sbi::shutdown()
 }
 
 fn test_base_extension() {
