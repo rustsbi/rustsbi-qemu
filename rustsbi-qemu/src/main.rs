@@ -42,7 +42,7 @@ fn panic(info: &PanicInfo) -> ! {
     println!("[rustsbi-panic] hart {} {}", hart_id, info);
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
     use rustsbi::Reset;
-    test_device::Reset.system_reset(
+    test_device::SiFiveTest.system_reset(
         rustsbi::reset::RESET_TYPE_SHUTDOWN,
         rustsbi::reset::RESET_REASON_SYSTEM_FAILURE,
     );
@@ -119,7 +119,7 @@ fn init_clint() {
 
 fn init_test_device() {
     use rustsbi::init_reset;
-    init_reset(test_device::Reset);
+    init_reset(test_device::SiFiveTest);
 }
 
 // 委托中断；把S的中断全部委托给S层

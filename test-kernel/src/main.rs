@@ -153,7 +153,8 @@ use core::panic::PanicInfo;
 fn panic(info: &PanicInfo) -> ! {
     println!("!! Test-kernel: {}", info);
     println!("!! Test-kernel: SBI test FAILED due to panic");
-    sbi::shutdown()
+    sbi::reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_SYSTEM_FAILURE);
+    loop {}
 }
 
 const BOOT_STACK_SIZE: usize = 4096 * 4 * 8;
