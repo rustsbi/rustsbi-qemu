@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions)]
-#![feature(asm)]
+#![feature(asm, asm_sym, asm_const)]
 #![feature(generator_trait)]
 #![feature(default_alloc_error_handler)]
 
@@ -122,7 +122,7 @@ fn init_test_device() {
     init_reset(test_device::Reset);
 }
 
-// 委托终端；把S的中断全部委托给S层
+// 委托中断；把S的中断全部委托给S层
 fn delegate_interrupt_exception() {
     use riscv::register::{medeleg, mideleg, mie};
     unsafe {
@@ -149,6 +149,8 @@ fn delegate_interrupt_exception() {
 
 fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
+    // read fdt tree value, parse, and calculate proper pmp configuration for this device tree (issue #7)
+    // integrate with `count_harts`
     unsafe {
         asm!(
             "li     {tmp}, ((0x08 << 16) | (0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A;
