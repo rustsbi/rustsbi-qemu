@@ -52,6 +52,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bare-metal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
+
+[[package]]
 name = "bit_field"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -211,7 +217,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2f0b705d428e9d0f78e2bb73093887ee58a83c9688de3faedbb4c0631c4618e"
 dependencies = [
- "bare-metal",
+ "bare-metal 0.2.5",
  "bit_field",
  "riscv-target",
 ]
@@ -221,7 +227,18 @@ name = "riscv"
 version = "0.6.0"
 source = "git+https://github.com/rust-embedded/riscv?rev=7e9d2e5b#7e9d2e5bb05ccabf5539fcea36877748d7236c6e"
 dependencies = [
- "bare-metal",
+ "bare-metal 0.2.5",
+ "bit_field",
+ "riscv-target",
+]
+
+[[package]]
+name = "riscv"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6907ccdd7a31012b70faf2af85cd9e5ba97657cc3987c4f13f8e4d2c2a088aba"
+dependencies = [
+ "bare-metal 1.0.0",
  "bit_field",
  "riscv-target",
 ]
@@ -247,15 +264,13 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.2.0-alpha.7"
+version = "0.2.0-alpha.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f60372541455da4c73da76ea780c1462e1b77539ef6a60a9daae89e428e10e6"
+checksum = "63b2b3ea22b94d04def94cae33698ffafcca7bb5ba81b6119389435444b125ee"
 dependencies = [
  "embedded-hal",
- "lazy_static",
  "nb 1.0.0",
- "riscv 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.7.1",
+ "riscv 0.7.0",
 ]
 
 [[package]]
