@@ -1,6 +1,6 @@
 use core::{
     ops::{Generator, GeneratorState},
-    pin::Pin,
+    pin::Pin, arch::asm,
 };
 use riscv::register::{
     mcause::{self, Exception, Interrupt, Trap},

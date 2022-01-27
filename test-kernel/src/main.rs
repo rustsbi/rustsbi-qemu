@@ -1,5 +1,5 @@
 // A test kernel to test RustSBI function on all platforms
-#![feature(naked_functions, asm, asm_sym, asm_const)]
+#![feature(naked_functions, asm_sym, asm_const)]
 #![feature(default_alloc_error_handler)]
 #![no_std]
 #![no_main]
@@ -146,7 +146,7 @@ pub extern "C" fn rust_trap_exception() {
     sepc::write(sepc::read().wrapping_add(4));
 }
 
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, arch::asm};
 
 #[cfg_attr(not(test), panic_handler)]
 #[allow(unused)]

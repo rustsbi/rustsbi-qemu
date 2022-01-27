@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions)]
-#![feature(asm, asm_sym, asm_const)]
+#![feature(asm_sym, asm_const)]
 #![feature(generator_trait)]
 #![feature(default_alloc_error_handler)]
 
@@ -21,7 +21,7 @@ mod runtime;
 mod test_device;
 
 use buddy_system_allocator::LockedHeap;
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, arch::asm};
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
@@ -155,7 +155,7 @@ fn set_pmp() {
         asm!(
             "li     {tmp}, ((0x08 << 16) | (0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A;
             "csrw   0x3A0, {tmp}",
-            "li     {tmp}, ((0x0000000010001000 >> 2) | 0x3ff)", // 0 = 0x0000000010001000-0x0000000010001fff
+            "li     {tmp}, ((0x0000000000000000 >> 2) | 0x7ffffff)", // 0 = 0x0000000010001000-0x0000000010001fff
             "csrw   0x3B0, {tmp}",
             "li     {tmp}, ((0x0000000080000000 >> 2) | 0x3ffffff)", // 1 = 0x0000000080000000-0x000000008fffffff
             "csrw   0x3B1, {tmp}",
