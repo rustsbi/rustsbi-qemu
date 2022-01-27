@@ -1,5 +1,5 @@
 #![allow(unused)]
-use core::fmt;
+use core::{fmt, arch::asm};
 
 pub const EXTENSION_BASE: usize = 0x10;
 pub const EXTENSION_TIMER: usize = 0x54494D45;

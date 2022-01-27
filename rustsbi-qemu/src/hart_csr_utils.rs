@@ -1,3 +1,5 @@
+use core::arch::asm;
+
 use alloc::format;
 use alloc::vec::Vec;
 use bit_field::BitField;
