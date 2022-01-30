@@ -308,7 +308,11 @@ fn check_tool<S: AsRef<str>>(tool: S) -> Option<String> {
             return Some(format!("riscv64-unknown-elf-{}", tool.as_ref()));
         }
     }
-    println!("No binutils found, try install using `cargo install cargo-binutils`.");
+    println!("
+No binutils found, try install using:
+
+    rustup component add llvm-tools-preview
+    cargo install cargo-binutils");
     return None;
 }
 
