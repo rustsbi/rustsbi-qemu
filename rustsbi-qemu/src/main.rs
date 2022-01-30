@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions)]
-#![feature(asm, asm_sym, asm_const)]
+#![feature(asm_sym, asm_const)]
 #![feature(generator_trait)]
 #![feature(default_alloc_error_handler)]
 
@@ -22,6 +22,7 @@ mod test_device;
 
 use buddy_system_allocator::LockedHeap;
 use core::panic::PanicInfo;
+use core::arch::asm;
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU

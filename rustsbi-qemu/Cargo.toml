@@ -6,11 +6,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = { version = "0.2.0-alpha.8" }
+rustsbi = { version = "0.2.0-alpha.10" }
 buddy_system_allocator = "0.8"
 lazy_static = { version = "1", features = ["spin_no_std"] }
 spin = "0.9"
-riscv = { git = "https://github.com/rust-embedded/riscv", rev = "7e9d2e5b", features = ["inline-asm"] }
+riscv = { git = "https://github.com/rust-embedded/riscv", rev = "dc0bc37e", features = ["inline-asm"] }
 device_tree = { git = "https://github.com/rcore-os/device_tree-rs/" }
 embedded-hal = "0.2.6"
 nb = "1"

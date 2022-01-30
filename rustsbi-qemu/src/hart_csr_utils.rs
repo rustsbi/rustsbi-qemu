@@ -221,7 +221,7 @@ unsafe fn pmps<const L: usize>() -> [(u8, usize); L] {
 unsafe fn pmpcfg_r(pmpcfg_id: usize) -> usize {
     assert!(pmpcfg_id <= 15, "pmpcfg id should be in [0, 15]");
     let ans: usize;
-    asm!(
+    core::arch::asm!(
     // tmp <- 1的地址；len <- csrr和j指令的长度和
     "la     {tmp}, 1f
     la      {len}, 2f
@@ -256,7 +256,7 @@ unsafe fn pmpcfg_r(pmpcfg_id: usize) -> usize {
 unsafe fn pmpaddr_r(pmpaddr_id: usize) -> usize {
     assert!(pmpaddr_id <= 63, "pmpcfg id should be in [0, 63]");
     let ans: usize;
-    asm!(
+    core::arch::asm!(
     // tmp <- 1的地址；len <- csrr和j指令的长度和
     "la     {tmp}, 1f
     la      {len}, 2f
