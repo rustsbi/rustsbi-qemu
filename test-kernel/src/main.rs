@@ -9,6 +9,7 @@ mod console;
 mod mm;
 mod sbi;
 
+use core::arch::asm;
 use riscv::register::{
     scause::{self, Exception, Trap},
     sepc,

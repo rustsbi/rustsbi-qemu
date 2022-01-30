@@ -109,7 +109,7 @@ pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm
 #[inline]
 unsafe fn get_vaddr_u32(vaddr: usize) -> u32 {
     let mut ans: u32;
-    asm!("
+    core::arch::asm!("
         li      {tmp}, (1 << 17)
         csrrs   {tmp}, mstatus, {tmp}
         lwu     {ans}, 0({vaddr})

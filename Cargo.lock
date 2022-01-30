@@ -224,10 +224,11 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.6.0"
-source = "git+https://github.com/rust-embedded/riscv?rev=7e9d2e5b#7e9d2e5bb05ccabf5539fcea36877748d7236c6e"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6907ccdd7a31012b70faf2af85cd9e5ba97657cc3987c4f13f8e4d2c2a088aba"
 dependencies = [
- "bare-metal 0.2.5",
+ "bare-metal 1.0.0",
  "bit_field",
  "riscv-target",
 ]
@@ -235,11 +236,11 @@ dependencies = [
 [[package]]
 name = "riscv"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6907ccdd7a31012b70faf2af85cd9e5ba97657cc3987c4f13f8e4d2c2a088aba"
+source = "git+https://github.com/rust-embedded/riscv?rev=dc0bc37e#dc0bc37e760ae6cec247f54c4e69c5d3789cedd8"
 dependencies = [
  "bare-metal 1.0.0",
  "bit_field",
+ "embedded-hal",
  "riscv-target",
 ]
 
@@ -264,13 +265,13 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.2.0-alpha.8"
+version = "0.2.0-alpha.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63b2b3ea22b94d04def94cae33698ffafcca7bb5ba81b6119389435444b125ee"
+checksum = "e7bbdd096bc2e150359b4dcec38a395eedf04ca789ca2fed29dc0d6a646e6ff8"
 dependencies = [
  "embedded-hal",
  "nb 1.0.0",
- "riscv 0.7.0",
+ "riscv 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -285,7 +286,7 @@ dependencies = [
  "hashbrown",
  "lazy_static",
  "nb 1.0.0",
- "riscv 0.6.0 (git+https://github.com/rust-embedded/riscv?rev=7e9d2e5b)",
+ "riscv 0.7.0 (git+https://github.com/rust-embedded/riscv?rev=dc0bc37e)",
  "rustsbi",
  "spin 0.9.0",
 ]
@@ -344,7 +345,7 @@ version = "0.1.0"
 dependencies = [
  "buddy_system_allocator",
  "lazy_static",
- "riscv 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "riscv 0.6.0",
  "spin 0.7.1",
 ]
 
