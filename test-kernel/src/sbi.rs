@@ -1,6 +1,6 @@
 #![allow(unused)]
-use core::fmt;
 use core::arch::asm;
+use core::fmt;
 
 pub const EXTENSION_BASE: usize = 0x10;
 pub const EXTENSION_TIMER: usize = 0x54494D45;
@@ -97,11 +97,21 @@ pub const RESET_REASON_SYSTEM_FAILURE: usize = 0x0000_0001;
 
 #[inline]
 pub fn reset(reset_type: usize, reset_reason: usize) -> SbiRet {
-    sbi_call_2(EXTENSION_SRST, FUNCTION_SYSTEM_RESET, reset_type, reset_reason)
+    sbi_call_2(
+        EXTENSION_SRST,
+        FUNCTION_SYSTEM_RESET,
+        reset_type,
+        reset_reason,
+    )
 }
 
 pub fn shutdown() -> ! {
-    sbi_call_2(EXTENSION_SRST, FUNCTION_SYSTEM_RESET, RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
+    sbi_call_2(
+        EXTENSION_SRST,
+        FUNCTION_SYSTEM_RESET,
+        RESET_TYPE_SHUTDOWN,
+        RESET_REASON_NO_REASON,
+    );
     unreachable!()
 }
 
