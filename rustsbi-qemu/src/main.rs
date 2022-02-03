@@ -21,8 +21,8 @@ mod runtime;
 mod test_device;
 
 use buddy_system_allocator::LockedHeap;
-use core::panic::PanicInfo;
 use core::arch::asm;
+use core::panic::PanicInfo;
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
@@ -61,7 +61,10 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         init_legacy_stdio();
         init_clint();
         init_test_device();
-        println!("[rustsbi] RustSBI version {}", rustsbi::VERSION);
+        println!(
+            "[rustsbi] RustSBI version {}, adapting to RISC-V SBI v0.3",
+            rustsbi::VERSION
+        );
         println!("{}", rustsbi::LOGO);
         println!(
             "[rustsbi] Implementation: RustSBI-QEMU Version {}",
@@ -78,6 +81,11 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
     unsafe {
         // enable wake by ipi
         riscv::register::mstatus::set_mie();
+        // enable H extension
+        asm!(
+            "csrr {val}, misa", "li {h}, 0x80", "or {val}, {val}, {h}", "csrw misa, {val}",
+            val = lateout(reg) _, h = lateout(reg) _
+        );
     }
     if hartid == 0 {
         // print hart csr configuration
@@ -92,6 +100,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         }
         println!("[rustsbi] enter supervisor 0x80200000");
     }
+    // start SBI environment
     execute::execute_supervisor(0x80200000, hartid, opqaue, HSM.clone());
 }
 

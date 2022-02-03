@@ -3,10 +3,13 @@
 // This is a test finisher memory mapped device used to exit simulation
 //
 // Ref: https://github.com/qemu/qemu/blob/master/hw/misc/sifive_test.c
-use rustsbi::{Reset, SbiRet, reset::{
-    RESET_TYPE_SHUTDOWN, RESET_TYPE_COLD_REBOOT, RESET_TYPE_WARM_REBOOT,
-    RESET_REASON_NO_REASON, RESET_REASON_SYSTEM_FAILURE
-}};
+use rustsbi::{
+    reset::{
+        RESET_REASON_NO_REASON, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_COLD_REBOOT,
+        RESET_TYPE_SHUTDOWN, RESET_TYPE_WARM_REBOOT,
+    },
+    Reset, SbiRet,
+};
 
 // Zero sized structure for a static write-only device
 pub struct SiFiveTest;
@@ -26,7 +29,7 @@ impl Reset for SiFiveTest {
             RESET_TYPE_SHUTDOWN => match reset_reason {
                 RESET_REASON_NO_REASON => TEST_PASS,
                 RESET_REASON_SYSTEM_FAILURE => TEST_FAIL | (QEMU_ERR_EXIT_CODE << 16),
-                // pass unknown reason from [2, 0xFFFF] to qemu return value output  
+                // pass unknown reason from [2, 0xFFFF] to qemu return value output
                 // reason if reason <= 0xFFFF => TEST_FAIL | (((reason & 0xFFFF) as u32) << 16),
                 _ => return SbiRet::invalid_param(),
             },
