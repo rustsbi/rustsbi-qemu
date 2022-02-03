@@ -81,11 +81,6 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
     unsafe {
         // enable wake by ipi
         riscv::register::mstatus::set_mie();
-        // enable H extension
-        asm!(
-            "csrr {val}, misa", "li {h}, 0x80", "or {val}, {val}, {h}", "csrw misa, {val}",
-            val = lateout(reg) _, h = lateout(reg) _
-        );
     }
     if hartid == 0 {
         // print hart csr configuration
