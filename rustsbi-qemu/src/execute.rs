@@ -2,7 +2,6 @@ use crate::feature;
 use crate::qemu_hsm::{pause, HsmCommand, QemuHsm};
 use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
 use core::{
-    arch::asm,
     ops::{Generator, GeneratorState},
     pin::Pin,
 };
