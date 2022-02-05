@@ -1,6 +1,7 @@
 use alloc::format;
 use alloc::vec::Vec;
 use bit_field::BitField;
+use core::arch::asm;
 use riscv::register::{
     medeleg, mideleg,
     misa::{self, MXL},
