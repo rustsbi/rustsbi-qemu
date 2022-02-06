@@ -187,14 +187,14 @@ fn set_pmp() {
     //                            aligned address range {0x1000_0000, 0x2000}
     pmpcfg0 |= 0b11011; 
     let pmpaddr0 = calc_pmpaddr(0x1000_0000, 0x2000);
-    // pmp region 2: RW, A=NAPOT, address range {0x200_0000, 0x1_0000}, VIRT_CLINT 
+    // pmp region 1: RW, A=NAPOT, address range {0x200_0000, 0x1_0000}, VIRT_CLINT 
     pmpcfg0 |= 0b11011 << 8;
     let pmpaddr1 = calc_pmpaddr(0x200_0000, 0x1_0000);
-    // pmp region 3: RW, A=NAPOT, address range {0xC00_0000, 0x40_0000}, VIRT_PLIC
+    // pmp region 2: RW, A=NAPOT, address range {0xC00_0000, 0x40_0000}, VIRT_PLIC
     // VIRT_PLIC_SIZE = 0x20_0000 + 0x1000 * harts, thus supports up to 512 harts
     pmpcfg0 |= 0b11011 << 16;
     let pmpaddr2 = calc_pmpaddr(0xC00_0000, 0x40_0000);
-    // pmp region 4: RWX, A=NAPOT, address range {0x8000_0000, 0x1000_0000}, VIRT_DRAM
+    // pmp region 3: RWX, A=NAPOT, address range {0x8000_0000, 0x1000_0000}, VIRT_DRAM
     pmpcfg0 |= 0b11111 << 24;
     let pmpaddr3 = calc_pmpaddr(0x8000_0000, 0x1000_0000);
     unsafe {
