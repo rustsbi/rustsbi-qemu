@@ -156,18 +156,61 @@ fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
     // read fdt tree value, parse, and calculate proper pmp configuration for this device tree (issue #7)
     // integrate with `count_harts`
-    unsafe {
-        asm!(
-            "li     {tmp}, ((0x08 << 16) | (0x1F << 8) | (0x1F << 0) )", // 0 = NAPOT,ARWX; 1 = NAPOT,ARWX; 2 = TOR,A;
-            "csrw   0x3A0, {tmp}",
-            "li     {tmp}, ((0x0000000010001000 >> 2) | 0x3ff)", // 0 = 0x0000000010001000-0x0000000010001fff
-            "csrw   0x3B0, {tmp}",
-            "li     {tmp}, ((0x0000000080000000 >> 2) | 0x3ffffff)", // 1 = 0x0000000080000000-0x000000008fffffff
-            "csrw   0x3B1, {tmp}",
-            "sfence.vma",
-            tmp = out(reg) _
-        )
+    //
+    // Qemu MMIO config ref: https://github.com/qemu/qemu/blob/master/hw/riscv/virt.c#L46
+    //
+    // About PMP:
+    //
+    // CSR: pmpcfg0(0x3A0)~pmpcfg15(0x3AF); pmpaddr0(0x3B0)~pmpaddr63(0x3EF)
+    // pmpcfg packs pmp entries each of which is of 8-bit
+    // on RV64 only even pmpcfg CSRs(0,2,...,14) are available, each of which contains 8 PMP
+    // entries
+    // every pmp entry and its corresponding pmpaddr describe a pmp region
+    //
+    // layout of PMP entries:
+    // ------------------------------------------------------
+    //  7   |   [5:6]   |   [3:4]   |   2   |   1   |   0   |
+    //  L   |   0(WARL) |   A       |   X   |   W   |   R   |
+    // ------------------------------------------------------
+    // A = OFF(0), disabled;
+    // A = TOR(top of range, 1), match address y so that pmpaddr_{i-1}<=y<pmpaddr_i irrespective of
+    // the value pmp entry i-1
+    // A = NA4(naturally aligned 4-byte region, 2), only support a 4-byte pmp region
+    // A = NAPOT(naturally aligned power-of-two region, 3), support a >=8-byte pmp region
+    // When using NAPOT to match a address range [S,S+L), then the pmpaddr_i should be set to (S>>2)|((L>>2)-1)
+    let calc_pmpaddr = |start_addr: usize, length: usize| {
+        (start_addr >> 2) | ((length >> 2) - 1) 
     };
+    let mut pmpcfg0: usize = 0;
+    // pmp region 0: RW, A=NAPOT, address range {0x1000_1000, 0x1000}, VIRT_VIRTIO
+    //                            address range {0x1000_0000, 0x100}, VIRT_UART0
+    //                            aligned address range {0x1000_0000, 0x2000}
+    pmpcfg0 |= 0b11011; 
+    let pmpaddr0 = calc_pmpaddr(0x1000_0000, 0x2000);
+    // pmp region 2: RW, A=NAPOT, address range {0x200_0000, 0x1_0000}, VIRT_CLINT 
+    pmpcfg0 |= 0b11011 << 8;
+    let pmpaddr1 = calc_pmpaddr(0x200_0000, 0x1_0000);
+    // pmp region 3: RW, A=NAPOT, address range {0xC00_0000, 0x40_0000}, VIRT_PLIC
+    // VIRT_PLIC_SIZE = 0x20_0000 + 0x1000 * harts, thus supports up to 512 harts
+    pmpcfg0 |= 0b11011 << 16;
+    let pmpaddr2 = calc_pmpaddr(0xC00_0000, 0x40_0000);
+    // pmp region 4: RWX, A=NAPOT, address range {0x8000_0000, 0x1000_0000}, VIRT_DRAM
+    pmpcfg0 |= 0b11111 << 24;
+    let pmpaddr3 = calc_pmpaddr(0x8000_0000, 0x1000_0000);
+    unsafe {
+        core::arch::asm!("csrw  pmpcfg0, {}",
+             "csrw  pmpaddr0, {}",
+             "csrw  pmpaddr1, {}",
+             "csrw  pmpaddr2, {}",
+             "csrw  pmpaddr3, {}",
+             "sfence.vma",
+             in(reg) pmpcfg0,
+             in(reg) pmpaddr0,
+             in(reg) pmpaddr1,
+             in(reg) pmpaddr2,
+             in(reg) pmpaddr3,
+        ); 
+    }
 }
 
 #[naked]
