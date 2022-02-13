@@ -2,6 +2,7 @@
 
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicU8, Ordering};
+
 use hashbrown::HashMap;
 use riscv::register::mstatus::{self, MPP};
 use rustsbi::SbiRet;
@@ -34,18 +35,18 @@ enum HsmState {
 }
 
 // RustSBI-QEMU hart state monitor structure. It stores hart states for all harts,
-// and last command (see HsmCommand) when hart is requested to procceed HSM functions.
+// and last command (see HsmCommand) when hart is requested to proceed HSM functions.
 //
 // RustSBI-QEMU makes use of machine software interrupt. Functions should modify `state` to
 // XxxPending before the actual procedure began. Then, caller should store next command structure
 // to `last_command`, and use IPI to invoke software interrupt on machine level.
 //
-// When target hart received machine software interrupt, it should read and procceed command
+// When target hart received machine software interrupt, it should read and proceed command
 // from `last_command`. Then, after command execution makes progress, it should modify
-// `state` to Xxxed to mark that the HSM function has taken effect.
+// `state` variable to mark that the HSM function has taken effect.
 //
 // These functions above are defined as asynchronous procedures. That means it returns before
-// acutal procedure has finished. There are functions to read its current state when the target hart
+// actual procedure has finished. There are functions to read its current state when the target hart
 // is still in transition or after the transition is done. These functions may read from `last_command`
 // variable at any time.
 #[derive(Clone)]
@@ -130,7 +131,7 @@ impl rustsbi::Hsm for QemuHsm {
                 Ordering::AcqRel,
                 Ordering::Acquire,
             );
-        // procceed with invalid hart states.
+        // proceed with invalid hart states.
         // - the given hartid is already started, the compare exchange should fail and suggests current state as `Started`,
         // function should return error as already available.
         if current_state == Err(HsmState::Started as u8) {
