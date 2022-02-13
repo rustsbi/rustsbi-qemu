@@ -6,9 +6,13 @@
 #![feature(default_alloc_error_handler)]
 
 extern crate alloc;
-
 #[macro_use]
 extern crate rustsbi;
+
+use core::arch::asm;
+use core::panic::PanicInfo;
+
+use buddy_system_allocator::LockedHeap;
 
 mod clint;
 mod count_harts;
@@ -16,13 +20,10 @@ mod execute;
 mod feature;
 mod hart_csr_utils;
 mod ns16550a;
+mod prv_mem;
 mod qemu_hsm;
 mod runtime;
 mod test_device;
-
-use buddy_system_allocator::LockedHeap;
-use core::arch::asm;
-use core::panic::PanicInfo;
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
