@@ -4,17 +4,19 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
-mod console;
-mod mm;
-mod sbi;
-
 use core::arch::asm;
+use core::panic::PanicInfo;
+
 use riscv::register::{
     scause::{self, Exception, Trap},
     sepc,
     stvec::{self, TrapMode},
 };
+
+#[macro_use]
+mod console;
+mod mm;
+mod sbi;
 
 pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
     if hartid == 0 {
@@ -59,14 +61,12 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
             "<< Test-kernel: test for hart {} success, wake another hart",
             hartid
         );
-        let bv: usize = 0b10;
-        let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
+        let sbi_ret = sbi::send_ipi(0b10, 0); // wake hart 1
         println!(">> Wake hart 1, sbi return value {:?}", sbi_ret);
         loop {} // wait for machine shutdown
     } else if hartid == 1 {
         // send software IPI to activate hart 2
-        let bv: usize = 0b10;
-        let sbi_ret = sbi::send_ipi(&bv as *const _ as usize, hartid); // wake hartid + 1
+        let sbi_ret = sbi::send_ipi(0b1, 2);
         println!(">> Wake hart 2, sbi return value {:?}", sbi_ret);
         loop {}
     } else {
@@ -152,8 +152,6 @@ pub extern "C" fn rust_trap_exception() {
     println!("<< Test-kernel: Illegal exception delegate success");
     sepc::write(sepc::read().wrapping_add(4));
 }
-
-use core::panic::PanicInfo;
 
 #[cfg_attr(not(test), panic_handler)]
 #[allow(unused)]

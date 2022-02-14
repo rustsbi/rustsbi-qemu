@@ -265,13 +265,13 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fe8b0cff28f5a0dcf42e3c4b0c59ab3b23f7bb5f534013e404374b4070e75b2"
+checksum = "056a8dda9be891af799d65ea3d56f397c08384e36b34912f6dc094a21c32b028"
 dependencies = [
- "embedded-hal",
- "nb 1.0.0",
- "riscv 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+    "embedded-hal",
+    "nb 1.0.0",
+    "riscv 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

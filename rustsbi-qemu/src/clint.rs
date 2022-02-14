@@ -51,15 +51,10 @@ impl Clint {
 
 impl Ipi for Clint {
     #[inline]
-    fn max_hart_id(&self) -> usize {
-        // 这个值将在初始化的时候加载，会从dtb_pa读取设备树，然后数里面有几个核
-        *crate::count_harts::MAX_HART_ID.lock()
-    }
-
-    #[inline]
     fn send_ipi_many(&self, hart_mask: HartMask) -> SbiRet {
         // println!("[rustsbi] send ipi many, {:?}", hart_mask);
-        for i in 0..=self.max_hart_id() {
+        let num_harts = *crate::count_harts::NUM_HARTS.lock();
+        for i in 0..num_harts {
             if hart_mask.has_bit(i) {
                 self.send_soft(i);
             }

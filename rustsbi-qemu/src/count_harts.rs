@@ -1,13 +1,14 @@
 use device_tree::{DeviceTree, Node};
+
 const DEVICE_TREE_MAGIC: u32 = 0xD00DFEED;
 
 lazy_static::lazy_static! {
     // 最大的硬件线程编号；只在启动时写入，跨核软中断发生时读取
-    pub static ref MAX_HART_ID: spin::Mutex<usize> = spin::Mutex::new(8);
+    pub static ref NUM_HARTS: spin::Mutex<usize> = spin::Mutex::new(8);
 }
 
 pub unsafe fn init_hart_count(dtb_pa: usize) {
-    *MAX_HART_ID.lock() = count_harts(dtb_pa)
+    *NUM_HARTS.lock() = count_harts(dtb_pa)
 }
 
 #[repr(C)]

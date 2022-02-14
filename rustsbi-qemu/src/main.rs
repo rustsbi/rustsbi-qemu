@@ -22,6 +22,7 @@ mod hart_csr_utils;
 mod ns16550a;
 mod prv_mem;
 mod qemu_hsm;
+mod qemu_pmu;
 mod runtime;
 mod test_device;
 
@@ -88,8 +89,8 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         hart_csr_utils::print_hart_csrs();
         // start other harts
         let clint = clint::Clint::new(0x2000000 as *mut u8);
-        let max_hart_id = *{ count_harts::MAX_HART_ID.lock() };
-        for target_hart_id in 0..max_hart_id {
+        let num_harts = *{ count_harts::NUM_HARTS.lock() };
+        for target_hart_id in 0..num_harts {
             if target_hart_id != 0 {
                 clint.send_soft(target_hart_id);
             }
