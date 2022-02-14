@@ -1,8 +1,9 @@
-use crate::runtime::SupervisorContext;
 use riscv::register::{
     mstatus::{self, MPP, SPP},
     mtval, scause, sepc, stval, stvec,
 };
+
+use crate::runtime::SupervisorContext;
 
 #[inline]
 pub unsafe fn should_transfer_trap(ctx: &mut SupervisorContext) -> bool {
@@ -15,7 +16,7 @@ pub unsafe fn do_transfer_trap(ctx: &mut SupervisorContext, cause: scause::Trap)
     scause::set(cause);
     // 填写异常指令的指令内容
     stval::write(mtval::read());
-    // 填写S层需要返回到的地址，这里的mepc会被随后的代码覆盖掉
+    // 填写S层需要返回到的地址，这里的mepc会被随后的代码覆盖掉。mepc已经处理了中断向量的问题
     sepc::write(ctx.mepc);
     // 设置中断位
     mstatus::set_mpp(MPP::Supervisor);

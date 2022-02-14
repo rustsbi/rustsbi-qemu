@@ -4,6 +4,7 @@ use core::{
 };
 
 use riscv::register::{mcause, mie, mip, scause::{Exception, Trap}};
+use riscv::register::scause::Interrupt;
 
 use crate::feature;
 use crate::prv_mem::{self, SupervisorPointer};
@@ -95,9 +96,20 @@ pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm
                         ctx.mepc = start_paddr;
                     }
                 }
-                None => panic!(
-                    "rustsbi-qemu: machine soft interrupt with no hart state monitor command"
-                ),
+                None => unsafe {
+                    // machine software interrupt but no HSM commands - delegate to S mode;
+                    let ctx = rt.context_mut();
+                    let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
+                    clint.clear_soft(hart_id); // Clear IPI
+                    if feature::should_transfer_trap(ctx) {
+                        feature::do_transfer_trap(
+                            ctx,
+                            Trap::Interrupt(Interrupt::SupervisorSoft),
+                        )
+                    } else {
+                        panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command")
+                    }
+                },
             },
             GeneratorState::Complete(()) => {
                 use rustsbi::Reset;

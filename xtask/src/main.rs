@@ -1,11 +1,12 @@
+#[macro_use]
+extern crate clap;
+
 use std::{
     env,
     path::{Path, PathBuf},
     process::{self, Command, Stdio},
 };
 
-#[macro_use]
-extern crate clap;
 
 // 不要修改DEFAULT_TARGET；如果你需要编译到别的目标，请使用--target编译选项！
 const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
@@ -246,16 +247,19 @@ fn xtask_qemu_debug(xtask_env: &XtaskEnv) {
 }
 
 fn xtask_gdb(xtask_env: &XtaskEnv) {
-    let status = Command::new("riscv64-unknown-elf-gdb")
-        .current_dir(dist_dir(xtask_env))
-        .args(&["--eval-command", "file rustsbi-qemu"])
-        .args(&["--eval-command", "target remote localhost:1234"])
-        .arg("-q")
-        .status()
-        .unwrap();
+    let mut command = Command::new("riscv64-unknown-elf-gdb");
+    command.current_dir(dist_dir(xtask_env));
+    command.args(&["--eval-command", "file rustsbi-qemu"]);
+    command.args(&["--eval-command", "target remote localhost:1234"]);
+    command.arg("-q");
 
+    ctrlc::set_handler(move || {
+        // when ctrl-c, don't exit gdb
+    }).expect("disable Ctrl-C exit");
+
+    let status = command.status().expect("run program");
     if !status.success() {
-        println!("qemu failed");
+        println!("debug failed");
         process::exit(1);
     }
 }

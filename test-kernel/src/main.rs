@@ -7,11 +7,8 @@
 use core::arch::asm;
 use core::panic::PanicInfo;
 
-use riscv::register::{
-    scause::{self, Exception, Trap},
-    sepc,
-    stvec::{self, TrapMode},
-};
+use riscv::register::{scause::{self, Exception, Trap}, sepc, /*sie, sstatus, */stvec::{self, TrapMode}};
+use riscv::register::scause::Interrupt;
 
 #[macro_use]
 mod console;
@@ -19,6 +16,11 @@ mod mm;
 mod sbi;
 
 pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
+    unsafe { asm!("mv tp, {}", in(reg) hartid, options(nomem, nostack)) }; // tp == hartid
+    let mut start_trap_addr = start_trap as usize;
+    if start_trap_addr & 0b10 != 0 {
+        start_trap_addr += 0b10;
+    }
     if hartid == 0 {
         // initialization
         mm::init_heap();
@@ -30,14 +32,14 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         );
         test_base_extension();
         test_sbi_ins_emulation();
-        unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
+        unsafe { stvec::write(start_trap_addr, TrapMode::Direct) };
         println!(">> Test-kernel: Trigger illegal exception");
         unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
     }
     if hartid == 0 {
         let sbi_ret = sbi::hart_stop(3);
         println!(">> Stop hart 3, return value {:?}", sbi_ret);
-        for i in 0..4 {
+        for i in 0..5 {
             let sbi_ret = sbi::hart_get_status(i);
             println!(">> Hart {} state return value: {:?}", i, sbi_ret);
         }
@@ -52,6 +54,14 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         let sbi_ret = sbi::hart_suspend(0x80000000, hart_2_resume as usize, 0x4567890a);
         println!(">> Error for non-retentive suspend: {:?}", sbi_ret);
         loop {}
+    } else if hartid == 4 {
+        // unsafe { stvec::write(start_trap_addr, TrapMode::Direct) };
+        // unsafe { sstatus::set_sie() };
+        // unsafe { sie::set_ssoft() };
+        // loop {} // wait for S-IPI
+        // println!(">> Test-kernel: SBI S-IPI delegation success");
+        // println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
+        loop {} // todo: S-IPI
     } else {
         // hartid == 3
         loop {}
@@ -70,7 +80,7 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         println!(">> Wake hart 2, sbi return value {:?}", sbi_ret);
         loop {}
     } else {
-        // hartid == 2 || hartid == 3
+        // hartid == 2 || hartid == 3 || hartid == 4
         unreachable!()
     }
 }
@@ -95,6 +105,10 @@ extern "C" fn hart_3_start(hart_id: usize, param: usize) {
     );
     println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
     sbi::shutdown()
+    // todo: S-IPI
+    // println!(">> Send IPI to hart 4, should delegate IPI to S-level");
+    // let _ = sbi::send_ipi(0b1, 4); // IPI to hart 4
+    // loop {} // wait for machine shutdown
 }
 
 fn test_base_extension() {
@@ -142,15 +156,26 @@ fn test_sbi_ins_emulation() {
     }
 }
 
-pub extern "C" fn rust_trap_exception() {
-    let cause = scause::read().cause();
-    println!("<< Test-kernel: Value of scause: {:?}", cause);
-    if cause != Trap::Exception(Exception::IllegalInstruction) {
-        println!("!! Test-kernel: Wrong cause associated to illegal instruction");
+extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
+    if trap_frame.tp == 0 {
+        let cause = scause::read().cause();
+        println!("<< Test-kernel: Value of scause: {:?}", cause);
+        if cause != Trap::Exception(Exception::IllegalInstruction) {
+            println!("!! Test-kernel: Wrong cause associated to illegal instruction");
+            sbi::shutdown()
+        }
+        println!("<< Test-kernel: Illegal exception delegate success");
+        sepc::write(sepc::read().wrapping_add(4));
+    } else if trap_frame.tp == 4 {
+        if scause::read().cause() != Trap::Interrupt(Interrupt::SupervisorSoft) {
+            println!("!! Test-kernel: Wrong cause associated to S-IPI delegation");
+            sbi::shutdown()
+        }
+    } else {
+        println!("!! Test-kernel: hart {} should not trap", trap_frame.tp);
+        println!("!! Test-kernel: SBI test FAILED for this hart should not trap");
         sbi::shutdown()
     }
-    println!("<< Test-kernel: Illegal exception delegate success");
-    sepc::write(sepc::read().wrapping_add(4));
 }
 
 #[cfg_attr(not(test), panic_handler)]
@@ -233,7 +258,7 @@ macro_rules! define_store_load {
 unsafe extern "C" fn start_trap() {
     asm!(define_store_load!(), "
     .p2align 2
-    addi    sp, sp, -16 * {REGBYTES}
+    addi    sp, sp, -17 * {REGBYTES}
     STORE   ra, 0
     STORE   t0, 1
     STORE   t1, 2
@@ -250,6 +275,7 @@ unsafe extern "C" fn start_trap() {
     STORE   a5, 13
     STORE   a6, 14
     STORE   a7, 15
+    STORE   tp, 16
     mv      a0, sp
     call    {rust_trap_exception}
     LOAD    ra, 0
@@ -268,10 +294,32 @@ unsafe extern "C" fn start_trap() {
     LOAD    a5, 13
     LOAD    a6, 14
     LOAD    a7, 15
-    addi    sp, sp, 16 * {REGBYTES}
+    LOAD    tp, 16
+    addi    sp, sp, 17 * {REGBYTES}
     sret
     ",
     REGBYTES = const core::mem::size_of::<usize>(),
     rust_trap_exception = sym rust_trap_exception,
     options(noreturn))
+}
+
+#[repr(C)]
+struct TrapFrame {
+    ra: usize,
+    t0: usize,
+    t1: usize,
+    t2: usize,
+    t3: usize,
+    t4: usize,
+    t5: usize,
+    t6: usize,
+    a0: usize,
+    a1: usize,
+    a2: usize,
+    a3: usize,
+    a4: usize,
+    a5: usize,
+    a6: usize,
+    a7: usize,
+    tp: usize,
 }

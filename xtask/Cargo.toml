@@ -10,3 +10,4 @@ publish = false
 
 [dependencies]
 clap = "2"
+ctrlc = "3.2"
