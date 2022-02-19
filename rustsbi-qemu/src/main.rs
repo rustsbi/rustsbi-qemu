@@ -25,6 +25,7 @@ mod qemu_hsm;
 mod qemu_pmu;
 mod runtime;
 mod test_device;
+mod trap;
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
