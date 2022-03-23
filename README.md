@@ -21,7 +21,7 @@ When running `cargo qemu`, the test kernel will build and run. Expected output s
 |  |\  \----.|  `--'  |.----)   |      |  |  .----)   |   |  |_)  ||  |
 | _| `._____| \______/ |_______/       |__|  |_______/    |______/ |__|
 
-[rustsbi] Implementation: RustSBI-QEMU Version 0.1.0
+[rustsbi] Implementation: RustSBI-QEMU Version 0.1.1
 [rustsbi-dtb] Hart count: cluster0 with 8 cores
 [rustsbi] misa: RV64ACDFIMSU
 [rustsbi] mideleg: ssoft, stimer, sext (0x222)
