@@ -9,9 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Adapts to RustSBI version 0.2.2, RISC-V SBI version 1.0.0 ratified
 - Handle possible failure of deref virtual address by machine trap detection
 
 ### Modified
+
+- Modify test kernel message
 
 ## [0.1.0] - 2022-02-13
 

@@ -180,16 +180,14 @@ fn set_pmp() {
     // A = NA4(naturally aligned 4-byte region, 2), only support a 4-byte pmp region
     // A = NAPOT(naturally aligned power-of-two region, 3), support a >=8-byte pmp region
     // When using NAPOT to match a address range [S,S+L), then the pmpaddr_i should be set to (S>>2)|((L>>2)-1)
-    let calc_pmpaddr = |start_addr: usize, length: usize| {
-        (start_addr >> 2) | ((length >> 2) - 1) 
-    };
+    let calc_pmpaddr = |start_addr: usize, length: usize| (start_addr >> 2) | ((length >> 2) - 1);
     let mut pmpcfg0: usize = 0;
     // pmp region 0: RW, A=NAPOT, address range {0x1000_1000, 0x1000}, VIRT_VIRTIO
     //                            address range {0x1000_0000, 0x100}, VIRT_UART0
     //                            aligned address range {0x1000_0000, 0x2000}
-    pmpcfg0 |= 0b11011; 
+    pmpcfg0 |= 0b11011;
     let pmpaddr0 = calc_pmpaddr(0x1000_0000, 0x2000);
-    // pmp region 1: RW, A=NAPOT, address range {0x200_0000, 0x1_0000}, VIRT_CLINT 
+    // pmp region 1: RW, A=NAPOT, address range {0x200_0000, 0x1_0000}, VIRT_CLINT
     pmpcfg0 |= 0b11011 << 8;
     let pmpaddr1 = calc_pmpaddr(0x200_0000, 0x1_0000);
     // pmp region 2: RW, A=NAPOT, address range {0xC00_0000, 0x40_0000}, VIRT_PLIC
@@ -211,7 +209,7 @@ fn set_pmp() {
              in(reg) pmpaddr1,
              in(reg) pmpaddr2,
              in(reg) pmpaddr3,
-        ); 
+        );
     }
 }
 

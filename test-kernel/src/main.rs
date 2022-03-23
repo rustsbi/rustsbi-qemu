@@ -7,8 +7,12 @@
 use core::arch::asm;
 use core::panic::PanicInfo;
 
-use riscv::register::{scause::{self, Exception, Trap}, sepc, /*sie, sstatus, */stvec::{self, TrapMode}};
 use riscv::register::scause::Interrupt;
+use riscv::register::{
+    scause::{self, Exception, Trap},
+    sepc,
+    /*sie, sstatus, */ stvec::{self, TrapMode},
+};
 
 #[macro_use]
 mod console;
@@ -123,9 +127,12 @@ fn test_base_extension() {
         sbi::shutdown()
     }
     println!("<< Test-kernel: Base extension version: {:x}", base_version);
+    let spec_version = sbi::get_spec_version();
+    let major = (spec_version >> 24) & 0x7F;
+    let minor = spec_version & 0xFFFFFF;
     println!(
-        "<< Test-kernel: SBI specification version: {:x}",
-        sbi::get_spec_version()
+        "<< Test-kernel: SBI specification version: {}.{}",
+        major, minor
     );
     println!(
         "<< Test-kernel: SBI implementation Id: {:x}",

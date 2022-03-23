@@ -13,8 +13,7 @@ cargo qemu
 
 When running `cargo qemu`, the test kernel will build and run. Expected output should be:
 
-```
-[rustsbi] RustSBI version 0.2.0, adapting to RISC-V SBI v0.3
+[rustsbi] RustSBI version 0.2.2, adapting to RISC-V SBI v0.3
 .______       __    __      _______.___________.  _______..______   __
 |   _  \     |  |  |  |    /       |           | /       ||   _  \ |  |
 |  |_)  |    |  |  |  |   |   (----`---|  |----`|   (----`|  |_)  ||  |
@@ -35,15 +34,15 @@ When running `cargo qemu`, the test kernel will build and run. Expected output s
 << Test-kernel: Hart id = 0, DTB physical address = 0x87000000
 >> Test-kernel: Testing base extension
 << Test-kernel: Base extension version: 1
-<< Test-kernel: SBI specification version: 3
+<< Test-kernel: SBI specification version: 1.0
 << Test-kernel: SBI implementation Id: 4
-<< Test-kernel: SBI implementation version: 200
+<< Test-kernel: SBI implementation version: 202
 << Test-kernel: Device mvendorid: 0
 << Test-kernel: Device marchid: 0
 << Test-kernel: Device mimpid: 0
 >> Test-kernel: Testing SBI instruction emulation
-<< Test-kernel: Current time: 17fc45
-<< Test-kernel: Time after operation: 187678
+<< Test-kernel: Current time: d78c9
+<< Test-kernel: Time after operation: da00f
 >> Test-kernel: Trigger illegal exception
 << Test-kernel: Value of scause: Exception(IllegalInstruction)
 << Test-kernel: Illegal exception delegate success
@@ -52,6 +51,7 @@ When running `cargo qemu`, the test kernel will build and run. Expected output s
 >> Hart 1 state return value: 4
 >> Hart 2 state return value: 4
 >> Hart 3 state return value: 1
+>> Hart 4 state return value: 0
 << Test-kernel: test for hart 0 success, wake another hart
 >> Wake hart 1, sbi return value 0
 >> Start test for hart 1, retentive suspend return value 0

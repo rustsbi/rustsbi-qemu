@@ -3,12 +3,14 @@ use core::{
     pin::Pin,
 };
 
-use riscv::register::{mcause, mie, mip, scause::{Exception, Trap}};
-use riscv::register::scause::Interrupt;
+use riscv::register::{
+    mcause, mie, mip,
+    scause::{Exception, Interrupt, Trap},
+};
 
 use crate::feature;
 use crate::prv_mem::{self, SupervisorPointer};
-use crate::qemu_hsm::{HsmCommand, pause, QemuHsm};
+use crate::qemu_hsm::{pause, HsmCommand, QemuHsm};
 use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
 
 pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm: QemuHsm) -> ! {
@@ -102,10 +104,7 @@ pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm
                     let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
                     clint.clear_soft(hart_id); // Clear IPI
                     if feature::should_transfer_trap(ctx) {
-                        feature::do_transfer_trap(
-                            ctx,
-                            Trap::Interrupt(Interrupt::SupervisorSoft),
-                        )
+                        feature::do_transfer_trap(ctx, Trap::Interrupt(Interrupt::SupervisorSoft))
                     } else {
                         panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command")
                     }
@@ -140,7 +139,13 @@ fn fail_illegal_instruction(ctx: &mut SupervisorContext, ins: usize) -> ! {
 
 fn fail_cant_read_exception_address(ctx: &mut SupervisorContext, cause: mcause::Exception) -> ! {
     #[cfg(target_pointer_width = "64")]
-    panic!("can't read exception address, cause: {:?}, mepc: {:016x?}, context: {:016x?}", cause, ctx.mepc, ctx);
+    panic!(
+        "can't read exception address, cause: {:?}, mepc: {:016x?}, context: {:016x?}",
+        cause, ctx.mepc, ctx
+    );
     #[cfg(target_pointer_width = "32")]
-    panic!("can't read exception address, cause: {:?}, mepc: {:08x?}, context: {:08x?}", cause, ctx.mepc, ctx);
+    panic!(
+        "can't read exception address, cause: {:?}, mepc: {:08x?}, context: {:08x?}",
+        cause, ctx.mepc, ctx
+    );
 }
