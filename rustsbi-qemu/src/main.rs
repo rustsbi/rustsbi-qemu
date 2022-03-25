@@ -64,7 +64,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         init_clint();
         init_test_device();
         println!(
-            "[rustsbi] RustSBI version {}, adapting to RISC-V SBI v0.3",
+            "[rustsbi] RustSBI version {}, adapting to RISC-V SBI v1.0.0",
             rustsbi::VERSION
         );
         println!("{}", rustsbi::LOGO);
