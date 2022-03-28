@@ -97,7 +97,14 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 ## Notes
 
-1. How to enable hypervisor H extension on QEMU?
+1. What kind of kernel does this project support?
+
+The rustsbi-qemu project supports raw binary kernels for educational or
+competition use. This project itself is only a showcase example illustrating how
+implementations should use RustSBI, it does not include a Linux boot support.
+You may visit downstream bootloader projects for a Linux capable bootloader.
+
+2. How to enable hypervisor H extension on QEMU?
 
 You should use these following line of parameters:
 
