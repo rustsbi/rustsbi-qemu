@@ -13,7 +13,8 @@ cargo qemu
 
 When running `cargo qemu`, the test kernel will build and run. Expected output should be:
 
-[rustsbi] RustSBI version 0.2.2, adapting to RISC-V SBI v0.3
+```
+[rustsbi] RustSBI version 0.2.2, adapting to RISC-V SBI v1.0.0
 .______       __    __      _______.___________.  _______..______   __
 |   _  \     |  |  |  |    /       |           | /       ||   _  \ |  |
 |  |_)  |    |  |  |  |   |   (----`---|  |----`|   (----`|  |_)  ||  |
