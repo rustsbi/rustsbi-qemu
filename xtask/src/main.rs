@@ -7,7 +7,6 @@ use std::{
     process::{self, Command, Stdio},
 };
 
-
 // 不要修改DEFAULT_TARGET；如果你需要编译到别的目标，请使用--target编译选项！
 const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
 
@@ -255,7 +254,8 @@ fn xtask_gdb(xtask_env: &XtaskEnv) {
 
     ctrlc::set_handler(move || {
         // when ctrl-c, don't exit gdb
-    }).expect("disable Ctrl-C exit");
+    })
+    .expect("disable Ctrl-C exit");
 
     let status = command.status().expect("run program");
     if !status.success() {

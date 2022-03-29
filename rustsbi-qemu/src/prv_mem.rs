@@ -11,7 +11,11 @@
 use core::arch::asm;
 use core::mem::{self, MaybeUninit};
 
-use riscv::register::{mcause::{Exception, Mcause, Trap}, mcause, mstatus, mtvec::{self, Mtvec, TrapMode}};
+use riscv::register::{
+    mcause::{self, Exception, Mcause, Trap},
+    mstatus,
+    mtvec::{self, Mtvec, TrapMode},
+};
 
 /// Pointer at supervisor level
 ///
@@ -44,20 +48,22 @@ pub unsafe fn try_read<T>(src: SupervisorPointer<T>) -> Result<T, mcause::Except
         panic!("rustsbi-qemu: mprv should be cleared before try_read")
     }
     for idx in (0..mem::size_of::<T>()).step_by(mem::size_of::<u32>()) {
-        let nr = with_detect_trap(0, || asm!(
-        "li     {mprv_bit}, (1 << 17)",
-        "csrs   mstatus, {mprv_bit}",
-        "lw     {word}, 0({in_s_addr})",
-        "csrc   mstatus, {mprv_bit}",
-        "sw     {word}, 0({out_m_addr})",
-        mprv_bit = out(reg) _,
-        word = out(reg) _,
-        in_s_addr = in(reg) src.inner.cast::<u8>().add(idx),
-        out_m_addr = in(reg) ans.as_mut_ptr().cast::<u8>().add(idx),
-        options(nostack),
-        ));
+        let nr = with_detect_trap(0, || {
+            asm!(
+            "li     {mprv_bit}, (1 << 17)",
+            "csrs   mstatus, {mprv_bit}",
+            "lw     {word}, 0({in_s_addr})",
+            "csrc   mstatus, {mprv_bit}",
+            "sw     {word}, 0({out_m_addr})",
+            mprv_bit = out(reg) _,
+            word = out(reg) _,
+            in_s_addr = in(reg) src.inner.cast::<u8>().add(idx),
+            out_m_addr = in(reg) ans.as_mut_ptr().cast::<u8>().add(idx),
+            options(nostack),
+            )
+        });
         if nr != 0 {
-            return Err(Exception::from(nr))
+            return Err(Exception::from(nr));
         }
     }
     Ok(ans.assume_init())

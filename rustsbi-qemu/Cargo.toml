@@ -1,19 +1,19 @@
 [package]
 name = "rustsbi-qemu"
-version = "0.1.0"
-edition = "2018"
+version = "0.1.1"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = "0.2.1"
+rustsbi = "0.2.2"
 buddy_system_allocator = "0.8"
 lazy_static = { version = "1", features = ["spin_no_std"] }
 spin = "0.9"
 riscv = { git = "https://github.com/rust-embedded/riscv", rev = "dc0bc37e", features = ["inline-asm"] }
 device_tree = { git = "https://github.com/rcore-os/device_tree-rs/" }
-embedded-hal = "0.2.6"
+embedded-hal = "0.2.7"
 nb = "1"
 bitflags = "1"
 bit_field = "0.10"
-hashbrown = "0.11"
+hashbrown = "0.12"
