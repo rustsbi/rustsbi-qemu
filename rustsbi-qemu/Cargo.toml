@@ -10,7 +10,7 @@ rustsbi = "0.2.2"
 buddy_system_allocator = "0.8"
 lazy_static = { version = "1", features = ["spin_no_std"] }
 spin = "0.9"
-riscv = { git = "https://github.com/rust-embedded/riscv", rev = "dc0bc37e", features = ["inline-asm"] }
+riscv = "0.8"
 device_tree = { git = "https://github.com/rcore-os/device_tree-rs/" }
 embedded-hal = "0.2.7"
 nb = "1"
