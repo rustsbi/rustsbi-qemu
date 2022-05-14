@@ -10,6 +10,8 @@ SECTIONS
     stext = .;
     .text : {
         *(.text.entry)
+        . = ALIGN(4);
+        *(.text.trap_handler)
         *(.text .text.*)
     }
 

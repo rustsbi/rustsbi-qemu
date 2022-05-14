@@ -11,11 +11,7 @@ use riscv::register::{
 };
 
 pub fn init() {
-    let mut addr = from_supervisor_save as usize;
-    if addr & 0x2 != 0 {
-        addr += 0x2; // 必须对齐到4个字节
-    }
-    unsafe { mtvec::write(addr, TrapMode::Direct) };
+    unsafe { mtvec::write(from_supervisor_save as usize, TrapMode::Direct) };
 }
 
 pub struct Runtime {
@@ -142,7 +138,7 @@ unsafe extern "C" fn from_machine_save(_supervisor_context: *mut SupervisorConte
         sd      s8, 11*8(sp)
         sd      s9, 12*8(sp)
         sd      s10, 13*8(sp)
-        sd      s11, 14*8(sp)", 
+        sd      s11, 14*8(sp)",
         // a0:特权级上下文
         "j      {to_supervisor_restore}",
         to_supervisor_restore = sym to_supervisor_restore,
@@ -203,11 +199,12 @@ pub unsafe extern "C" fn to_supervisor_restore(_supervisor_context: *mut Supervi
 // 中断开始
 
 #[naked]
-#[link_section = ".text"]
+#[link_section = ".text.trap_handler"]
 pub unsafe extern "C" fn from_supervisor_save() -> ! {
-    asm!( // sp:特权级栈,mscratch:特权级上下文
-        ".p2align 2",
-        "csrrw  sp, mscratch, sp", // 新mscratch:特权级栈, 新sp:特权级上下文
+    asm!(
+        // sp: 特权级栈, mscratch: 特权级上下文
+        "csrrw  sp, mscratch, sp",
+        // sp: 特权级上下文，mscratch: 特权级栈
         "sd     ra, 0*8(sp)
         sd      gp, 2*8(sp)
         sd      tp, 3*8(sp)

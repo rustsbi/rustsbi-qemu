@@ -198,17 +198,18 @@ fn set_pmp() {
     pmpcfg0 |= 0b11111 << 24;
     let pmpaddr3 = calc_pmpaddr(0x8000_0000, 0x1000_0000);
     unsafe {
-        core::arch::asm!("csrw  pmpcfg0, {}",
-             "csrw  pmpaddr0, {}",
-             "csrw  pmpaddr1, {}",
-             "csrw  pmpaddr2, {}",
-             "csrw  pmpaddr3, {}",
-             "sfence.vma",
-             in(reg) pmpcfg0,
-             in(reg) pmpaddr0,
-             in(reg) pmpaddr1,
-             in(reg) pmpaddr2,
-             in(reg) pmpaddr3,
+        core::arch::asm!(
+            "csrw  pmpcfg0,  {}",
+            "csrw  pmpaddr0, {}",
+            "csrw  pmpaddr1, {}",
+            "csrw  pmpaddr2, {}",
+            "csrw  pmpaddr3, {}",
+            "sfence.vma",
+            in(reg) pmpcfg0,
+            in(reg) pmpaddr0,
+            in(reg) pmpaddr1,
+            in(reg) pmpaddr2,
+            in(reg) pmpaddr3,
         );
     }
 }
