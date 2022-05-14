@@ -110,9 +110,9 @@ fn init_heap() {
 }
 
 fn init_legacy_stdio() {
-    let serial = ns16550a::Ns16550a::new(0x10000000, 0, 11_059_200, 115200);
+    use ns16550a::Ns16550a;
     use rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal;
-    init_legacy_stdio_embedded_hal(serial);
+    init_legacy_stdio_embedded_hal(unsafe { Ns16550a::new(0x1000_0000) });
 }
 
 fn init_clint() {
