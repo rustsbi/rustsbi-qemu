@@ -19,3 +19,5 @@ nb = "1"
 bitflags = "1"
 bit_field = "0.10"
 hashbrown = "0.12"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde-device-tree = { git = "https://github.com/rustsbi/serde-device-tree.git", rev = "114679a", default-features = false }

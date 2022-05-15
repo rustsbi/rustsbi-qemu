@@ -23,13 +23,6 @@ pub fn get() -> Clint {
 
 impl Clint {
     #[inline]
-    pub fn new(base: *mut u8) -> Clint {
-        Clint {
-            base: base as usize,
-        }
-    }
-
-    #[inline]
     pub fn get_mtime(&self) -> u64 {
         unsafe {
             let base = self.base as *mut u8;
@@ -66,7 +59,7 @@ impl Ipi for Clint {
     #[inline]
     fn send_ipi_many(&self, hart_mask: HartMask) -> SbiRet {
         // println!("[rustsbi] send ipi many, {:?}", hart_mask);
-        let num_harts = *crate::count_harts::NUM_HARTS.lock();
+        let num_harts = crate::device_tree::get().smp;
         for i in 0..num_harts {
             if hart_mask.has_bit(i) {
                 self.send_soft(i);

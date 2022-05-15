@@ -13,7 +13,7 @@ use core::arch::asm;
 use core::panic::PanicInfo;
 
 mod clint;
-mod count_harts;
+mod device_tree;
 mod execute;
 mod feature;
 mod hart_csr_utils;
@@ -52,7 +52,11 @@ lazy_static::lazy_static! {
     pub static ref HSM: qemu_hsm::QemuHsm = qemu_hsm::QemuHsm::new();
 }
 
-/// 入口。设置启动栈，并跳转到 rust 入口。
+/// 入口。
+///
+/// 1. 关中断
+/// 2. 设置启动栈
+/// 3. 跳转到 rust 入口函数
 ///
 /// # Safety
 ///
@@ -81,12 +85,14 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     )
 }
 
-extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
+/// rust 入口。
+extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
     let boot_hart = race_boot_hart();
     runtime::init();
     if boot_hart {
         zero_bss();
         init_heap();
+        device_tree::init(opaque);
         init_legacy_stdio();
         init_clint();
         init_test_device();
@@ -99,7 +105,8 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
             "[rustsbi] Implementation: RustSBI-QEMU Version {}",
             env!("CARGO_PKG_VERSION")
         );
-        unsafe { count_harts::init_hart_count(opqaue) };
+        let info = device_tree::get();
+        println!("[rustsbi] Device model: {:?}", info.model);
         // initialize hsm module
         rustsbi::init_hsm(HSM.clone());
     } else {
@@ -116,7 +123,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         hart_csr_utils::print_hart_csrs();
         // start other harts
         let clint = crate::clint::get();
-        let num_harts = *{ count_harts::NUM_HARTS.lock() };
+        let num_harts = device_tree::get().smp;
         for target_hart_id in 0..num_harts {
             if target_hart_id != hartid {
                 clint.send_soft(target_hart_id);
@@ -125,7 +132,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         println!("[rustsbi] enter supervisor 0x80200000");
     }
     // start SBI environment
-    execute::execute_supervisor(0x80200000, hartid, opqaue, HSM.clone());
+    execute::execute_supervisor(0x80200000, hartid, opaque, HSM.clone());
 }
 
 fn race_boot_hart() -> bool {
@@ -135,7 +142,7 @@ fn race_boot_hart() -> bool {
     unsafe { BOOT_SELECTOR.compare_exchange(false, true, SeqCst, SeqCst) }.is_ok()
 }
 
-/// 清零 bss 段
+/// 清零 bss 段。
 #[inline(always)]
 fn zero_bss() {
     #[cfg(target_arch = "riscv32")]
@@ -149,6 +156,7 @@ fn zero_bss() {
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
+/// 初始化堆和分配器。
 fn init_heap() {
     use buddy_system_allocator::LockedHeap;
 
