@@ -2,7 +2,6 @@
 
 use alloc::{
     string::{String, ToString},
-    vec,
     vec::Vec,
 };
 use serde::Deserialize;
@@ -15,10 +14,10 @@ use spin::Once;
 pub(crate) struct BoardInfo {
     pub model: Vec<String>,
     pub smp: usize,
-    pub memory: Vec<Range<usize>>,
-    pub uart: usize,
-    pub clint: usize,
-    pub peripherals: Vec<Range<usize>>,
+    pub memory: Range<usize>,
+    pub uart: Range<usize>,
+    pub clint: Range<usize>,
+    pub test: Range<usize>,
 }
 
 static BOARD: Once<BoardInfo> = Once::new();
@@ -29,22 +28,6 @@ pub(crate) fn init(opaque: usize) {
         let dtb = Dtb::from(ptr).share();
         let t: Tree = from_raw_mut(&dtb).unwrap();
 
-        let mut peripherals = vec![];
-        for node in t.soc.test.iter() {
-            node.deserialize::<Peripheral>()
-                .reg
-                .iter()
-                .for_each(|r| peripherals.push(r.0));
-        }
-        println!("!!!!!!!!!!!");
-        for node in t.soc.virtio_mmio.iter() {
-            println!("virtio_mmio{}", node.at());
-            node.deserialize::<Peripheral>()
-                .reg
-                .iter()
-                .for_each(|r| peripherals.push(r.0));
-        }
-
         BoardInfo {
             model: t.model.iter().map(|m| m.to_string()).collect(),
             smp: t.cpus.cpu.len(),
@@ -52,16 +35,16 @@ pub(crate) fn init(opaque: usize) {
                 .memory
                 .iter()
                 .map(|m| m.deserialize::<Memory>())
-                .filter(|m| m.device_type.iter().any(|t| t == "memory"))
-                .flat_map(|m| m.reg.iter().map(|r| r.0).collect::<Vec<_>>())
-                .collect(),
+                .find(|m| m.device_type.iter().any(|t| t == "memory"))
+                .map(|m| m.reg.iter().next().unwrap().0.clone())
+                .unwrap(),
             uart: t
                 .soc
                 .uart
                 .iter()
                 .map(|u| u.deserialize::<Uart>())
                 .find(|u| u.compatible.iter().any(|s| s == "ns16550a"))
-                .map(|u| u.reg.iter().next().unwrap().0.start)
+                .map(|u| u.reg.iter().next().unwrap().0.clone())
                 .unwrap(),
             clint: t
                 .soc
@@ -69,9 +52,16 @@ pub(crate) fn init(opaque: usize) {
                 .iter()
                 .map(|u| u.deserialize::<Clint>())
                 .find(|u| u.compatible.iter().any(|s| s == "riscv,clint0"))
-                .map(|u| u.reg.iter().next().unwrap().0.start)
+                .map(|u| u.reg.iter().next().unwrap().0.clone())
                 .unwrap(),
-            peripherals,
+            test: t
+                .soc
+                .test
+                .iter()
+                .map(|u| u.deserialize::<Peripheral>())
+                .next()
+                .map(|u| u.reg.iter().next().unwrap().0.clone())
+                .unwrap(),
         }
     });
 }
@@ -98,7 +88,6 @@ struct Cpus<'a> {
 struct Soc<'a> {
     uart: NodeSeq<'a>,
     clint: NodeSeq<'a>,
-    virtio_mmio: NodeSeq<'a>,
     test: NodeSeq<'a>,
 }
 

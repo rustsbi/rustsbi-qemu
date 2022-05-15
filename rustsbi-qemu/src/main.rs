@@ -97,10 +97,11 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         // 解析设备树，需要堆来保存结果里的字符串等
         device_tree::init(opaque);
         // 初始化外设
-        clint::init(device_tree::get().clint);
-        let uart = unsafe { ns16550a::Ns16550a::new(device_tree::get().uart) };
-        rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
+        let periperals = device_tree::get();
+        clint::init(periperals.clint.start);
+        let uart = unsafe { ns16550a::Ns16550a::new(periperals.uart.start) };
         // 初始化 SBI 服务
+        rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
         rustsbi::init_ipi(*clint::get());
         rustsbi::init_timer(*clint::get());
         rustsbi::init_reset(test_device::SiFiveTest);
@@ -207,53 +208,30 @@ fn delegate_interrupt_exception() {
 
 fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
-    // read fdt tree value, parse, and calculate proper pmp configuration for this device tree (issue #7)
-    // integrate with `count_harts`
-    //
-    // Qemu MMIO config ref: https://github.com/qemu/qemu/blob/master/hw/riscv/virt.c#L46
-    //
-    // About PMP:
-    //
-    // CSR: pmpcfg0(0x3A0)~pmpcfg15(0x3AF); pmpaddr0(0x3B0)~pmpaddr63(0x3EF)
-    // pmpcfg packs pmp entries each of which is of 8-bit
-    // on RV64 only even pmpcfg CSRs(0,2,...,14) are available, each of which contains 8 PMP
-    // entries
-    // every pmp entry and its corresponding pmpaddr describe a pmp region
-    //
-    // layout of PMP entries:
-    // ------------------------------------------------------
-    //  7   |   [5:6]   |   [3:4]   |   2   |   1   |   0   |
-    //  L   |   0(WARL) |   A       |   X   |   W   |   R   |
-    // ------------------------------------------------------
-    // A = OFF(0), disabled;
-    // A = TOR(top of range, 1), match address y so that pmpaddr_{i-1}<=y<pmpaddr_i irrespective of
-    // the value pmp entry i-1
-    // A = NA4(naturally aligned 4-byte region, 2), only support a 4-byte pmp region
-    // A = NAPOT(naturally aligned power-of-two region, 3), support a >=8-byte pmp region
-    // When using NAPOT to match a address range [S,S+L), then the pmpaddr_i should be set to (S>>2)|((L>>2)-1)
+    let periperals = device_tree::get();
+    let clint = &periperals.clint;
+    let memory = &periperals.memory;
+    let test = &periperals.test;
+
     let calc_pmpaddr = |start_addr: usize, length: usize| (start_addr >> 2) | ((length >> 2) - 1);
-    let mut pmpcfg0: usize = 0;
-    // pmp region 0: RW, A=NAPOT, address range {0x1000_1000, 0x1000}, VIRT_VIRTIO
-    //                            address range {0x1000_0000, 0x100}, VIRT_UART0
-    //                            aligned address range {0x1000_0000, 0x2000}
-    pmpcfg0 |= 0b11011;
-    let pmpaddr0 = calc_pmpaddr(0x1000_0000, 0x2000);
-    // pmp region 1: RW, A=NAPOT, address range {0x200_0000, 0x1_0000}, VIRT_CLINT
-    pmpcfg0 |= 0b11011 << 8;
-    let pmpaddr1 = calc_pmpaddr(0x200_0000, 0x1_0000);
-    // pmp region 2: RW, A=NAPOT, address range {0xC00_0000, 0x40_0000}, VIRT_PLIC
+    let mut pmpcfg0 = PmpCfg::ZERO;
+    // UART + VIRTIO_MMIO0-7
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr0 = calc_pmpaddr(0x1000_0000, 0x8000);
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr1 = calc_pmpaddr(0x1000_8000, 0x1000);
+    // VIRT_CLINT
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr2 = calc_pmpaddr(clint.start, clint.len());
     // VIRT_PLIC_SIZE = 0x20_0000 + 0x1000 * harts, thus supports up to 512 harts
-    pmpcfg0 |= 0b11011 << 16;
-    let pmpaddr2 = calc_pmpaddr(0xC00_0000, 0x40_0000);
-    // pmp region 3: RWX, A=NAPOT, address range {0x8000_0000, 0x1000_0000}, VIRT_DRAM
-    pmpcfg0 |= 0b11111 << 24;
-    let pmpaddr3 = calc_pmpaddr(0x8000_0000, 0x2000_0000);
-    // next
-    pmpcfg0 |= 0b11011 << 32;
-    let pmpaddr4 = calc_pmpaddr(0x1000_8000, 0x1000);
-    // next
-    pmpcfg0 |= 0b11011 << 40;
-    let pmpaddr5 = calc_pmpaddr(0x1000_7000, 0x1000);
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr3 = calc_pmpaddr(0xC00_0000, 0x40_0000);
+    // test
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr4 = calc_pmpaddr(test.start, test.len());
+    // memory
+    pmpcfg0.set_next(0b11111);
+    let pmpaddr5 = calc_pmpaddr(memory.start, memory.len());
     unsafe {
         core::arch::asm!(
             "csrw  pmpcfg0,  {}",
@@ -264,7 +242,7 @@ fn set_pmp() {
             "csrw  pmpaddr4, {}",
             "csrw  pmpaddr5, {}",
             "sfence.vma",
-            in(reg) pmpcfg0,
+            in(reg) pmpcfg0.0,
             in(reg) pmpaddr0,
             in(reg) pmpaddr1,
             in(reg) pmpaddr2,
@@ -272,5 +250,16 @@ fn set_pmp() {
             in(reg) pmpaddr4,
             in(reg) pmpaddr5,
         );
+    }
+}
+
+struct PmpCfg(usize, usize);
+
+impl PmpCfg {
+    const ZERO: Self = Self(0, 0);
+
+    fn set_next(&mut self, value: u8) {
+        self.0 |= (value as usize) << self.1;
+        self.1 += 8;
     }
 }

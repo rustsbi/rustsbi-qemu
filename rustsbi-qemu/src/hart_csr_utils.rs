@@ -165,7 +165,10 @@ fn print_pmp(i: usize, cfg: Pmp, addr: usize) {
         WX => "-wx",
         RWX => "rwx",
     };
-    println!("[rustsbi] pmp{}: {:#x?} ({})", i, range, permission);
+    println!(
+        "[rustsbi] pmp{}: {:08x}..{:08x} ({})",
+        i, range.start, range.end, permission
+    );
 }
 
 // FIXME 这些不对

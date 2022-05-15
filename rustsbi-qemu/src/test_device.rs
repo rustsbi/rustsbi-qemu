@@ -24,7 +24,6 @@ const QEMU_ERR_EXIT_CODE: u32 = 1;
 
 impl Reset for SiFiveTest {
     fn system_reset(&self, reset_type: usize, reset_reason: usize) -> SbiRet {
-        const VIRT_TEST: *mut u32 = 0x10_0000 as *mut u32;
         let value = match reset_type {
             RESET_TYPE_SHUTDOWN => match reset_reason {
                 RESET_REASON_NO_REASON => TEST_PASS,
@@ -37,8 +36,9 @@ impl Reset for SiFiveTest {
             RESET_TYPE_WARM_REBOOT => TEST_RESET,
             _ => return SbiRet::invalid_param(),
         };
+        let test = &crate::device_tree::get().test;
         unsafe {
-            core::ptr::write_volatile(VIRT_TEST, value);
+            core::ptr::write_volatile(test.start as *mut u32, value);
         }
         unreachable!()
     }
