@@ -12,8 +12,6 @@ extern crate rustsbi;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
-use buddy_system_allocator::LockedHeap;
-
 mod clint;
 mod count_harts;
 mod execute;
@@ -26,14 +24,17 @@ mod qemu_pmu;
 mod runtime;
 mod test_device;
 
-const SBI_HEAP_SIZE: usize = 64 * 1024; // 64KiB
-#[link_section = ".bss.uninit"]
-static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
-#[global_allocator]
-static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
+mod constants {
+    pub(crate) const LEN_PAGE: usize = 4096; // 4KiB
+    pub(crate) const PER_HART_STACK_SIZE: usize = 4 * LEN_PAGE; // 16KiB
+    pub(crate) const MAX_HART_NUMBER: usize = 8; // assume 8 cores in QEMU
+    pub(crate) const SBI_STACK_SIZE: usize = PER_HART_STACK_SIZE * MAX_HART_NUMBER;
+    pub(crate) const SBI_HEAP_SIZE: usize = 16 * LEN_PAGE; // 64KiB
+}
+
+use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
-#[allow(unused)]
 fn panic(info: &PanicInfo) -> ! {
     let hart_id = riscv::register::mhartid::read();
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
@@ -60,10 +61,6 @@ lazy_static::lazy_static! {
 #[link_section = ".text.entry"]
 #[export_name = "_start"]
 unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
-    const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
-    const MAX_HART_NUMBER: usize = 8; // assume 8 cores in QEMU
-    const SBI_STACK_SIZE: usize = PER_HART_STACK_SIZE * MAX_HART_NUMBER;
-
     #[link_section = ".bss.uninit"]
     static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
 
@@ -85,13 +82,7 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
 }
 
 extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
-    // 启动选择器，用于判决启动核
-    let boot_hart = {
-        use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
-        static mut BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
-        unsafe { BOOT_SELECTOR.compare_exchange(false, true, SeqCst, SeqCst) }.is_ok()
-    };
-
+    let boot_hart = race_boot_hart();
     runtime::init();
     if boot_hart {
         init_heap();
@@ -136,7 +127,20 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
     execute::execute_supervisor(0x80200000, hartid, opqaue, HSM.clone());
 }
 
+fn race_boot_hart() -> bool {
+    use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    static mut BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
+    unsafe { BOOT_SELECTOR.compare_exchange(false, true, SeqCst, SeqCst) }.is_ok()
+}
+
 fn init_heap() {
+    use buddy_system_allocator::LockedHeap;
+
+    #[link_section = ".bss.uninit"]
+    static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
+    #[global_allocator]
+    static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
+
     unsafe {
         SBI_HEAP
             .lock()
@@ -151,12 +155,9 @@ fn init_legacy_stdio() {
 }
 
 fn init_clint() {
-    let clint = clint::Clint::new(0x2000000 as *mut u8);
-    use rustsbi::init_ipi;
-    init_ipi(clint);
-    let clint = clint::Clint::new(0x2000000 as *mut u8);
-    use rustsbi::init_timer;
-    init_timer(clint);
+    use rustsbi::{init_ipi, init_timer};
+    init_ipi(clint::Clint::new(0x2000000 as *mut u8));
+    init_timer(clint::Clint::new(0x2000000 as *mut u8));
 }
 
 fn init_test_device() {
