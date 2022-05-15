@@ -10,6 +10,7 @@ extern crate alloc;
 extern crate rustsbi;
 
 use core::arch::asm;
+use core::ops::Range;
 use core::panic::PanicInfo;
 
 mod clint;
@@ -209,29 +210,44 @@ fn delegate_interrupt_exception() {
 fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
     let periperals = device_tree::get();
-    let clint = &periperals.clint;
     let memory = &periperals.memory;
     let test = &periperals.test;
+    let clint = &periperals.clint;
+    let plic = &periperals.plic;
 
-    let calc_pmpaddr = |start_addr: usize, length: usize| (start_addr >> 2) | ((length >> 2) - 1);
+    fn calc_pmpaddr_napot(range: &Range<usize>) -> usize {
+        let start = range.start;
+        let len = range.len();
+        let len = if len.count_ones() == 1 {
+            len
+        } else {
+            let mut i = 1;
+            while i < range.len() {
+                i <<= 1;
+            }
+            i
+        };
+        (start >> 2) | ((len >> 2) - 1)
+    }
+
     let mut pmpcfg0 = PmpCfg::ZERO;
     // UART + VIRTIO_MMIO0-7
     pmpcfg0.set_next(0b11011);
-    let pmpaddr0 = calc_pmpaddr(0x1000_0000, 0x8000);
+    let pmpaddr0 = calc_pmpaddr_napot(&(0x1000_0000..0x1000_8000));
     pmpcfg0.set_next(0b11011);
-    let pmpaddr1 = calc_pmpaddr(0x1000_8000, 0x1000);
+    let pmpaddr1 = calc_pmpaddr_napot(&(0x1000_8000..0x1000_9000));
     // VIRT_CLINT
     pmpcfg0.set_next(0b11011);
-    let pmpaddr2 = calc_pmpaddr(clint.start, clint.len());
+    let pmpaddr2 = calc_pmpaddr_napot(clint);
     // VIRT_PLIC_SIZE = 0x20_0000 + 0x1000 * harts, thus supports up to 512 harts
     pmpcfg0.set_next(0b11011);
-    let pmpaddr3 = calc_pmpaddr(0xC00_0000, 0x40_0000);
+    let pmpaddr3 = calc_pmpaddr_napot(plic);
     // test
     pmpcfg0.set_next(0b11011);
-    let pmpaddr4 = calc_pmpaddr(test.start, test.len());
+    let pmpaddr4 = calc_pmpaddr_napot(test);
     // memory
     pmpcfg0.set_next(0b11111);
-    let pmpaddr5 = calc_pmpaddr(memory.start, memory.len());
+    let pmpaddr5 = calc_pmpaddr_napot(memory);
     unsafe {
         core::arch::asm!(
             "csrw  pmpcfg0,  {}",

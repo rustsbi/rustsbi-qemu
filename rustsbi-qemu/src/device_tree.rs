@@ -16,8 +16,9 @@ pub(crate) struct BoardInfo {
     pub smp: usize,
     pub memory: Range<usize>,
     pub uart: Range<usize>,
-    pub clint: Range<usize>,
     pub test: Range<usize>,
+    pub clint: Range<usize>,
+    pub plic: Range<usize>,
 }
 
 static BOARD: Once<BoardInfo> = Once::new();
@@ -38,30 +39,10 @@ pub(crate) fn init(opaque: usize) {
                 .find(|m| m.device_type.iter().any(|t| t == "memory"))
                 .map(|m| m.reg.iter().next().unwrap().0.clone())
                 .unwrap(),
-            uart: t
-                .soc
-                .uart
-                .iter()
-                .map(|u| u.deserialize::<Uart>())
-                .find(|u| u.compatible.iter().any(|s| s == "ns16550a"))
-                .map(|u| u.reg.iter().next().unwrap().0.clone())
-                .unwrap(),
-            clint: t
-                .soc
-                .clint
-                .iter()
-                .map(|u| u.deserialize::<Clint>())
-                .find(|u| u.compatible.iter().any(|s| s == "riscv,clint0"))
-                .map(|u| u.reg.iter().next().unwrap().0.clone())
-                .unwrap(),
-            test: t
-                .soc
-                .test
-                .iter()
-                .map(|u| u.deserialize::<Peripheral>())
-                .next()
-                .map(|u| u.reg.iter().next().unwrap().0.clone())
-                .unwrap(),
+            uart: take_one_peripheral(&t.soc.uart, "ns16550a"),
+            test: take_one_peripheral(&t.soc.test, "syscon"),
+            clint: take_one_peripheral(&t.soc.clint, "riscv,clint0"),
+            plic: take_one_peripheral(&t.soc.plic, "riscv,plic0"),
         }
     });
 }
@@ -87,8 +68,9 @@ struct Cpus<'a> {
 #[derive(Deserialize)]
 struct Soc<'a> {
     uart: NodeSeq<'a>,
-    clint: NodeSeq<'a>,
     test: NodeSeq<'a>,
+    clint: NodeSeq<'a>,
+    plic: NodeSeq<'a>,
 }
 
 #[derive(Deserialize)]
@@ -98,18 +80,16 @@ struct Memory<'a> {
 }
 
 #[derive(Deserialize)]
-struct Uart<'a> {
-    compatible: StrSeq<'a>,
-    reg: Reg<'a>,
-}
-
-#[derive(Deserialize)]
-struct Clint<'a> {
-    compatible: StrSeq<'a>,
-    reg: Reg<'a>,
-}
-
-#[derive(Deserialize)]
 struct Peripheral<'a> {
+    compatible: StrSeq<'a>,
     reg: Reg<'a>,
+}
+
+fn take_one_peripheral(nodes: &NodeSeq<'_>, compatible: &str) -> Range<usize> {
+    nodes
+        .iter()
+        .map(|u| u.deserialize::<Peripheral>())
+        .find(|u| u.compatible.iter().any(|s| s == compatible))
+        .map(|u| u.reg.iter().next().unwrap().0.clone())
+        .unwrap()
 }
