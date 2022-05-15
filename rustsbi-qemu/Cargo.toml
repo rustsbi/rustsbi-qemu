@@ -14,6 +14,7 @@ riscv = "0.8"
 device_tree = { git = "https://github.com/rcore-os/device_tree-rs/" }
 uart_16550 = "0.2"
 embedded-hal = "0.2.7"
+r0 = "1"
 nb = "1"
 bitflags = "1"
 bit_field = "0.10"

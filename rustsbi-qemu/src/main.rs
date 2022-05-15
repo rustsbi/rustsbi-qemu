@@ -85,6 +85,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
     let boot_hart = race_boot_hart();
     runtime::init();
     if boot_hart {
+        zero_bss();
         init_heap();
         init_legacy_stdio();
         init_clint();
@@ -129,8 +130,23 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
 
 fn race_boot_hart() -> bool {
     use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    #[link_section = ".bss.uninit"]
     static mut BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
     unsafe { BOOT_SELECTOR.compare_exchange(false, true, SeqCst, SeqCst) }.is_ok()
+}
+
+/// 清零 bss 段
+#[inline(always)]
+fn zero_bss() {
+    #[cfg(target_arch = "riscv32")]
+    type Word = u32;
+    #[cfg(target_arch = "riscv64")]
+    type Word = u64;
+    extern "C" {
+        static mut sbss: Word;
+        static mut ebss: Word;
+    }
+    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
 fn init_heap() {
