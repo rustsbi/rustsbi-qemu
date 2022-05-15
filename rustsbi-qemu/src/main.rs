@@ -90,10 +90,15 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
     let boot_hart = race_boot_hart();
     runtime::init();
     if boot_hart {
+        // 清零 bss 段
         zero_bss();
+        // 初始化堆和分配器
         init_heap();
+        // 解析设备树，需要堆来保存结果里的字符串等
         device_tree::init(opaque);
+        // 初始化 stdio，需要堆和从设备树解析的串口外设基址
         init_legacy_stdio();
+        // 初始化 clint，需要从设备树解析的 clint 基址
         init_clint();
         init_test_device();
         println!(
@@ -175,12 +180,12 @@ fn init_heap() {
 fn init_legacy_stdio() {
     use ns16550a::Ns16550a;
     use rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal;
-    init_legacy_stdio_embedded_hal(unsafe { Ns16550a::new(0x1000_0000) });
+    init_legacy_stdio_embedded_hal(unsafe { Ns16550a::new(device_tree::get().uart) });
 }
 
 fn init_clint() {
     use rustsbi::{init_ipi, init_timer};
-    clint::init(0x200_0000);
+    clint::init(device_tree::get().clint);
     init_ipi(clint::get());
     init_timer(clint::get());
 }

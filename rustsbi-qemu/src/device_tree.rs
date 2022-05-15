@@ -13,8 +13,10 @@ use spin::Once;
 
 pub(crate) struct BoardInfo {
     pub model: Vec<String>,
-    pub memory: Vec<Range<usize>>,
     pub smp: usize,
+    pub memory: Vec<Range<usize>>,
+    pub uart: usize,
+    pub clint: usize,
 }
 
 static BOARD: Once<BoardInfo> = Once::new();
@@ -26,6 +28,7 @@ pub(crate) fn init(opaque: usize) {
         let t: Tree = from_raw_mut(&dtb).unwrap();
         BoardInfo {
             model: t.model.iter().map(|m| m.to_string()).collect(),
+            smp: t.cpus.cpu.len(),
             memory: t
                 .memory
                 .iter()
@@ -33,7 +36,22 @@ pub(crate) fn init(opaque: usize) {
                 .filter(|m| m.device_type.iter().any(|t| t == "memory"))
                 .flat_map(|m| m.reg.iter().map(|r| r.0).collect::<Vec<_>>())
                 .collect(),
-            smp: t.cpus.cpu.len(),
+            uart: t
+                .soc
+                .uart
+                .iter()
+                .map(|u| u.deserialize::<Uart>())
+                .find(|u| u.compatible.iter().any(|s| s == "ns16550a"))
+                .map(|u| u.reg.iter().next().unwrap().0.start)
+                .unwrap(),
+            clint: t
+                .soc
+                .clint
+                .iter()
+                .map(|u| u.deserialize::<Clint>())
+                .find(|u| u.compatible.iter().any(|s| s == "riscv,clint0"))
+                .map(|u| u.reg.iter().next().unwrap().0.start)
+                .unwrap(),
         }
     });
 }
@@ -47,6 +65,7 @@ struct Tree<'a> {
     model: StrSeq<'a>,
     cpus: Cpus<'a>,
     memory: NodeSeq<'a>,
+    soc: Soc<'a>,
 }
 
 #[derive(Deserialize)]
@@ -55,20 +74,26 @@ struct Cpus<'a> {
     cpu: NodeSeq<'a>,
 }
 
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct Cpu<'a> {
-    compatible: StrSeq<'a>,
-    device_type: StrSeq<'a>,
-    status: StrSeq<'a>,
-    #[serde(rename = "riscv,isa")]
-    isa: StrSeq<'a>,
-    #[serde(rename = "mmu-type")]
-    mmu: StrSeq<'a>,
+#[derive(Deserialize)]
+struct Soc<'a> {
+    uart: NodeSeq<'a>,
+    clint: NodeSeq<'a>,
 }
 
 #[derive(Deserialize)]
 struct Memory<'a> {
     device_type: StrSeq<'a>,
+    reg: Reg<'a>,
+}
+
+#[derive(Deserialize)]
+struct Uart<'a> {
+    compatible: StrSeq<'a>,
+    reg: Reg<'a>,
+}
+
+#[derive(Deserialize)]
+struct Clint<'a> {
+    compatible: StrSeq<'a>,
     reg: Reg<'a>,
 }
