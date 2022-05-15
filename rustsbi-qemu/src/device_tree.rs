@@ -2,6 +2,7 @@
 
 use alloc::{
     string::{String, ToString},
+    vec,
     vec::Vec,
 };
 use serde::Deserialize;
@@ -17,6 +18,7 @@ pub(crate) struct BoardInfo {
     pub memory: Vec<Range<usize>>,
     pub uart: usize,
     pub clint: usize,
+    pub peripherals: Vec<Range<usize>>,
 }
 
 static BOARD: Once<BoardInfo> = Once::new();
@@ -26,6 +28,23 @@ pub(crate) fn init(opaque: usize) {
         let ptr = DtbPtr::from_raw(opaque as _).unwrap();
         let dtb = Dtb::from(ptr).share();
         let t: Tree = from_raw_mut(&dtb).unwrap();
+
+        let mut peripherals = vec![];
+        for node in t.soc.test.iter() {
+            node.deserialize::<Peripheral>()
+                .reg
+                .iter()
+                .for_each(|r| peripherals.push(r.0));
+        }
+        println!("!!!!!!!!!!!");
+        for node in t.soc.virtio_mmio.iter() {
+            println!("virtio_mmio{}", node.at());
+            node.deserialize::<Peripheral>()
+                .reg
+                .iter()
+                .for_each(|r| peripherals.push(r.0));
+        }
+
         BoardInfo {
             model: t.model.iter().map(|m| m.to_string()).collect(),
             smp: t.cpus.cpu.len(),
@@ -52,6 +71,7 @@ pub(crate) fn init(opaque: usize) {
                 .find(|u| u.compatible.iter().any(|s| s == "riscv,clint0"))
                 .map(|u| u.reg.iter().next().unwrap().0.start)
                 .unwrap(),
+            peripherals,
         }
     });
 }
@@ -78,6 +98,8 @@ struct Cpus<'a> {
 struct Soc<'a> {
     uart: NodeSeq<'a>,
     clint: NodeSeq<'a>,
+    virtio_mmio: NodeSeq<'a>,
+    test: NodeSeq<'a>,
 }
 
 #[derive(Deserialize)]
@@ -95,5 +117,10 @@ struct Uart<'a> {
 #[derive(Deserialize)]
 struct Clint<'a> {
     compatible: StrSeq<'a>,
+    reg: Reg<'a>,
+}
+
+#[derive(Deserialize)]
+struct Peripheral<'a> {
     reg: Reg<'a>,
 }

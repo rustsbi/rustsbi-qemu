@@ -96,9 +96,11 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         init_heap();
         // 解析设备树，需要堆来保存结果里的字符串等
         device_tree::init(opaque);
+        // 初始化外设
         clint::init(device_tree::get().clint);
         let uart = unsafe { ns16550a::Ns16550a::new(device_tree::get().uart) };
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
+        // 初始化 SBI 服务
         rustsbi::init_ipi(*clint::get());
         rustsbi::init_timer(*clint::get());
         rustsbi::init_reset(test_device::SiFiveTest);
@@ -245,7 +247,13 @@ fn set_pmp() {
     let pmpaddr2 = calc_pmpaddr(0xC00_0000, 0x40_0000);
     // pmp region 3: RWX, A=NAPOT, address range {0x8000_0000, 0x1000_0000}, VIRT_DRAM
     pmpcfg0 |= 0b11111 << 24;
-    let pmpaddr3 = calc_pmpaddr(0x8000_0000, 0x1000_0000);
+    let pmpaddr3 = calc_pmpaddr(0x8000_0000, 0x2000_0000);
+    // next
+    pmpcfg0 |= 0b11011 << 32;
+    let pmpaddr4 = calc_pmpaddr(0x1000_8000, 0x1000);
+    // next
+    pmpcfg0 |= 0b11011 << 40;
+    let pmpaddr5 = calc_pmpaddr(0x1000_7000, 0x1000);
     unsafe {
         core::arch::asm!(
             "csrw  pmpcfg0,  {}",
@@ -253,12 +261,16 @@ fn set_pmp() {
             "csrw  pmpaddr1, {}",
             "csrw  pmpaddr2, {}",
             "csrw  pmpaddr3, {}",
+            "csrw  pmpaddr4, {}",
+            "csrw  pmpaddr5, {}",
             "sfence.vma",
             in(reg) pmpcfg0,
             in(reg) pmpaddr0,
             in(reg) pmpaddr1,
             in(reg) pmpaddr2,
             in(reg) pmpaddr3,
+            in(reg) pmpaddr4,
+            in(reg) pmpaddr5,
         );
     }
 }

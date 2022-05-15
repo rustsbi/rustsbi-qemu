@@ -116,11 +116,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "device_tree"
-version = "1.0.3"
-source = "git+https://github.com/rcore-os/device_tree-rs/#2f2e55fb5238466747fef49d9ce0f59b2e808154"
-
-[[package]]
 name = "embedded-hal"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -333,7 +328,6 @@ dependencies = [
  "bit_field",
  "bitflags",
  "buddy_system_allocator",
- "device_tree",
  "embedded-hal",
  "hashbrown",
  "lazy_static",
@@ -386,7 +380,7 @@ dependencies = [
 [[package]]
 name = "serde-device-tree"
 version = "0.0.1"
-source = "git+https://github.com/rustsbi/serde-device-tree.git?rev=114679a#114679ae32e1edfa7e918a6890d991ff461011fb"
+source = "git+https://github.com/YdrMaster/serde-device-tree.git?rev=32d677e#32d677eab28d478dd6a5923fb02be93d81384f08"
 dependencies = [
  "serde",
 ]
