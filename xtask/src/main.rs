@@ -8,7 +8,7 @@ use std::{
 };
 
 // 不要修改DEFAULT_TARGET；如果你需要编译到别的目标，请使用--target编译选项！
-const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
+const DEFAULT_TARGET: &str = "riscv64imac-unknown-none-elf";
 
 #[derive(Debug)]
 struct XtaskEnv {
@@ -319,7 +319,7 @@ No binutils found, try install using:
     rustup component add llvm-tools-preview
     cargo install cargo-binutils"
     );
-    return None;
+    None
 }
 
 #[test]

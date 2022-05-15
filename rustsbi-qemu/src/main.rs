@@ -26,11 +26,6 @@ mod qemu_pmu;
 mod runtime;
 mod test_device;
 
-const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
-const SBI_STACK_SIZE: usize = 8 * PER_HART_STACK_SIZE; // assume 8 cores in QEMU
-#[link_section = ".bss.uninit"]
-static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
-
 const SBI_HEAP_SIZE: usize = 64 * 1024; // 64KiB
 #[link_section = ".bss.uninit"]
 static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
@@ -56,9 +51,49 @@ lazy_static::lazy_static! {
     pub static ref HSM: qemu_hsm::QemuHsm = qemu_hsm::QemuHsm::new();
 }
 
+/// 入口。设置启动栈，并跳转到 rust 入口。
+///
+/// # Safety
+///
+/// 裸函数。
+#[naked]
+#[link_section = ".text.entry"]
+#[export_name = "_start"]
+unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
+    const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
+    const MAX_HART_NUMBER: usize = 8; // assume 8 cores in QEMU
+    const SBI_STACK_SIZE: usize = PER_HART_STACK_SIZE * MAX_HART_NUMBER;
+
+    #[link_section = ".bss.uninit"]
+    static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+
+    asm!("
+           csrw  mie,  zero
+           la     sp, {stack}
+           li     t0, {per_hart_stack_size}
+           addi   t1,  a0, 1
+        1: add    sp,  sp, t0
+           addi   t1,  t1, -1
+           bnez   t1,  1b
+           j    {rust_main}
+        ",
+        per_hart_stack_size = const PER_HART_STACK_SIZE,
+        stack               =   sym SBI_STACK,
+        rust_main           =   sym rust_main,
+        options(noreturn)
+    )
+}
+
 extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
+    // 启动选择器，用于判决启动核
+    let boot_hart = {
+        use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
+        static mut BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
+        unsafe { BOOT_SELECTOR.compare_exchange(false, true, SeqCst, SeqCst) }.is_ok()
+    };
+
     runtime::init();
-    if hartid == 0 {
+    if boot_hart {
         init_heap();
         init_legacy_stdio();
         init_clint();
@@ -84,14 +119,14 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         // enable wake by ipi
         riscv::register::mstatus::set_mie();
     }
-    if hartid == 0 {
+    if boot_hart {
         // print hart csr configuration
         hart_csr_utils::print_hart_csrs();
         // start other harts
         let clint = clint::Clint::new(0x2000000 as *mut u8);
         let num_harts = *{ count_harts::NUM_HARTS.lock() };
         for target_hart_id in 0..num_harts {
-            if target_hart_id != 0 {
+            if target_hart_id != hartid {
                 clint.send_soft(target_hart_id);
             }
         }
@@ -212,27 +247,4 @@ fn set_pmp() {
             in(reg) pmpaddr3,
         );
     }
-}
-
-#[naked]
-#[link_section = ".text.entry"]
-#[export_name = "_start"]
-unsafe extern "C" fn entry(_a0: usize, _a1: usize) -> ! {
-    asm!(
-    // 1. set sp
-    // sp = bootstack + (hartid + 1) * HART_STACK_SIZE
-    "
-    la      sp, {stack}
-    li      t0, {per_hart_stack_size}
-    addi    t1, a0, 1
-1:  add     sp, sp, t0
-    addi    t1, t1, -1
-    bnez    t1, 1b
-    ",
-    // 2. jump to rust_main (absolute address)
-    "j      {rust_main}",
-    per_hart_stack_size = const PER_HART_STACK_SIZE,
-    stack = sym SBI_STACK,
-    rust_main = sym rust_main,
-    options(noreturn))
 }
