@@ -7,18 +7,18 @@ use rustsbi::{HartMask, Ipi, Timer};
 use spin::Once;
 
 #[derive(Clone, Copy)]
-pub struct Clint {
+pub(crate) struct Clint {
     base: usize,
 }
 
 static CLINT: Once<Clint> = Once::new();
 
-pub fn init(base: usize) {
+pub(crate) fn init(base: usize) {
     CLINT.call_once(|| Clint { base });
 }
 
-pub fn get() -> Clint {
-    *CLINT.wait()
+pub(crate) fn get() -> &'static Clint {
+    CLINT.wait()
 }
 
 impl Clint {

@@ -96,11 +96,14 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         init_heap();
         // 解析设备树，需要堆来保存结果里的字符串等
         device_tree::init(opaque);
-        // 初始化 stdio，需要堆和从设备树解析的串口外设基址
-        init_legacy_stdio();
-        // 初始化 clint，需要从设备树解析的 clint 基址
-        init_clint();
-        init_test_device();
+        clint::init(device_tree::get().clint);
+        let uart = unsafe { ns16550a::Ns16550a::new(device_tree::get().uart) };
+        rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
+        rustsbi::init_ipi(*clint::get());
+        rustsbi::init_timer(*clint::get());
+        rustsbi::init_reset(test_device::SiFiveTest);
+        rustsbi::init_hsm(HSM.clone());
+        // 打印启动信息
         println!(
             "[rustsbi] RustSBI version {}, adapting to RISC-V SBI v1.0.0",
             rustsbi::VERSION
@@ -112,8 +115,6 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         );
         let info = device_tree::get();
         println!("[rustsbi] Device model: {:?}", info.model);
-        // initialize hsm module
-        rustsbi::init_hsm(HSM.clone());
     } else {
         qemu_hsm::pause();
     }
@@ -175,24 +176,6 @@ fn init_heap() {
             .lock()
             .init(HEAP_SPACE.as_ptr() as usize, SBI_HEAP_SIZE)
     }
-}
-
-fn init_legacy_stdio() {
-    use ns16550a::Ns16550a;
-    use rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal;
-    init_legacy_stdio_embedded_hal(unsafe { Ns16550a::new(device_tree::get().uart) });
-}
-
-fn init_clint() {
-    use rustsbi::{init_ipi, init_timer};
-    clint::init(device_tree::get().clint);
-    init_ipi(clint::get());
-    init_timer(clint::get());
-}
-
-fn init_test_device() {
-    use rustsbi::init_reset;
-    init_reset(test_device::SiFiveTest);
 }
 
 // 委托中断；把S的中断全部委托给S层
