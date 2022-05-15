@@ -1,16 +1,15 @@
-use alloc::format;
 use alloc::vec::Vec;
-use bit_field::BitField;
 use riscv::register::{
     medeleg, mideleg,
     misa::{self, MXL},
+    Pmp,
 };
 
 pub fn print_hart_csrs() {
     print_misa();
     print_mideleg();
     print_medeleg();
-    print_pmp();
+    print_pmps();
 }
 
 #[inline]
@@ -114,114 +113,175 @@ fn print_medeleg() {
     );
 }
 
-#[cfg(target_pointer_width = "64")]
-#[inline]
-fn print_pmp() {
-    let pmps = unsafe { pmps::<16>() };
-    for (i, (pmpicfg, pmpiaddr)) in pmps.iter().enumerate() {
-        let pmpicfg = PmpCfg::from(*pmpicfg);
-        let range = match pmpicfg.a() {
-            AddressMatching::Off => continue,
-            AddressMatching::Tor => (0, (1 << (55 + 1)) - 1), // max pmp bits = 55
-            AddressMatching::Na4 => ((*pmpiaddr as u128) << 2, ((*pmpiaddr as u128) << 2) + 4),
-            AddressMatching::Napot => napot_pmpaddr_cfg(*pmpiaddr as u128),
-        };
-        let range = format!("{:#x} ..= {:#x}", range.0, range.1);
-        let privilege = format!(
-            "{}{}{}",
-            if pmpicfg.r() { "r" } else { "-" },
-            if pmpicfg.w() { "w" } else { "-" },
-            if pmpicfg.x() { "x" } else { "-" },
-        );
-        let l = if pmpicfg.l() { "l, " } else { "" };
-        println!("[rustsbi] pmp{}: {} ({}{})", i, range, privilege, l);
-    }
+// TODO riscv32
+// TODO riscv 只实现了前 16 个
+#[cfg(target_arch = "riscv64")]
+fn print_pmps() {
+    use riscv::register::{
+        pmpaddr0, pmpaddr1, pmpaddr10, pmpaddr11, pmpaddr12, pmpaddr13, pmpaddr14, pmpaddr15,
+        pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpaddr6, pmpaddr7, pmpaddr8, pmpaddr9, pmpcfg0,
+        pmpcfg2,
+    };
+    let cfg0 = pmpcfg0::read();
+    let cfg2 = pmpcfg2::read();
+    print_pmp(0x0, cfg0.into_config(0), pmpaddr0::read());
+    print_pmp(0x1, cfg0.into_config(1), pmpaddr1::read());
+    print_pmp(0x2, cfg0.into_config(2), pmpaddr2::read());
+    print_pmp(0x3, cfg0.into_config(3), pmpaddr3::read());
+    print_pmp(0x4, cfg0.into_config(4), pmpaddr4::read());
+    print_pmp(0x5, cfg0.into_config(5), pmpaddr5::read());
+    print_pmp(0x6, cfg0.into_config(6), pmpaddr6::read());
+    print_pmp(0x7, cfg0.into_config(7), pmpaddr7::read());
+    print_pmp(0x8, cfg2.into_config(0), pmpaddr8::read());
+    print_pmp(0x9, cfg2.into_config(1), pmpaddr9::read());
+    print_pmp(0xa, cfg2.into_config(2), pmpaddr10::read());
+    print_pmp(0xb, cfg2.into_config(3), pmpaddr11::read());
+    print_pmp(0xc, cfg2.into_config(4), pmpaddr12::read());
+    print_pmp(0xd, cfg2.into_config(5), pmpaddr13::read());
+    print_pmp(0xe, cfg2.into_config(6), pmpaddr14::read());
+    print_pmp(0xf, cfg2.into_config(7), pmpaddr15::read());
 }
 
-fn napot_pmpaddr_cfg(input: u128) -> (u128, u128) {
-    let trailing_ones = input.trailing_ones();
-    if trailing_ones == 0 {
-        return (input, input);
-    }
-    let mask = (1 << trailing_ones) - 1;
-    ((input - mask) << 2, ((input + 1) << 2) - 1)
+fn print_pmp(i: usize, cfg: Pmp, addr: usize) {
+    use riscv::register::{Permission::*, Range::*};
+    let range = match cfg.range {
+        OFF => return,
+        TOR => todo!(),
+        NA4 => addr << 2..(addr + 1) << 2,
+        NAPOT => {
+            let len = addr.trailing_ones();
+            let len = 1usize << (len + 2);
+            let base = (addr & !(len - 1)) << 2;
+            base..base + len
+        }
+    };
+    let permission = match cfg.permission {
+        NONE => return,
+        R => "r--",
+        W => "-w-",
+        RW => "rw-",
+        X => "--x",
+        RX => "r-x",
+        WX => "-wx",
+        RWX => "rwx",
+    };
+    println!("[rustsbi] pmp{}: {:#x?} ({})", i, range, permission);
 }
 
-struct PmpCfg {
-    bits: u8,
-}
+// FIXME 这些不对
+#[allow(dead_code)]
+mod dep {
+    use alloc::format;
+    use bit_field::BitField;
 
-impl From<u8> for PmpCfg {
-    fn from(bits: u8) -> PmpCfg {
-        PmpCfg { bits }
-    }
-}
-
-impl PmpCfg {
+    #[cfg(target_pointer_width = "64")]
     #[inline]
-    pub fn r(&self) -> bool {
-        self.bits.get_bit(0)
-    }
-    #[inline]
-    pub fn w(&self) -> bool {
-        self.bits.get_bit(1)
-    }
-    #[inline]
-    pub fn x(&self) -> bool {
-        self.bits.get_bit(2)
-    }
-    #[inline]
-    pub fn a(&self) -> AddressMatching {
-        match self.bits.get_bits(3..5) {
-            0 => AddressMatching::Off,
-            1 => AddressMatching::Tor,
-            2 => AddressMatching::Na4,
-            3 => AddressMatching::Napot,
-            _ => unreachable!(),
+    fn print_pmp() {
+        let pmps = unsafe { pmps::<16>() };
+        for (i, (pmpicfg, pmpiaddr)) in pmps.iter().enumerate() {
+            let pmpicfg = PmpCfg::from(*pmpicfg);
+            let range = match pmpicfg.a() {
+                AddressMatching::Off => continue,
+                AddressMatching::Tor => (0, (1 << (55 + 1)) - 1), // max pmp bits = 55
+                AddressMatching::Na4 => ((*pmpiaddr as u128) << 2, ((*pmpiaddr as u128) << 2) + 4),
+                AddressMatching::Napot => napot_pmpaddr_cfg(*pmpiaddr as u128),
+            };
+            let range = format!("{:#x} ..= {:#x}", range.0, range.1);
+            let privilege = format!(
+                "{}{}{}",
+                if pmpicfg.r() { "r" } else { "-" },
+                if pmpicfg.w() { "w" } else { "-" },
+                if pmpicfg.x() { "x" } else { "-" },
+            );
+            let l = if pmpicfg.l() { "l, " } else { "" };
+            println!("[rustsbi] pmp{}: {} ({}{})", i, range, privilege, l);
         }
     }
-    #[inline]
-    pub fn l(&self) -> bool {
-        self.bits.get_bit(7)
+
+    fn napot_pmpaddr_cfg(input: u128) -> (u128, u128) {
+        let trailing_ones = input.trailing_ones();
+        if trailing_ones == 0 {
+            return (input, input);
+        }
+        let mask = (1 << trailing_ones) - 1;
+        ((input - mask) << 2, ((input + 1) << 2) - 1)
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AddressMatching {
-    Off,
-    Tor,
-    Na4,
-    Napot,
-}
+    struct PmpCfg {
+        bits: u8,
+    }
 
-// 1.12中，L=64；1.11中，L=16。
-// 0..16 => pmpcfg[0, 2]
-// 0..64 => pmpcfg[0, 2, 4, 6, .., 14]
-#[inline]
-unsafe fn pmps<const L: usize>() -> [(u8, usize); L] {
-    assert!(L < 64, "in pmpxcfg, x should be in [0, 64)");
-    let xlen: usize = core::mem::size_of::<usize>() * 8;
-    let cfgs_in_pmpcfg: usize = xlen / 8;
-    let pmpcfg_max_id: usize = L / cfgs_in_pmpcfg;
-    let mut ans = [(0, 0); L];
-    for i in (0..pmpcfg_max_id).step_by(xlen / 32) {
-        let pmpcfgi = pmpcfg_r(i).to_le_bytes();
-        for j in 0..cfgs_in_pmpcfg {
-            let pmpaddr_id = i * 4 + j;
-            let pmpaddri = pmpaddr_r(pmpaddr_id);
-            ans[pmpaddr_id] = (pmpcfgi[j], pmpaddri);
+    impl From<u8> for PmpCfg {
+        fn from(bits: u8) -> PmpCfg {
+            PmpCfg { bits }
         }
     }
-    ans
-}
 
-// 1.12版本中，pmpcfg总共有16个，其中64位下只能访问偶数个，32位下可以访问所有寄存器
-// 1.11版本中，pmpcfg只有4个。有些模拟器最多只支持4个pmp寄存器，大于4的编号会出错。
-#[inline]
-unsafe fn pmpcfg_r(pmpcfg_id: usize) -> usize {
-    assert!(pmpcfg_id <= 15, "pmpcfg id should be in [0, 15]");
-    let ans: usize;
-    core::arch::asm!(
+    impl PmpCfg {
+        #[inline]
+        pub fn r(&self) -> bool {
+            self.bits.get_bit(0)
+        }
+        #[inline]
+        pub fn w(&self) -> bool {
+            self.bits.get_bit(1)
+        }
+        #[inline]
+        pub fn x(&self) -> bool {
+            self.bits.get_bit(2)
+        }
+        #[inline]
+        pub fn a(&self) -> AddressMatching {
+            match self.bits.get_bits(3..5) {
+                0 => AddressMatching::Off,
+                1 => AddressMatching::Tor,
+                2 => AddressMatching::Na4,
+                3 => AddressMatching::Napot,
+                _ => unreachable!(),
+            }
+        }
+        #[inline]
+        pub fn l(&self) -> bool {
+            self.bits.get_bit(7)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum AddressMatching {
+        Off,
+        Tor,
+        Na4,
+        Napot,
+    }
+
+    // 1.12中，L=64；1.11中，L=16。
+    // 0..16 => pmpcfg[0, 2]
+    // 0..64 => pmpcfg[0, 2, 4, 6, .., 14]
+    #[inline]
+    unsafe fn pmps<const L: usize>() -> [(u8, usize); L] {
+        assert!(L < 64, "in pmpxcfg, x should be in [0, 64)");
+        let xlen: usize = core::mem::size_of::<usize>() * 8;
+        let cfgs_in_pmpcfg: usize = xlen / 8;
+        let pmpcfg_max_id: usize = L / cfgs_in_pmpcfg;
+        let mut ans = [(0, 0); L];
+        for i in (0..pmpcfg_max_id).step_by(xlen / 32) {
+            let pmpcfgi = pmpcfg_r(i).to_le_bytes();
+            for j in 0..cfgs_in_pmpcfg {
+                let pmpaddr_id = i * 4 + j;
+                let pmpaddri = pmpaddr_r(pmpaddr_id);
+                ans[pmpaddr_id] = (pmpcfgi[j], pmpaddri);
+            }
+        }
+        ans
+    }
+
+    // 1.12版本中，pmpcfg总共有16个，其中64位下只能访问偶数个，32位下可以访问所有寄存器
+    // 1.11版本中，pmpcfg只有4个。有些模拟器最多只支持4个pmp寄存器，大于4的编号会出错。
+    #[inline]
+    unsafe fn pmpcfg_r(pmpcfg_id: usize) -> usize {
+        assert!(pmpcfg_id <= 15, "pmpcfg id should be in [0, 15]");
+        let ans: usize;
+        core::arch::asm!(
     // tmp <- 1的地址；len <- csrr和j指令的长度和
     "la     {tmp}, 1f
     la      {len}, 2f
@@ -246,17 +306,17 @@ unsafe fn pmpcfg_r(pmpcfg_id: usize) -> usize {
     "csrr   {ans}, 0x3AD", "j   1f",
     "csrr   {ans}, 0x3AE", "j   1f",
     "csrr   {ans}, 0x3AF", "j   1f",
-"1:", 
+"1:",
     id = in(reg) pmpcfg_id, tmp = out(reg) _, len = out(reg) _, ans = out(reg) ans);
-    ans
-}
+        ans
+    }
 
-// 1.12中有63个，但1.11中只有15个。个别模拟器需要注意，详见上文
-#[inline]
-unsafe fn pmpaddr_r(pmpaddr_id: usize) -> usize {
-    assert!(pmpaddr_id <= 63, "pmpcfg id should be in [0, 63]");
-    let ans: usize;
-    core::arch::asm!(
+    // 1.12中有63个，但1.11中只有15个。个别模拟器需要注意，详见上文
+    #[inline]
+    unsafe fn pmpaddr_r(pmpaddr_id: usize) -> usize {
+        assert!(pmpaddr_id <= 63, "pmpcfg id should be in [0, 63]");
+        let ans: usize;
+        core::arch::asm!(
     // tmp <- 1的地址；len <- csrr和j指令的长度和
     "la     {tmp}, 1f
     la      {len}, 2f
@@ -298,7 +358,8 @@ unsafe fn pmpaddr_r(pmpaddr_id: usize) -> usize {
     "csrr   {ans}, 0x3EA", "j   1f", "csrr   {ans}, 0x3EB", "j   1f",
     "csrr   {ans}, 0x3EC", "j   1f", "csrr   {ans}, 0x3ED", "j   1f",
     "csrr   {ans}, 0x3EE", "j   1f", "csrr   {ans}, 0x3EF", "j   1f",
-"1:", 
+"1:",
     id = in(reg) pmpaddr_id, tmp = out(reg) _, len = out(reg) _, ans = out(reg) ans);
-    ans
+        ans
+    }
 }
