@@ -115,7 +115,7 @@ extern "C" fn rust_main(hartid: usize, opqaue: usize) -> ! {
         // print hart csr configuration
         hart_csr_utils::print_hart_csrs();
         // start other harts
-        let clint = clint::Clint::new(0x2000000 as *mut u8);
+        let clint = crate::clint::get();
         let num_harts = *{ count_harts::NUM_HARTS.lock() };
         for target_hart_id in 0..num_harts {
             if target_hart_id != hartid {
@@ -172,8 +172,9 @@ fn init_legacy_stdio() {
 
 fn init_clint() {
     use rustsbi::{init_ipi, init_timer};
-    init_ipi(clint::Clint::new(0x2000000 as *mut u8));
-    init_timer(clint::Clint::new(0x2000000 as *mut u8));
+    clint::init(0x200_0000);
+    init_ipi(clint::get());
+    init_timer(clint::get());
 }
 
 fn init_test_device() {

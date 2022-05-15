@@ -1,11 +1,24 @@
-#![allow(dead_code)]
+//! 很久很久以前，CLINT 和 PLIC 都定义在 riscv-privileged 里。
+//! 如今，PLIC 有了自己的独立[标准](https://github.com/riscv/riscv-plic-spec)，
+//! CLINT 却消失不见了。
 
-use rustsbi::{HartMask, Ipi, Timer};
-// 这部分其实是运行时提供的，不应该做到实现库里面
 use rustsbi::SbiRet;
+use rustsbi::{HartMask, Ipi, Timer};
+use spin::Once;
 
+#[derive(Clone, Copy)]
 pub struct Clint {
     base: usize,
+}
+
+static CLINT: Once<Clint> = Once::new();
+
+pub fn init(base: usize) {
+    CLINT.call_once(|| Clint { base });
+}
+
+pub fn get() -> Clint {
+    *CLINT.wait()
 }
 
 impl Clint {

@@ -153,10 +153,9 @@ impl rustsbi::Hsm for QemuHsm {
         drop(config_lock);
         drop(state_lock);
         // now, start the target hart
-        let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
-        clint.send_soft(hart_id); // this does not block the current function
-                                  // The following process is going to be handled in software interrupt handler, and
-                                  // the function returns immediately as starting a hart is defined as an asynchronous procedure.
+        crate::clint::get().send_soft(hart_id); // this does not block the current function
+                                                // The following process is going to be handled in software interrupt handler, and
+                                                // the function returns immediately as starting a hart is defined as an asynchronous procedure.
         SbiRet::ok(0)
     }
     fn hart_stop(&self, hart_id: usize) -> SbiRet {
@@ -181,8 +180,7 @@ impl rustsbi::Hsm for QemuHsm {
         drop(config_lock);
         drop(state_lock);
         // stop the target hart
-        let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
-        clint.send_soft(hart_id);
+        crate::clint::get().send_soft(hart_id);
         SbiRet::ok(0)
     }
     fn hart_get_status(&self, hart_id: usize) -> SbiRet {
@@ -275,11 +273,10 @@ const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
 
 // Suspend current hart and record resume state when wake
 pub fn suspend_current_hart(hsm: &QemuHsm) {
-    use crate::clint::Clint;
     use riscv::asm::wfi;
     use riscv::register::{mhartid, mie, mip};
     let hart_id = mhartid::read();
-    let clint = Clint::new(0x2000000 as *mut u8);
+    let clint = crate::clint::get();
     clint.clear_soft(hart_id); // Clear IPI
     unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
     let prev_msoft = mie::read().msoft();
@@ -312,12 +309,11 @@ pub fn suspend_current_hart(hsm: &QemuHsm) {
 
 // Pause current hart, wake through inter-processor interrupt
 pub fn pause() {
-    use crate::clint::Clint;
     use riscv::asm::wfi;
     use riscv::register::{mhartid, mie, mip};
     unsafe {
         let hartid = mhartid::read();
-        let clint = Clint::new(0x2000000 as *mut u8);
+        let clint = crate::clint::get();
         clint.clear_soft(hartid); // Clear IPI
         mip::clear_msoft(); // clear machine software interrupt flag
         let prev_msoft = mie::read().msoft();

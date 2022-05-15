@@ -101,8 +101,7 @@ pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm
                 None => unsafe {
                     // machine software interrupt but no HSM commands - delegate to S mode;
                     let ctx = rt.context_mut();
-                    let clint = crate::clint::Clint::new(0x2000000 as *mut u8);
-                    clint.clear_soft(hart_id); // Clear IPI
+                    crate::clint::get().clear_soft(hart_id); // Clear IPI
                     if feature::should_transfer_trap(ctx) {
                         feature::do_transfer_trap(ctx, Trap::Interrupt(Interrupt::SupervisorSoft))
                     } else {
