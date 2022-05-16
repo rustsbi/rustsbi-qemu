@@ -112,9 +112,6 @@ fn print_medeleg() {
     );
 }
 
-// TODO riscv32
-// TODO riscv 只实现了前 16 个
-#[cfg(target_arch = "riscv64")]
 fn print_pmps() {
     const ITEM_PER_CFG: usize = core::mem::size_of::<usize>();
     const CFG_STEP: usize = ITEM_PER_CFG / core::mem::size_of::<u32>();

@@ -110,11 +110,11 @@ pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm
                 },
             },
             GeneratorState::Complete(()) => {
-                use rustsbi::Reset;
-                crate::test_device::SiFiveTest.system_reset(
-                    rustsbi::reset::RESET_TYPE_SHUTDOWN,
-                    rustsbi::reset::RESET_REASON_NO_REASON,
-                );
+                use rustsbi::{
+                    reset::{RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN},
+                    Reset,
+                };
+                crate::test_device::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
             }
         }
     }

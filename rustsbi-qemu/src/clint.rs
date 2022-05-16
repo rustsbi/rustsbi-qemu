@@ -6,7 +6,7 @@ use rustsbi::SbiRet;
 use rustsbi::{HartMask, Ipi, Timer};
 use spin::Once;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct Clint {
     base: usize,
 }

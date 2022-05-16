@@ -10,9 +10,20 @@ use rustsbi::{
     },
     Reset, SbiRet,
 };
+use spin::Once;
 
-// Zero sized structure for a static write-only device
-pub struct SiFiveTest;
+#[derive(Clone)]
+pub struct SiFiveTest(usize);
+
+static TEST: Once<SiFiveTest> = Once::new();
+
+pub(crate) fn init(base: usize) {
+    TEST.call_once(|| SiFiveTest(base));
+}
+
+pub(crate) fn get() -> &'static SiFiveTest {
+    TEST.wait()
+}
 
 // Write these values to perform test device operations
 const TEST_FAIL: u32 = 0x3333;
@@ -24,7 +35,7 @@ const QEMU_ERR_EXIT_CODE: u32 = 1;
 
 impl Reset for SiFiveTest {
     fn system_reset(&self, reset_type: usize, reset_reason: usize) -> SbiRet {
-        let value = match reset_type {
+        let val = match reset_type {
             RESET_TYPE_SHUTDOWN => match reset_reason {
                 RESET_REASON_NO_REASON => TEST_PASS,
                 RESET_REASON_SYSTEM_FAILURE => TEST_FAIL | (QEMU_ERR_EXIT_CODE << 16),
@@ -36,10 +47,7 @@ impl Reset for SiFiveTest {
             RESET_TYPE_WARM_REBOOT => TEST_RESET,
             _ => return SbiRet::invalid_param(),
         };
-        let test = &crate::device_tree::get().test;
-        unsafe {
-            core::ptr::write_volatile(test.start as *mut u32, value);
-        }
+        unsafe { (self.0 as *mut u32).write_volatile(val) };
         unreachable!()
     }
 }

@@ -32,15 +32,16 @@ use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    let hart_id = riscv::register::mhartid::read();
+    use riscv::register::marchid;
+    use rustsbi::{
+        reset::{RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN},
+        Reset,
+    };
+
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
-    println!("[rustsbi-panic] hart {hart_id} {info}");
+    println!("[rustsbi-panic] hart {} {info}", mhartid::read());
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
-    use rustsbi::Reset;
-    test_device::SiFiveTest.system_reset(
-        rustsbi::reset::RESET_TYPE_SHUTDOWN,
-        rustsbi::reset::RESET_REASON_SYSTEM_FAILURE,
-    );
+    test_device::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
     loop {}
 }
 
@@ -95,12 +96,13 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         // 初始化外设
         let periperals = device_tree::get();
         clint::init(periperals.clint.start);
+        test_device::init(periperals.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(periperals.uart.start) };
         // 初始化 SBI 服务
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
-        rustsbi::init_ipi(*clint::get());
-        rustsbi::init_timer(*clint::get());
-        rustsbi::init_reset(test_device::SiFiveTest);
+        rustsbi::init_ipi(clint::get().clone());
+        rustsbi::init_timer(clint::get().clone());
+        rustsbi::init_reset(test_device::get().clone());
         rustsbi::init_hsm(HSM.clone());
         // 打印启动信息
         println!(
@@ -139,9 +141,9 @@ fn race_boot_hart() -> bool {
 /// 清零 bss 段。
 #[inline(always)]
 fn zero_bss() {
-    #[cfg(target_arch = "riscv32")]
+    #[cfg(target_pointer_width = "32")]
     type Word = u32;
-    #[cfg(target_arch = "riscv64")]
+    #[cfg(target_pointer_width = "64")]
     type Word = u64;
     extern "C" {
         static mut sbss: Word;
