@@ -104,25 +104,23 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         rustsbi::init_hsm(HSM.clone());
         // 打印启动信息
         println!(
-            "[rustsbi] RustSBI version {}, adapting to RISC-V SBI v1.0.0",
-            rustsbi::VERSION
+            "\
+[rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v1.0.0
+{logo}
+[rustsbi] Implementation: RustSBI-QEMU Version {ver_impl}
+[rustsbi] Device model: {model:?}",
+            ver_sbi = rustsbi::VERSION,
+            logo = rustsbi::LOGO,
+            ver_impl = env!("CARGO_PKG_VERSION"),
+            model = device_tree::get().model
         );
-        println!("{}", rustsbi::LOGO);
-        println!(
-            "[rustsbi] Implementation: RustSBI-QEMU Version {}",
-            env!("CARGO_PKG_VERSION")
-        );
-        let info = device_tree::get();
-        println!("[rustsbi] Device model: {:?}", info.model);
     }
     set_pmp();
-    // enable wake by ipi
-    unsafe { riscv::register::mstatus::set_mie() };
+    delegate_supervisor_trap();
+    enable_mint();
     if boot_hart {
-        delegate_interrupt_exception();
         hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor 0x80200000");
-        // start SBI environment
         execute::execute_supervisor(0x80200000, hartid, opaque, HSM.clone());
     } else {
         qemu_hsm::pause();
@@ -130,6 +128,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
     }
 }
 
+/// 抢夺启动权。
 fn race_boot_hart() -> bool {
     use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
     #[link_section = ".bss.uninit"]
@@ -167,9 +166,9 @@ fn init_heap() {
     }
 }
 
-// 委托中断；把S的中断全部委托给S层
-fn delegate_interrupt_exception() {
-    use riscv::register::{medeleg, mideleg, mie};
+/// 委托中断：把 S 的陷入全部委托给 S 层。
+fn delegate_supervisor_trap() {
+    use riscv::register::{medeleg, mideleg};
     unsafe {
         mideleg::set_sext();
         mideleg::set_stimer();
@@ -186,12 +185,23 @@ fn delegate_interrupt_exception() {
         medeleg::set_instruction_fault();
         medeleg::set_load_fault();
         medeleg::set_store_fault();
-        mie::set_mext();
-        // 不打开mie::set_mtimer
-        mie::set_msoft();
     }
 }
 
+/// 使能中断。
+fn enable_mint() {
+    use riscv::{interrupt, register::mie};
+    unsafe {
+        mie::set_mext();
+        // 不打开 mie::set_mtimer
+        mie::set_msoft();
+        interrupt::enable();
+    }
+}
+
+/// 设置 PMP。
+///
+/// FIXME 需要判断一个外设区域是否能用 NAPOT 表示，最好能实现一个排序+合并连续区域的复杂算法
 fn set_pmp() {
     use core::ops::Range;
     use riscv::register::{
