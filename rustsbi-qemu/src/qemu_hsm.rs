@@ -2,14 +2,13 @@
 
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicU8, Ordering};
-
 use hashbrown::HashMap;
 use riscv::register::mstatus::{self, MPP};
 use rustsbi::SbiRet;
 
 // RISC-V SBI Hart State Monitor states
 #[allow(unused)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 enum HsmState {
     /// The hart is physically powered-up and executing normally.

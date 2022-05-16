@@ -64,7 +64,6 @@ struct Tree<'a> {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
 struct Cpus<'a> {
     cpu: NodeSeq<'a>,
 }

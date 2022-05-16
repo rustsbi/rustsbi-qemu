@@ -1,9 +1,8 @@
+use crate::runtime::SupervisorContext;
 use riscv::register::{
     mstatus::{self, MPP, SPP},
     mtval, scause, sepc, stval, stvec,
 };
-
-use crate::runtime::SupervisorContext;
 
 #[inline]
 pub unsafe fn should_transfer_trap(ctx: &mut SupervisorContext) -> bool {

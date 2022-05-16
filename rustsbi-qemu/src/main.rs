@@ -114,30 +114,20 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         );
         let info = device_tree::get();
         println!("[rustsbi] Device model: {:?}", info.model);
+    }
+    set_pmp();
+    // enable wake by ipi
+    unsafe { riscv::register::mstatus::set_mie() };
+    if boot_hart {
+        delegate_interrupt_exception();
+        hart_csr_utils::print_hart_csrs();
+        println!("[rustsbi] enter supervisor 0x80200000");
+        // start SBI environment
+        execute::execute_supervisor(0x80200000, hartid, opaque, HSM.clone());
     } else {
         qemu_hsm::pause();
+        unreachable!()
     }
-    delegate_interrupt_exception();
-    set_pmp();
-    unsafe {
-        // enable wake by ipi
-        riscv::register::mstatus::set_mie();
-    }
-    if boot_hart {
-        // print hart csr configuration
-        hart_csr_utils::print_hart_csrs();
-        // start other harts
-        let clint = crate::clint::get();
-        let num_harts = device_tree::get().smp;
-        for target_hart_id in 0..num_harts {
-            if target_hart_id != hartid {
-                clint.send_soft(target_hart_id);
-            }
-        }
-        println!("[rustsbi] enter supervisor 0x80200000");
-    }
-    // start SBI environment
-    execute::execute_supervisor(0x80200000, hartid, opaque, HSM.clone());
 }
 
 fn race_boot_hart() -> bool {
