@@ -211,6 +211,7 @@ fn set_pmp() {
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
     let periperals = device_tree::get();
     let memory = &periperals.memory;
+    let uart = &periperals.uart;
     let test = &periperals.test;
     let clint = &periperals.clint;
     let plic = &periperals.plic;
@@ -231,23 +232,26 @@ fn set_pmp() {
     }
 
     let mut pmpcfg0 = PmpCfg::ZERO;
-    // UART + VIRTIO_MMIO0-7
-    pmpcfg0.set_next(0b11011);
-    let pmpaddr0 = calc_pmpaddr_napot(&(0x1000_0000..0x1000_8000));
-    pmpcfg0.set_next(0b11011);
-    let pmpaddr1 = calc_pmpaddr_napot(&(0x1000_8000..0x1000_9000));
-    // VIRT_CLINT
-    pmpcfg0.set_next(0b11011);
-    let pmpaddr2 = calc_pmpaddr_napot(clint);
-    // VIRT_PLIC_SIZE = 0x20_0000 + 0x1000 * harts, thus supports up to 512 harts
-    pmpcfg0.set_next(0b11011);
-    let pmpaddr3 = calc_pmpaddr_napot(plic);
-    // test
-    pmpcfg0.set_next(0b11011);
-    let pmpaddr4 = calc_pmpaddr_napot(test);
     // memory
     pmpcfg0.set_next(0b11111);
-    let pmpaddr5 = calc_pmpaddr_napot(memory);
+    let pmpaddr0 = calc_pmpaddr_napot(memory);
+    // uart
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr1 = calc_pmpaddr_napot(uart);
+    // test
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr2 = calc_pmpaddr_napot(test);
+    // clint
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr3 = calc_pmpaddr_napot(clint);
+    // plic
+    pmpcfg0.set_next(0b11011);
+    let pmpaddr4 = calc_pmpaddr_napot(plic);
+    // plic
+    pmpcfg0.set_next(0b01011);
+    let pmpaddr5 = 0x1000_1000 >> 2;
+    pmpcfg0.set_next(0b00000);
+    let pmpaddr6 = 0x1000_9000 >> 2;
     unsafe {
         core::arch::asm!(
             "csrw  pmpcfg0,  {}",
@@ -257,6 +261,7 @@ fn set_pmp() {
             "csrw  pmpaddr3, {}",
             "csrw  pmpaddr4, {}",
             "csrw  pmpaddr5, {}",
+            "csrw  pmpaddr6, {}",
             "sfence.vma",
             in(reg) pmpcfg0.0,
             in(reg) pmpaddr0,
@@ -265,6 +270,7 @@ fn set_pmp() {
             in(reg) pmpaddr3,
             in(reg) pmpaddr4,
             in(reg) pmpaddr5,
+            in(reg) pmpaddr6,
         );
     }
 }
