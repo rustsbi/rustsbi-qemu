@@ -324,8 +324,6 @@ dependencies = [
 name = "rustsbi-qemu"
 version = "0.1.1"
 dependencies = [
- "bit_field",
- "bitflags",
  "buddy_system_allocator",
  "embedded-hal",
  "hashbrown",
@@ -379,7 +377,7 @@ dependencies = [
 [[package]]
 name = "serde-device-tree"
 version = "0.0.1"
-source = "git+https://github.com/YdrMaster/serde-device-tree.git?rev=32d677e#32d677eab28d478dd6a5923fb02be93d81384f08"
+source = "git+https://github.com/rustsbi/serde-device-tree.git?rev=b8c2da9#b8c2da9ee425cce49480731fa48e2ea39b457803"
 dependencies = [
  "serde",
 ]
