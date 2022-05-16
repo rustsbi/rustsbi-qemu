@@ -125,17 +125,6 @@ fn print_pmps() {
         let mut cfg = pmpcfg(i_cfg);
         let mut i_addr = 0;
         while i_addr < ITEM_PER_CFG {
-            let permission = match cfg & 0b111 {
-                0b000 => "---",
-                0b100 => "x--",
-                0b010 => "-w-",
-                0b001 => "--r",
-                0b110 => "xw-",
-                0b101 => "x-r",
-                0b011 => "-wr",
-                0b111 => "xwr",
-                _ => unreachable!(),
-            };
             let step = match (cfg >> 3) & 0b11 {
                 0b00 => 1,
                 0b01 => {

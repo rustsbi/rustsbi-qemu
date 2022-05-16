@@ -15,8 +15,10 @@ pub(crate) struct BoardInfo {
     pub model: Vec<String>,
     pub smp: usize,
     pub memory: Range<usize>,
+    pub rtc: Range<usize>,
     pub uart: Range<usize>,
     pub test: Range<usize>,
+    pub pci: Range<usize>,
     pub clint: Range<usize>,
     pub plic: Range<usize>,
 }
@@ -39,8 +41,10 @@ pub(crate) fn init(opaque: usize) {
                 .find(|m| m.device_type.iter().any(|t| t == "memory"))
                 .map(|m| m.reg.iter().next().unwrap().0.clone())
                 .unwrap(),
+            rtc: take_one_peripheral(&t.soc.rtc, "google,goldfish-rtc"),
             uart: take_one_peripheral(&t.soc.uart, "ns16550a"),
             test: take_one_peripheral(&t.soc.test, "syscon"),
+            pci: take_one_peripheral(&t.soc.pci, "pci-host-ecam-generic"),
             clint: take_one_peripheral(&t.soc.clint, "riscv,clint0"),
             plic: take_one_peripheral(&t.soc.plic, "riscv,plic0"),
         }
@@ -67,8 +71,10 @@ struct Cpus<'a> {
 
 #[derive(Deserialize)]
 struct Soc<'a> {
+    rtc: NodeSeq<'a>,
     uart: NodeSeq<'a>,
     test: NodeSeq<'a>,
+    pci: NodeSeq<'a>,
     clint: NodeSeq<'a>,
     plic: NodeSeq<'a>,
 }

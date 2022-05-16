@@ -9,10 +9,6 @@ extern crate alloc;
 #[macro_use]
 extern crate rustsbi;
 
-use core::arch::asm;
-use core::ops::Range;
-use core::panic::PanicInfo;
-
 mod clint;
 mod device_tree;
 mod execute;
@@ -21,7 +17,6 @@ mod hart_csr_utils;
 mod ns16550a;
 mod prv_mem;
 mod qemu_hsm;
-mod qemu_pmu;
 mod runtime;
 mod test_device;
 
@@ -36,7 +31,7 @@ mod constants {
 use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
-fn panic(info: &PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo) -> ! {
     let hart_id = riscv::register::mhartid::read();
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
     println!("[rustsbi-panic] hart {} {}", hart_id, info);
@@ -69,7 +64,7 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     #[link_section = ".bss.uninit"]
     static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
 
-    asm!("
+    core::arch::asm!("
            csrw  mie,  zero
            la     sp, {stack}
            li     t0, {per_hart_stack_size}
@@ -208,11 +203,19 @@ fn delegate_interrupt_exception() {
 }
 
 fn set_pmp() {
+    use core::ops::Range;
+    use riscv::register::{
+        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpaddr6, pmpaddr7, pmpaddr8,
+        pmpcfg0,
+    };
+
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
     let periperals = device_tree::get();
     let memory = &periperals.memory;
+    let rtc = &periperals.rtc;
     let uart = &periperals.uart;
     let test = &periperals.test;
+    let pci = &periperals.pci;
     let clint = &periperals.clint;
     let plic = &periperals.plic;
 
@@ -234,45 +237,32 @@ fn set_pmp() {
     let mut pmpcfg0 = PmpCfg::ZERO;
     // memory
     pmpcfg0.set_next(0b11111);
-    let pmpaddr0 = calc_pmpaddr_napot(memory);
+    pmpaddr0::write(calc_pmpaddr_napot(memory));
+    // rtc
+    pmpcfg0.set_next(0b11011);
+    pmpaddr1::write(calc_pmpaddr_napot(rtc));
     // uart
     pmpcfg0.set_next(0b11011);
-    let pmpaddr1 = calc_pmpaddr_napot(uart);
+    pmpaddr2::write(calc_pmpaddr_napot(uart));
     // test
     pmpcfg0.set_next(0b11011);
-    let pmpaddr2 = calc_pmpaddr_napot(test);
+    pmpaddr3::write(calc_pmpaddr_napot(test));
+    // pci
+    pmpcfg0.set_next(0b11011);
+    pmpaddr4::write(calc_pmpaddr_napot(pci));
     // clint
     pmpcfg0.set_next(0b11011);
-    let pmpaddr3 = calc_pmpaddr_napot(clint);
+    pmpaddr5::write(calc_pmpaddr_napot(clint));
     // plic
     pmpcfg0.set_next(0b11011);
-    let pmpaddr4 = calc_pmpaddr_napot(plic);
-    // plic
+    pmpaddr6::write(calc_pmpaddr_napot(plic));
+    // virtio_mmio
     pmpcfg0.set_next(0b01011);
-    let pmpaddr5 = 0x1000_1000 >> 2;
+    pmpaddr7::write(0x1000_1000 >> 2);
     pmpcfg0.set_next(0b00000);
-    let pmpaddr6 = 0x1000_9000 >> 2;
-    unsafe {
-        core::arch::asm!(
-            "csrw  pmpcfg0,  {}",
-            "csrw  pmpaddr0, {}",
-            "csrw  pmpaddr1, {}",
-            "csrw  pmpaddr2, {}",
-            "csrw  pmpaddr3, {}",
-            "csrw  pmpaddr4, {}",
-            "csrw  pmpaddr5, {}",
-            "csrw  pmpaddr6, {}",
-            "sfence.vma",
-            in(reg) pmpcfg0.0,
-            in(reg) pmpaddr0,
-            in(reg) pmpaddr1,
-            in(reg) pmpaddr2,
-            in(reg) pmpaddr3,
-            in(reg) pmpaddr4,
-            in(reg) pmpaddr5,
-            in(reg) pmpaddr6,
-        );
-    }
+    pmpaddr8::write(0x1000_9000 >> 2);
+    // cfg
+    pmpcfg0::write(pmpcfg0.bits());
 }
 
 struct PmpCfg(usize, usize);
@@ -283,5 +273,9 @@ impl PmpCfg {
     fn set_next(&mut self, value: u8) {
         self.0 |= (value as usize) << self.1;
         self.1 += 8;
+    }
+
+    fn bits(&self) -> usize {
+        self.0
     }
 }
