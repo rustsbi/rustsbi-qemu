@@ -34,7 +34,7 @@ use constants::*;
 fn panic(info: &core::panic::PanicInfo) -> ! {
     let hart_id = riscv::register::mhartid::read();
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
-    println!("[rustsbi-panic] hart {} {}", hart_id, info);
+    println!("[rustsbi-panic] hart {hart_id} {info}");
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
     use rustsbi::Reset;
     test_device::SiFiveTest.system_reset(

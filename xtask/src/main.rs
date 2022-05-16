@@ -343,7 +343,7 @@ fn run_test_kernel() {
         .expect("spawn child process");
     let output = child.wait_with_output().expect("wait on child");
     let string = String::from_utf8(output.stdout).expect("utf-8 output");
-    println!("{}", string);
+    println!("{string}");
     let last_line = string.lines().last();
     assert!(last_line.is_some(), "some outuput");
     assert_eq!(

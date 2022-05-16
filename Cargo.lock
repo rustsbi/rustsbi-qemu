@@ -313,8 +313,7 @@ dependencies = [
 [[package]]
 name = "rustsbi"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "039ff1f03eaf3ead3f6804b4e7abb7c5abd4f9e71b0483ebd554d78ce1298b5d"
+source = "git+https://github.com/rustsbi/rustsbi.git?rev=b22338a#b22338a15caa572a61151e96b45818ebc6837788"
 dependencies = [
  "embedded-hal",
  "nb 1.0.0",

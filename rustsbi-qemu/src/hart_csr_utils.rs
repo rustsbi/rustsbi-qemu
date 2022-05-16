@@ -20,13 +20,13 @@ fn print_misa() {
             MXL::XLEN64 => "RV64",
             MXL::XLEN128 => "RV128",
         };
-        print!("[rustsbi] misa: {}", mxl_str);
+        print!("[rustsbi] misa: {mxl_str}");
         for ext in 'A'..='Z' {
             if isa.has_extension(ext) {
-                print!("{}", ext);
+                print!("{ext}");
             }
         }
-        println!("");
+        println!();
     }
 }
 
@@ -132,13 +132,13 @@ fn print_pmps() {
                         base + i_addr,
                         pmpaddr(base + i_addr) << 2,
                         pmpaddr(base + i_addr + 1) << 2,
-                        cfg & 0b111,
+                        cfg,
                     );
                     2
                 }
                 0b10 => {
                     let s = pmpaddr(base + i_addr);
-                    dump_pmp(base + i_addr, s << 2, (s + 1) << 2, cfg & 0b111);
+                    dump_pmp(base + i_addr, s << 2, (s + 1) << 2, cfg);
                     1
                 }
                 0b11 => {
@@ -146,7 +146,7 @@ fn print_pmps() {
                     let len = 1usize << (addr.trailing_ones() + 2);
                     let s = (addr & !(len - 1)) << 2;
                     let e = s + len;
-                    dump_pmp(base + i_addr, s, e, cfg & 0b111);
+                    dump_pmp(base + i_addr, s, e, cfg);
                     1
                 }
                 _ => unreachable!(),
@@ -158,21 +158,13 @@ fn print_pmps() {
     }
 }
 
-fn dump_pmp(i: usize, s: usize, e: usize, permission: usize) {
-    let permission = match permission {
-        0b000 => "---",
-        0b100 => "x--",
-        0b010 => "-w-",
-        0b001 => "--r",
-        0b110 => "xw-",
-        0b101 => "x-r",
-        0b011 => "-wr",
-        0b111 => "xwr",
-        _ => unreachable!(),
-    };
+#[inline]
+fn dump_pmp(i: usize, s: usize, e: usize, cfg: usize) {
     println!(
-        "[rustsbi] pmp{}: {:#010x}..{:#010x} ({})",
-        i, s, e, permission
+        "[rustsbi] pmp{i}: {s:#010x}..{e:#010x} ({}{}{})",
+        if cfg & 0b100 != 0 { "x" } else { "-" },
+        if cfg & 0b010 != 0 { "w" } else { "-" },
+        if cfg & 0b001 != 0 { "r" } else { "-" },
     );
 }
 
