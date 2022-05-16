@@ -32,7 +32,7 @@ use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use riscv::register::marchid;
+    use riscv::register::mhartid;
     use rustsbi::{
         reset::{RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN},
         Reset,

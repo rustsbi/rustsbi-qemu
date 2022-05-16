@@ -345,6 +345,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2cc38e8fa666e2de3c4aba7edeb5ffc5246c1c2ed0e3d17e560aeeba736b23f"
 
 [[package]]
+name = "sbi-rt"
+version = "0.1.0"
+
+[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -438,6 +442,7 @@ dependencies = [
  "buddy_system_allocator",
  "lazy_static",
  "riscv 0.6.0",
+ "sbi-rt",
  "spin 0.7.1",
 ]
 

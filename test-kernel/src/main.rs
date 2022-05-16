@@ -6,7 +6,6 @@
 
 use core::arch::asm;
 use core::panic::PanicInfo;
-
 use riscv::register::scause::Interrupt;
 use riscv::register::{
     scause::{self, Exception, Trap},
@@ -14,10 +13,11 @@ use riscv::register::{
     /*sie, sstatus, */ stvec::{self, TrapMode},
 };
 
+extern crate sbi_rt as sbi;
+
 #[macro_use]
 mod console;
 mod mm;
-mod sbi;
 
 pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
     unsafe { asm!("mv tp, {}", in(reg) hartid, options(nomem, nostack)) }; // tp == hartid
@@ -117,7 +117,7 @@ extern "C" fn hart_3_start(hart_id: usize, param: usize) {
 
 fn test_base_extension() {
     println!(">> Test-kernel: Testing base extension");
-    let base_version = sbi::probe_extension(sbi::EXTENSION_BASE);
+    let base_version = sbi::probe_extension(sbi::EID_BASE);
     if base_version == 0 {
         println!("!! Test-kernel: no base extension probed; SBI call returned value '0'");
         println!(
@@ -215,7 +215,7 @@ unsafe extern "C" fn entry() -> ! {
 1:  auipc   t0, %pcrel_hi({rust_main})
     addi    t0, t0, %pcrel_lo(1b)
     jr      t0
-    ", 
+    ",
     boot_stack = sym BOOT_STACK,
     rust_main = sym rust_main,
     options(noreturn))
