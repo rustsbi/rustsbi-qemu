@@ -157,7 +157,8 @@ impl rustsbi::Hsm for QemuHsm {
                                                 // the function returns immediately as starting a hart is defined as an asynchronous procedure.
         SbiRet::ok(0)
     }
-    fn hart_stop(&self, hart_id: usize) -> SbiRet {
+    fn hart_stop(&self) -> SbiRet {
+        let hart_id = riscv::register::mhartid::read();
         // try to set current target hart state to stop pending
         let mut state_lock = self.state.lock();
         let current_state = state_lock

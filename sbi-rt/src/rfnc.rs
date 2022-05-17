@@ -81,7 +81,7 @@ pub fn remote_hfence_gvma(
 ) -> SbiRet {
     sbi_call_4(
         EID_RFNC,
-        FID_REMOTE_HFENCE_GVMA_VMID,
+        FID_REMOTE_HFENCE_GVMA,
         hart_mask,
         hart_mask_base,
         start_addr,
@@ -99,7 +99,7 @@ pub fn remote_hfence_vvma_asid(
 ) -> SbiRet {
     sbi_call_5(
         EID_RFNC,
-        FID_REMOTE_HFENCE_GVMA_VMID,
+        FID_REMOTE_HFENCE_VVMA_ASID,
         hart_mask,
         hart_mask_base,
         start_addr,
@@ -117,7 +117,7 @@ pub fn remote_hfence_vvma(
 ) -> SbiRet {
     sbi_call_4(
         EID_RFNC,
-        FID_REMOTE_HFENCE_GVMA_VMID,
+        FID_REMOTE_HFENCE_VVMA,
         hart_mask,
         hart_mask_base,
         start_addr,

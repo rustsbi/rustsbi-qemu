@@ -25,7 +25,6 @@ pub const SBI_ERR_ALREADY_STOPPED: usize = error_code(-8);
 
 impl core::fmt::Debug for SbiRet {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        use core::write;
         match self.error {
             SBI_SUCCESS => write!(f, "{:?}", self.value),
             SBI_ERR_FAILED => write!(f, "<SBI call failed>"),

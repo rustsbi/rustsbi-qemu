@@ -313,7 +313,7 @@ dependencies = [
 [[package]]
 name = "rustsbi"
 version = "0.2.2"
-source = "git+https://github.com/rustsbi/rustsbi.git?rev=b22338a#b22338a15caa572a61151e96b45818ebc6837788"
+source = "git+https://github.com/rustsbi/rustsbi.git?rev=40c2985#40c2985cbcfd32b8fa53182cc7c5df234a898e96"
 dependencies = [
  "embedded-hal",
  "nb 1.0.0",

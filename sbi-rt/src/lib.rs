@@ -1,5 +1,4 @@
 ﻿#![no_std]
-#![allow(unused)]
 
 // §3
 mod binary;
@@ -24,6 +23,7 @@ pub use base::*;
 pub use binary::SbiRet;
 pub use hsm::*;
 pub use pmu::*;
+pub use rfnc::*;
 pub use spi::*;
 pub use srst::*;
 pub use time::*;
