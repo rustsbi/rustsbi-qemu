@@ -14,19 +14,19 @@ pub struct SbiRet {
 }
 
 pub const SBI_SUCCESS: usize = 0;
-pub const SBI_ERR_FAILED: usize = error_code(-1);
-pub const SBI_ERR_NOT_SUPPORTED: usize = error_code(-2);
-pub const SBI_ERR_INVALID_PARAM: usize = error_code(-3);
-pub const SBI_ERR_DENIED: usize = error_code(-4);
-pub const SBI_ERR_INVALID_ADDRESS: usize = error_code(-5);
-pub const SBI_ERR_ALREADY_AVAILABLE: usize = error_code(-6);
-pub const SBI_ERR_ALREADY_STARTED: usize = error_code(-7);
-pub const SBI_ERR_ALREADY_STOPPED: usize = error_code(-8);
+pub const SBI_ERR_FAILED: usize = -1isize as _;
+pub const SBI_ERR_NOT_SUPPORTED: usize = -2isize as _;
+pub const SBI_ERR_INVALID_PARAM: usize = -3isize as _;
+pub const SBI_ERR_DENIED: usize = -4isize as _;
+pub const SBI_ERR_INVALID_ADDRESS: usize = -5isize as _;
+pub const SBI_ERR_ALREADY_AVAILABLE: usize = -6isize as _;
+pub const SBI_ERR_ALREADY_STARTED: usize = -7isize as _;
+pub const SBI_ERR_ALREADY_STOPPED: usize = -8isize as _;
 
 impl core::fmt::Debug for SbiRet {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.error {
-            SBI_SUCCESS => write!(f, "{:?}", self.value),
+            SBI_SUCCESS => write!(f, "{:#x}", self.value),
             SBI_ERR_FAILED => write!(f, "<SBI call failed>"),
             SBI_ERR_NOT_SUPPORTED => write!(f, "<SBI feature not supported>"),
             SBI_ERR_INVALID_PARAM => write!(f, "<SBI invalid parameter>"),
@@ -36,6 +36,35 @@ impl core::fmt::Debug for SbiRet {
             SBI_ERR_ALREADY_STARTED => write!(f, "<SBI already started>"),
             SBI_ERR_ALREADY_STOPPED => write!(f, "<SBI already stopped>"),
             unknown => write!(f, "[SBI Unknown error: {unknown}]"),
+        }
+    }
+}
+
+pub enum Error {
+    Failed,
+    NotSupported,
+    InvalidParam,
+    Denied,
+    InvalidAddress,
+    AlreadyAvailable,
+    AlreadyStarted,
+    AlreadyStopped,
+    Customed(isize),
+}
+
+impl SbiRet {
+    pub const fn result(&self) -> Result<usize, Error> {
+        match self.error {
+            SBI_SUCCESS => Ok(self.value),
+            SBI_ERR_FAILED => Err(Error::Failed),
+            SBI_ERR_NOT_SUPPORTED => Err(Error::NotSupported),
+            SBI_ERR_INVALID_PARAM => Err(Error::InvalidParam),
+            SBI_ERR_DENIED => Err(Error::Denied),
+            SBI_ERR_INVALID_ADDRESS => Err(Error::InvalidAddress),
+            SBI_ERR_ALREADY_AVAILABLE => Err(Error::AlreadyAvailable),
+            SBI_ERR_ALREADY_STARTED => Err(Error::AlreadyStarted),
+            SBI_ERR_ALREADY_STOPPED => Err(Error::AlreadyStopped),
+            unknown => Err(Error::Customed(unknown as _)),
         }
     }
 }
@@ -200,8 +229,4 @@ pub(crate) const fn eid_from_str(name: &str) -> i32 {
         [a, b, c, d] => (a as i32) << 24 | (b as i32) << 16 | (c as i32) << 8 | d as i32,
         _ => unreachable!(),
     }
-}
-
-const fn error_code(val: i32) -> usize {
-    usize::from_ne_bytes(isize::to_ne_bytes(val as _))
 }

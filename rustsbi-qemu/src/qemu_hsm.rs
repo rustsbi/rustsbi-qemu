@@ -2,8 +2,8 @@
 
 use alloc::sync::Arc;
 use hashbrown::HashMap;
-use riscv::register::mstatus::{self, MPP};
 use rustsbi::SbiRet;
+use spin::Mutex;
 
 // RISC-V SBI Hart State Monitor states
 #[allow(unused)]
@@ -49,8 +49,8 @@ enum HsmState {
 // variable at any time.
 #[derive(Clone, Default)]
 pub struct QemuHsm {
-    state: Arc<spin::Mutex<HashMap<usize, HsmState>>>,
-    last_command: Arc<spin::Mutex<HashMap<usize, HsmCommand>>>,
+    state: Arc<Mutex<HashMap<usize, HsmState>>>,
+    last_command: Arc<Mutex<HashMap<usize, HsmCommand>>>,
 }
 
 // RustSBI-QEMU HSM command, these commands apply to a remote given hart.
@@ -61,7 +61,7 @@ pub struct QemuHsm {
 //
 // By current version of SBI specification, suspend command only apply to current hart,
 // thus RustSBI does not use remote HSM command in this case.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum HsmCommand {
     Start(usize, usize),
     Stop,
@@ -71,30 +71,29 @@ impl QemuHsm {
     // Return last command by current hart id.
     // This function is used in software interrupt handler to check which HSM function should we execute.
     pub(crate) fn last_command(&self) -> Option<HsmCommand> {
-        let hart_id = riscv::register::mhartid::read();
-        self.last_command.lock().get(&hart_id).copied()
+        self.last_command.lock().get(&hart_id()).copied()
     }
     // Record that current hart id is marked as `Stopped` state.
     // It is used in interrupt handler, when hart stop command is received. Before this function,
     // the target hart is making preparations to stop; it records state and must stop immediately after
     // this function is called.
     pub(crate) fn record_current_stop_finished(&self) {
-        let hart_id = riscv::register::mhartid::read();
-        self.state.lock().entry(hart_id).insert(HsmState::Stopped);
+        self.state.lock().insert(hart_id(), HsmState::Stopped);
     }
     // Record that current hart id is marked as `Started` state.
     // It is used when hart stop command is received in interrupt handler.
     // The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started',
     // and should jump to target address right away.
     pub(crate) fn record_current_start_finished(&self) {
-        let hart_id = riscv::register::mhartid::read();
-        self.state.lock().entry(hart_id).insert(HsmState::Started);
+        self.state.lock().insert(hart_id(), HsmState::Started);
     }
 }
 
 // Adapt RustSBI interface to RustSBI-QEMU's QemuHsm.
 impl rustsbi::Hsm for QemuHsm {
     fn hart_start(&self, hart_id: usize, start_addr: usize, opaque: usize) -> SbiRet {
+        use riscv::register::mstatus::{self, MPP};
+
         // previous privileged mode should be user or supervisor; start from machine mode is not supported
         if !matches!(mstatus::read().mpp(), MPP::Supervisor | MPP::User) {
             return SbiRet::invalid_param();
@@ -103,7 +102,8 @@ impl rustsbi::Hsm for QemuHsm {
         match self.state.lock().get_mut(&hart_id) {
             Some(s) if *s == HsmState::Stopped => *s = HsmState::StartPending,
             Some(s) if *s == HsmState::Started => return SbiRet::already_available(),
-            Some(_) | None => return SbiRet::invalid_param(),
+            Some(_) => return SbiRet::failed(),
+            None => return SbiRet::invalid_param(),
         }
         // todo: check start address
         // SBI_ERR_INVALID_ADDRESS: start_addr is not valid possibly due to following reasons:
@@ -120,14 +120,13 @@ impl rustsbi::Hsm for QemuHsm {
     }
 
     fn hart_stop(&self) -> SbiRet {
-        let hart_id = riscv::register::mhartid::read();
         // try to modify state to stop hart
-        match self.state.lock().get_mut(&hart_id) {
+        match self.state.lock().get_mut(&hart_id()) {
             Some(s) if *s == HsmState::Started => *s = HsmState::StopPending,
-            Some(_) | None => return SbiRet::invalid_param(),
+            Some(_) | None => return SbiRet::failed(),
         }
-        self.last_command.lock().insert(hart_id, HsmCommand::Stop);
-        crate::clint::get().send_soft(hart_id);
+        self.last_command.lock().insert(hart_id(), HsmCommand::Stop);
+        crate::clint::get().send_soft(hart_id());
         SbiRet::ok(0)
     }
 
@@ -139,12 +138,10 @@ impl rustsbi::Hsm for QemuHsm {
     }
 
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
-        let hart_id = riscv::register::mhartid::read();
         // try to modify state to suspend hart
-        match self.state.lock().get_mut(&hart_id) {
+        match self.state.lock().get_mut(&hart_id()) {
             Some(s) if *s == HsmState::Started => *s = HsmState::SuspendPending,
-            Some(_) => return SbiRet::failed(),
-            None => return SbiRet::invalid_param(),
+            Some(_) | None => return SbiRet::failed(),
         }
         // pause and wait for machine level ipi
         suspend_current_hart(self);
@@ -153,7 +150,7 @@ impl rustsbi::Hsm for QemuHsm {
             // and the supervisor-mode software will see SBI suspend call return without any failures.
             SUSPEND_RETENTIVE => {
                 // mark current hart as started
-                self.state.lock().insert(hart_id, HsmState::Started);
+                self.state.lock().insert(hart_id(), HsmState::Started);
                 SbiRet::ok(0)
             }
             // Resuming from a non-retentive suspend state is relatively more involved
@@ -162,8 +159,8 @@ impl rustsbi::Hsm for QemuHsm {
                 // send start command to runtime of current hart
                 self.last_command
                     .lock()
-                    .insert(hart_id, HsmCommand::Start(resume_addr, opaque));
-                crate::clint::get().send_soft(hart_id);
+                    .insert(hart_id(), HsmCommand::Start(resume_addr, opaque));
+                crate::clint::get().send_soft(hart_id());
                 unreachable!()
             }
             // There could be other platform specific suspend types; RustSBI-QEMU does not define any
@@ -179,15 +176,15 @@ const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
 // Suspend current hart and record resume state when wake
 pub fn suspend_current_hart(hsm: &QemuHsm) {
     use riscv::asm::wfi;
-    use riscv::register::{mhartid, mie, mip};
-    let hart_id = mhartid::read();
+    use riscv::register::{mie, mip};
+
     let clint = crate::clint::get();
-    clint.clear_soft(hart_id); // Clear IPI
+    clint.clear_soft(hart_id()); // Clear IPI
     unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
     let prev_msoft = mie::read().msoft();
     unsafe { mie::set_msoft() }; // Start listening for software interrupts
                                  // mark current state as suspended
-    hsm.state.lock().entry(hart_id).insert(HsmState::Suspended);
+    hsm.state.lock().insert(hart_id(), HsmState::Suspended);
     // actual suspended process
     loop {
         unsafe { wfi() };
@@ -196,25 +193,21 @@ pub fn suspend_current_hart(hsm: &QemuHsm) {
         }
     }
     // mark current state as resume pending
-    hsm.state
-        .lock()
-        .entry(hart_id)
-        .insert(HsmState::ResumePending);
+    hsm.state.lock().insert(hart_id(), HsmState::ResumePending);
     // resume
     if !prev_msoft {
         unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
     }
-    clint.clear_soft(hart_id); // Clear IPI
+    clint.clear_soft(hart_id()); // Clear IPI
 }
 
 // Pause current hart, wake through inter-processor interrupt
 pub fn pause() {
     use riscv::asm::wfi;
-    use riscv::register::{mhartid, mie, mip};
+    use riscv::register::{mie, mip};
     unsafe {
-        let hartid = mhartid::read();
         let clint = crate::clint::get();
-        clint.clear_soft(hartid); // Clear IPI
+        clint.clear_soft(hart_id()); // Clear IPI
         mip::clear_msoft(); // clear machine software interrupt flag
         let prev_msoft = mie::read().msoft();
         mie::set_msoft(); // Start listening for software interrupts
@@ -227,6 +220,11 @@ pub fn pause() {
         if !prev_msoft {
             mie::clear_msoft(); // Stop listening for software interrupts
         }
-        clint.clear_soft(hartid); // Clear IPI
+        clint.clear_soft(hart_id()); // Clear IPI
     }
+}
+
+#[inline(always)]
+fn hart_id() -> usize {
+    riscv::register::mhartid::read()
 }
