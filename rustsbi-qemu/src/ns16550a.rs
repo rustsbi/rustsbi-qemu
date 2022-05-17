@@ -22,7 +22,8 @@ impl Write<u8> for Ns16550a {
     type Error = Infallible;
 
     fn write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
-        Ok(self.0.send(word))
+        self.0.send(word);
+        Ok(())
     }
 
     fn flush(&mut self) -> nb::Result<(), Self::Error> {

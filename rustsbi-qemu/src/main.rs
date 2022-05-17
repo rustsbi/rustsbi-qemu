@@ -46,7 +46,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 lazy_static::lazy_static! {
-    pub static ref HSM: qemu_hsm::QemuHsm = qemu_hsm::QemuHsm::new();
+    pub static ref HSM: qemu_hsm::QemuHsm = qemu_hsm::QemuHsm::default();
 }
 
 /// 入口。

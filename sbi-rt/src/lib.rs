@@ -20,7 +20,7 @@ mod srst;
 mod pmu;
 
 pub use base::*;
-pub use binary::SbiRet;
+pub use binary::*;
 pub use hsm::*;
 pub use pmu::*;
 pub use rfnc::*;

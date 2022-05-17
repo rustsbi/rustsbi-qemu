@@ -2,7 +2,7 @@
 name = "test-kernel"
 version = "0.1.0"
 authors = ["luojia65 <me@luojia.cc>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -14,3 +14,5 @@ spin = "0.9"
 r0 = "1"
 lazy_static = { version = "1", features = ["spin_no_std"] }
 buddy_system_allocator = "0.8"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde-device-tree = { git = "https://github.com/rustsbi/serde-device-tree.git", rev = "b8c2da9", default-features = false }

@@ -7,10 +7,10 @@
 
 use core::{
     arch::asm,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use riscv::register::{
-    scause::{Exception, Interrupt, Trap},
+    scause::Trap,
     sepc,
     stvec::{self, TrapMode},
 };
@@ -19,6 +19,7 @@ extern crate sbi_rt as sbi;
 
 #[macro_use]
 mod console;
+mod device_tree;
 mod test;
 
 mod constants {
@@ -83,9 +84,13 @@ unsafe extern "C" fn secondary_hart_start(hartid: usize) -> ! {
 /// 总是可以安全地使用，因为这是（硬件）线程独立变量。
 static mut EXPECTED: [Option<Trap>; 8] = [None; 8];
 
+/// 每个核的启动函数里 +1
+static STARTED: AtomicUsize = AtomicUsize::new(0);
+
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
 
+    let smp = device_tree::parse_smp(dtb_pa);
     println!(
         r"
  _____         _     _  __                    _
@@ -94,7 +99,10 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
   | |  __/\__ \ |_  | . \  __/ |  | | | |  __/ |
   |_|\___||___/\__| |_|\_\___|_|  |_| |_|\___|_|
 ================================================
-boot hart id = {hartid}, dtb physical address = {dtb_pa:#x}"
+| boot hart id          | {hartid:20} |
+| smp                   | {smp:20} |
+| dtb physical address  | {dtb_pa:#20x} |
+------------------------------------------------"
     );
 
     test::base_extension();
@@ -102,6 +110,24 @@ boot hart id = {hartid}, dtb physical address = {dtb_pa:#x}"
 
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
     test::trap_delegate(hartid);
+
+    println!();
+    STARTED.fetch_add(1, Ordering::Release);
+    // 启动副核
+    for id in 0..smp {
+        if id != hartid {
+            println!("hart{id} is booting...");
+            let ret = sbi::hart_start(id, secondary_hart_start as usize, 0);
+            if ret.error != sbi::SBI_SUCCESS {
+                panic!("start hart{id} failed. error code={}", ret.error);
+            }
+            println!("{ret:?}", ret = sbi::hart_get_status(id));
+        } else {
+            println!("hart{id} is the primary hart.");
+        }
+    }
+    println!("{}/{smp}", STARTED.load(Ordering::SeqCst));
+    loop {}
 
     // if hartid == 0 {
     //     let sbi_ret = sbi::hart_stop();
@@ -150,49 +176,26 @@ boot hart id = {hartid}, dtb physical address = {dtb_pa:#x}"
     //     // hartid == 2 || hartid == 3 || hartid == 4
     //     unreachable!()
     // }
-    sbi::legacy::shutdown();
-    unreachable!()
+    // shutdown()
 }
 
-extern "C" fn secondary_rust_main(hart_id: usize) -> ! {
+extern "C" fn secondary_rust_main(_hart_id: usize) -> ! {
+    STARTED.fetch_add(1, Ordering::Release);
+    println!("!");
     sbi::hart_stop();
     unreachable!()
 }
 
-extern "C" fn hart_2_resume(hart_id: usize, param: usize) {
-    println!(
-        "<< The parameter passed to hart {} resume is: {:#x}",
-        hart_id, param
-    );
-    let param = 0x12345678;
-    println!(">> Start hart 3 with parameter {:#x}", param);
-    /* start_addr should be physical address, and here pa == va */
-    let sbi_ret = sbi::hart_start(3, hart_3_start as usize, param);
-    println!(">> SBI return value: {:?}", sbi_ret);
-    loop {} // wait for machine shutdown
-}
-
-extern "C" fn hart_3_start(hart_id: usize, param: usize) {
-    println!(
-        "<< The parameter passed to hart {} start is: {:#x}",
-        hart_id, param
-    );
-    println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
-    sbi::legacy::shutdown()
-    // todo: S-IPI
-    // println!(">> Send IPI to hart 4, should delegate IPI to S-level");
-    // let _ = sbi::send_ipi(0b1, 4); // IPI to hart 4
-    // loop {} // wait for machine shutdown
-}
-
 extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
     use riscv::register::scause;
-    let trap = unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) };
 
-    if Some(scause::read().cause()) == trap {
+    let cause = scause::read().cause();
+    let expected = unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) };
+
+    if Some(cause) == expected {
         sepc::write(sepc::read().wrapping_add(4));
     } else {
-        panic!("[test-kernel] SBI test FAILED due to unexpected trap");
+        panic!("[test-kernel] SBI test FAILED due to unexpected trap {cause:?}");
     }
 }
 
@@ -360,3 +363,35 @@ fn init_heap() {
             .init(HEAP_SPACE.as_ptr() as usize, HEAP_SPACE.len())
     }
 }
+
+fn shutdown() -> ! {
+    use sbi::{system_reset, RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN};
+    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
+    loop {}
+}
+
+// extern "C" fn hart_2_resume(hart_id: usize, param: usize) {
+//     println!(
+//         "<< The parameter passed to hart {} resume is: {:#x}",
+//         hart_id, param
+//     );
+//     let param = 0x12345678;
+//     println!(">> Start hart 3 with parameter {:#x}", param);
+//     /* start_addr should be physical address, and here pa == va */
+//     let sbi_ret = sbi::hart_start(3, hart_3_start as usize, param);
+//     println!(">> SBI return value: {:?}", sbi_ret);
+//     loop {} // wait for machine shutdown
+// }
+
+// extern "C" fn hart_3_start(hart_id: usize, param: usize) {
+//     println!(
+//         "<< The parameter passed to hart {} start is: {:#x}",
+//         hart_id, param
+//     );
+//     println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
+//     sbi::legacy::shutdown()
+//     // todo: S-IPI
+//     // println!(">> Send IPI to hart 4, should delegate IPI to S-level");
+//     // let _ = sbi::send_ipi(0b1, 4); // IPI to hart 4
+//     // loop {} // wait for machine shutdown
+// }

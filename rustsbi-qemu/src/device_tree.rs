@@ -39,7 +39,7 @@ pub(crate) fn init(opaque: usize) {
                 .iter()
                 .map(|m| m.deserialize::<Memory>())
                 .find(|m| m.device_type.iter().any(|t| t == "memory"))
-                .map(|m| m.reg.iter().next().unwrap().0.clone())
+                .map(|m| m.reg.iter().next().unwrap().0)
                 .unwrap(),
             rtc: take_one_peripheral(&t.soc.rtc, "google,goldfish-rtc"),
             uart: take_one_peripheral(&t.soc.uart, "ns16550a"),
@@ -95,6 +95,6 @@ fn take_one_peripheral(nodes: &NodeSeq<'_>, compatible: &str) -> Range<usize> {
         .iter()
         .map(|u| u.deserialize::<Peripheral>())
         .find(|u| u.compatible.iter().any(|s| s == compatible))
-        .map(|u| u.reg.iter().next().unwrap().0.clone())
+        .map(|u| u.reg.iter().next().unwrap().0)
         .unwrap()
 }

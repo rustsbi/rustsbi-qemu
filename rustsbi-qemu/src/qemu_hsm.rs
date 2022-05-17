@@ -48,7 +48,7 @@ enum HsmState {
 // actual procedure has finished. There are functions to read its current state when the target hart
 // is still in transition or after the transition is done. These functions may read from `last_command`
 // variable at any time.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct QemuHsm {
     state: Arc<spin::Mutex<HashMap<usize, AtomicU8>>>,
     last_command: Arc<spin::Mutex<HashMap<usize, HsmCommand>>>,
@@ -69,19 +69,12 @@ pub enum HsmCommand {
 }
 
 impl QemuHsm {
-    // creates a RustSBI-QEMU hsm structure.
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(spin::Mutex::new(HashMap::new())),
-            last_command: Arc::new(spin::Mutex::new(HashMap::new())),
-        }
-    }
     // Return last command by current hart id.
     // This function is used in software interrupt handler to check which HSM function should we execute.
     pub(crate) fn last_command(&self) -> Option<HsmCommand> {
         let hart_id = riscv::register::mhartid::read();
         let last_command_lock = self.last_command.lock();
-        let ans = last_command_lock.get(&hart_id).map(|c| *c);
+        let ans = last_command_lock.get(&hart_id).copied();
         drop(last_command_lock);
         ans
     }
@@ -218,8 +211,9 @@ impl rustsbi::Hsm for QemuHsm {
                 }
                 drop(state_lock);
                 // actual suspend begin
-                suspend_current_hart(&self); // pause and wait for machine level ipi
-                                             // mark current hart as started
+                // pause and wait for machine level ipi
+                suspend_current_hart(self);
+                // mark current hart as started
                 let mut state_lock = self.state.lock();
                 state_lock
                     .entry(hart_id)
@@ -248,7 +242,7 @@ impl rustsbi::Hsm for QemuHsm {
                 }
                 drop(state_lock);
                 // retentive suspend
-                suspend_current_hart(&self);
+                suspend_current_hart(self);
                 // begin wake process
                 // send start command to runtime of current hart
                 let mut config_lock = self.last_command.lock();

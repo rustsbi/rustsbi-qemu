@@ -400,6 +400,8 @@ dependencies = [
  "r0",
  "riscv 0.8.0",
  "sbi-rt",
+ "serde",
+ "serde-device-tree",
  "spin 0.9.3",
 ]
 
