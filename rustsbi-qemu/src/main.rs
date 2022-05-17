@@ -84,8 +84,8 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
 
 /// rust 入口。
 extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
-    let boot_hart = race_boot_hart();
     runtime::init();
+    let boot_hart = race_boot_hart();
     if boot_hart {
         // 清零 bss 段
         zero_bss();
@@ -117,6 +117,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
             model = device_tree::get().model
         );
     }
+    HSM.record_current_start_finished();
     set_pmp();
     delegate_supervisor_trap();
     enable_mint();
@@ -125,6 +126,8 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         println!("[rustsbi] enter supervisor 0x80200000");
         execute::execute_supervisor(0x80200000, hartid, opaque, HSM.clone());
     } else {
+        // use rustsbi::Hsm;
+        // HSM.hart_stop();
         qemu_hsm::pause();
         unreachable!()
     }

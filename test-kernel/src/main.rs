@@ -117,11 +117,12 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     for id in 0..smp {
         if id != hartid {
             println!("hart{id} is booting...");
+            println!("before {ret:?}", ret = sbi::hart_get_status(id));
             let ret = sbi::hart_start(id, secondary_hart_start as usize, 0);
             if ret.error != sbi::SBI_SUCCESS {
-                panic!("start hart{id} failed. error code={}", ret.error);
+                panic!("start hart{id} failed: {ret:?}");
             }
-            println!("{ret:?}", ret = sbi::hart_get_status(id));
+            println!("after {ret:?}", ret = sbi::hart_get_status(id));
         } else {
             println!("hart{id} is the primary hart.");
         }
