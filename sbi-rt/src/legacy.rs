@@ -13,6 +13,7 @@ const SBI_REMOTE_SFENCE_VMA_ASID: usize = 7;
 const SBI_SHUTDOWN: usize = 8;
 
 #[deprecated = "replaced by `set_timer` from Timer extension"]
+#[inline]
 pub fn set_timer(stime_value: u64) -> usize {
     match () {
         #[cfg(target_pointer_width = "32")]
@@ -23,41 +24,49 @@ pub fn set_timer(stime_value: u64) -> usize {
 }
 
 #[deprecated = "no replacement"]
+#[inline]
 pub fn console_putchar(c: usize) -> usize {
     sbi_call_legacy_1(SBI_CONSOLE_PUTCHAR, c)
 }
 
 #[deprecated = "no replacement"]
+#[inline]
 pub fn console_getchar() -> usize {
     sbi_call_legacy_0(SBI_CONSOLE_GETCHAR)
 }
 
 #[deprecated = "you can clear `sip.SSIP` CSR bit directly"]
+#[inline]
 pub fn clear_ipi() -> usize {
     sbi_call_legacy_0(SBI_CLEAR_IPI)
 }
 
 #[deprecated = "replaced by `send_ipi` from IPI extension"]
+#[inline]
 pub fn send_ipi(hart_mask: usize) -> usize {
     sbi_call_legacy_1(SBI_SEND_IPI, hart_mask)
 }
 
 #[deprecated = "replaced by `remote_fence_i` from RFENCE extension"]
+#[inline]
 pub fn remote_fence_i(hart_mask: usize) -> usize {
     sbi_call_legacy_1(SBI_REMOTE_FENCE_I, hart_mask)
 }
 
 #[deprecated = "replaced by `remote_fence_vma` from RFENCE extension"]
+#[inline]
 pub fn remote_fence_vma(hart_mask: usize, start: usize, size: usize) -> usize {
     sbi_call_legacy_3(SBI_REMOTE_SFENCE_VMA, hart_mask, start, size)
 }
 
 #[deprecated = "replaced by `remote_fence_vma_asid` from RFENCE extension"]
+#[inline]
 pub fn remote_fence_vma_asid(hart_mask: usize, start: usize, size: usize, asid: usize) -> usize {
     sbi_call_legacy_4(SBI_REMOTE_SFENCE_VMA_ASID, hart_mask, start, size, asid)
 }
 
 #[deprecated = "replaced by `system_reset` from System Reset extension"]
+#[inline]
 pub fn shutdown() -> ! {
     sbi_call_legacy_0(SBI_SHUTDOWN);
     core::unreachable!()
@@ -84,21 +93,6 @@ fn sbi_call_legacy_1(eid: usize, arg0: usize) -> usize {
             "ecall",
             in("a7") eid,
             in("a0") arg0,
-            lateout("a0") error,
-        );
-    }
-    error
-}
-
-#[inline(always)]
-fn sbi_call_legacy_2(eid: usize, arg0: usize, arg1: usize) -> usize {
-    let error;
-    unsafe {
-        core::arch::asm!(
-            "ecall",
-            in("a7") eid,
-            in("a0") arg0,
-            in("a1") arg1,
             lateout("a0") error,
         );
     }

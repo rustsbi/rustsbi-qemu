@@ -109,6 +109,60 @@ pub(crate) fn sbi_call_3(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2:
     SbiRet { error, value }
 }
 
+#[inline(always)]
+pub(crate) fn sbi_call_4(
+    eid: usize,
+    fid: usize,
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+) -> SbiRet {
+    let (error, value);
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") eid,
+            in("a6") fid,
+            in("a0") arg0,
+            in("a1") arg1,
+            in("a2") arg2,
+            in("a3") arg3,
+            lateout("a0") error,
+            lateout("a1") value,
+        );
+    }
+    SbiRet { error, value }
+}
+
+#[inline(always)]
+pub(crate) fn sbi_call_5(
+    eid: usize,
+    fid: usize,
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+) -> SbiRet {
+    let (error, value);
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") eid,
+            in("a6") fid,
+            in("a0") arg0,
+            in("a1") arg1,
+            in("a2") arg2,
+            in("a3") arg3,
+            in("a4") arg4,
+            lateout("a0") error,
+            lateout("a1") value,
+        );
+    }
+    SbiRet { error, value }
+}
+
 /// Converts SBI EID from str.
 pub(crate) const fn eid_from_str(name: &str) -> i32 {
     match *name.as_bytes() {

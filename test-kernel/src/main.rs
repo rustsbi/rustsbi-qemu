@@ -41,7 +41,7 @@ pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
     }
     if hartid == 0 {
-        let sbi_ret = sbi::hart_stop(3);
+        let sbi_ret = sbi::hart_stop();
         println!(">> Stop hart 3, return value {:?}", sbi_ret);
         for i in 0..5 {
             let sbi_ret = sbi::hart_get_status(i);
@@ -108,7 +108,7 @@ extern "C" fn hart_3_start(hart_id: usize, param: usize) {
         hart_id, param
     );
     println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
-    sbi::shutdown()
+    sbi::legacy::shutdown()
     // todo: S-IPI
     // println!(">> Send IPI to hart 4, should delegate IPI to S-level");
     // let _ = sbi::send_ipi(0b1, 4); // IPI to hart 4
@@ -124,7 +124,7 @@ fn test_base_extension() {
             "!! Test-kernel: This SBI implementation may only have legacy extension implemented"
         );
         println!("!! Test-kernel: SBI test FAILED due to no base extension found");
-        sbi::shutdown()
+        sbi::legacy::shutdown()
     }
     println!("<< Test-kernel: Base extension version: {:x}", base_version);
     let spec_version = sbi::get_spec_version();
@@ -159,7 +159,7 @@ fn test_sbi_ins_emulation() {
         println!("<< Test-kernel: Time after operation: {:x}", time_end);
     } else {
         println!("!! Test-kernel: SBI test FAILED due to incorrect time counter");
-        sbi::shutdown()
+        sbi::legacy::shutdown()
     }
 }
 
@@ -169,19 +169,19 @@ extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
         println!("<< Test-kernel: Value of scause: {:?}", cause);
         if cause != Trap::Exception(Exception::IllegalInstruction) {
             println!("!! Test-kernel: Wrong cause associated to illegal instruction");
-            sbi::shutdown()
+            sbi::legacy::shutdown()
         }
         println!("<< Test-kernel: Illegal exception delegate success");
         sepc::write(sepc::read().wrapping_add(4));
     } else if trap_frame.tp == 4 {
         if scause::read().cause() != Trap::Interrupt(Interrupt::SupervisorSoft) {
             println!("!! Test-kernel: Wrong cause associated to S-IPI delegation");
-            sbi::shutdown()
+            sbi::legacy::shutdown()
         }
     } else {
         println!("!! Test-kernel: hart {} should not trap", trap_frame.tp);
         println!("!! Test-kernel: SBI test FAILED for this hart should not trap");
-        sbi::shutdown()
+        sbi::legacy::shutdown()
     }
 }
 
@@ -190,7 +190,7 @@ extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
 fn panic(info: &PanicInfo) -> ! {
     println!("!! Test-kernel: {}", info);
     println!("!! Test-kernel: SBI test FAILED due to panic");
-    sbi::reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_SYSTEM_FAILURE);
+    sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_SYSTEM_FAILURE);
     loop {}
 }
 
