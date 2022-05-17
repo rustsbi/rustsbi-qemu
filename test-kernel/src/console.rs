@@ -1,10 +1,10 @@
-use core::fmt::{self, Write};
+use core::fmt::{Arguments, Result, Write};
 use spin::Mutex;
 
 struct Stdout;
 
 impl Write for Stdout {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
+    fn write_str(&mut self, s: &str) -> Result {
         let mut buffer = [0u8; 4];
         for c in s.chars() {
             for code_point in c.encode_utf8(&mut buffer).as_bytes().iter() {
@@ -15,7 +15,7 @@ impl Write for Stdout {
     }
 }
 
-pub fn print(args: fmt::Arguments) {
+pub fn print(args: Arguments) {
     lazy_static::lazy_static! {
         static ref STDOUT: Mutex<Stdout> = Mutex::new(Stdout);
     }

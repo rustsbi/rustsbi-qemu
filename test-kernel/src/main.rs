@@ -1,4 +1,5 @@
-// A test kernel to test RustSBI function on all platforms
+//! A test kernel to test RustSBI function on all platforms
+
 #![feature(naked_functions, asm_sym, asm_const)]
 #![feature(default_alloc_error_handler)]
 #![no_std]
@@ -6,87 +7,152 @@
 
 use core::arch::asm;
 use core::panic::PanicInfo;
-use riscv::register::scause::Interrupt;
 use riscv::register::{
-    scause::{self, Exception, Trap},
+    scause::{self, Exception, Interrupt, Trap},
     sepc,
-    /*sie, sstatus, */ stvec::{self, TrapMode},
+    stvec::{self, TrapMode},
 };
 
 extern crate sbi_rt as sbi;
 
 #[macro_use]
 mod console;
-mod mm;
+mod test;
 
-pub extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    unsafe { asm!("mv tp, {}", in(reg) hartid, options(nomem, nostack)) }; // tp == hartid
-    let mut start_trap_addr = start_trap as usize;
-    if start_trap_addr & 0b10 != 0 {
-        start_trap_addr += 0b10;
-    }
-    if hartid == 0 {
-        // initialization
-        mm::init_heap();
-    }
-    if hartid == 0 {
-        println!(
-            "<< Test-kernel: Hart id = {}, DTB physical address = {:#x}",
-            hartid, dtb_pa
-        );
-        test_base_extension();
-        test_sbi_ins_emulation();
-        unsafe { stvec::write(start_trap_addr, TrapMode::Direct) };
-        println!(">> Test-kernel: Trigger illegal exception");
-        unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
-    }
-    if hartid == 0 {
-        let sbi_ret = sbi::hart_stop();
-        println!(">> Stop hart 3, return value {:?}", sbi_ret);
-        for i in 0..5 {
-            let sbi_ret = sbi::hart_get_status(i);
-            println!(">> Hart {} state return value: {:?}", i, sbi_ret);
-        }
-    } else if hartid == 1 {
-        let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
-        println!(
-            ">> Start test for hart {}, retentive suspend return value {:?}",
-            hartid, sbi_ret
-        );
-    } else if hartid == 2 {
-        /* resume_addr should be physical address, and here pa == va */
-        let sbi_ret = sbi::hart_suspend(0x80000000, hart_2_resume as usize, 0x4567890a);
-        println!(">> Error for non-retentive suspend: {:?}", sbi_ret);
-        loop {}
-    } else if hartid == 4 {
-        // unsafe { stvec::write(start_trap_addr, TrapMode::Direct) };
-        // unsafe { sstatus::set_sie() };
-        // unsafe { sie::set_ssoft() };
-        // loop {} // wait for S-IPI
-        // println!(">> Test-kernel: SBI S-IPI delegation success");
-        // println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
-        loop {} // todo: S-IPI
-    } else {
-        // hartid == 3
-        loop {}
-    }
-    if hartid == 0 {
-        println!(
-            "<< Test-kernel: test for hart {} success, wake another hart",
-            hartid
-        );
-        let sbi_ret = sbi::send_ipi(0b10, 0); // wake hart 1
-        println!(">> Wake hart 1, sbi return value {:?}", sbi_ret);
-        loop {} // wait for machine shutdown
-    } else if hartid == 1 {
-        // send software IPI to activate hart 2
-        let sbi_ret = sbi::send_ipi(0b1, 2);
-        println!(">> Wake hart 2, sbi return value {:?}", sbi_ret);
-        loop {}
-    } else {
-        // hartid == 2 || hartid == 3 || hartid == 4
-        unreachable!()
-    }
+mod constants {
+    pub(crate) const LEN_PAGE: usize = 4096; // 4KiB
+    pub(crate) const PER_HART_STACK_SIZE: usize = 4 * LEN_PAGE; // 16KiB
+    pub(crate) const MAX_HART_NUMBER: usize = 8; // assume 8 cores in QEMU
+    pub(crate) const STACK_SIZE: usize = PER_HART_STACK_SIZE * MAX_HART_NUMBER;
+    pub(crate) const HEAP_SIZE: usize = 16 * LEN_PAGE; // 64KiB
+}
+
+use constants::*;
+
+#[cfg_attr(not(test), panic_handler)]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
+
+    let hard_id: usize;
+    unsafe { asm!("mv {}, tp", out(reg) hard_id) };
+    println!("[test-kernel-panic] hart {hard_id} {info}");
+    println!("[test-kernel-panic] SBI test FAILED due to panic");
+    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
+    loop {}
+}
+
+/// 内核入口。
+///
+/// # Safety
+///
+/// 裸函数。
+#[naked]
+#[no_mangle]
+#[link_section = ".text.entry"]
+unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
+    asm!(
+        "csrw sie, zero",      // 关中断
+        "call {select_stack}", // 设置启动栈
+        "j    {main}",         // 进入 rust
+        select_stack = sym select_stack,
+        main = sym primary_rust_main,
+        options(noreturn)
+    )
+}
+
+/// 副核入口。此前副核被 SBI 阻塞。
+///
+/// # Safety
+///
+/// 裸函数。
+#[naked]
+unsafe extern "C" fn secondary_hart_start(hartid: usize) -> ! {
+    asm!(
+        "csrw sie, zero",      // 关中断
+        "call {select_stack}", // 设置启动栈
+        "j    {main}",         // 进入 rust
+        select_stack = sym select_stack,
+        main = sym secondary_rust_main,
+        options(noreturn)
+    )
+}
+
+extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
+    zero_bss();
+
+    println!(
+        r"
+ _____         _     _  __                    _
+|_   _|__  ___| |_  | |/ /___ _ __ _ __   ___| |
+  | |/ _ \/ __| __| | ' // _ \ '__| '_ \ / _ \ |
+  | |  __/\__ \ |_  | . \  __/ |  | | | |  __/ |
+  |_|\___||___/\__| |_|\_\___|_|  |_| |_|\___|_|
+================================================
+boot hart id = {hartid}, dtb physical address = {dtb_pa:#x}"
+    );
+    test::base_extension();
+    test::sbi_ins_emulation();
+
+    unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
+    // init_heap();
+
+    println!(">> Test-kernel: Trigger illegal exception");
+    unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
+
+    // if hartid == 0 {
+    //     let sbi_ret = sbi::hart_stop();
+    //     println!(">> Stop hart 3, return value {:?}", sbi_ret);
+    //     for i in 0..5 {
+    //         let sbi_ret = sbi::hart_get_status(i);
+    //         println!(">> Hart {} state return value: {:?}", i, sbi_ret);
+    //     }
+    // } else if hartid == 1 {
+    //     let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
+    //     println!(
+    //         ">> Start test for hart {}, retentive suspend return value {:?}",
+    //         hartid, sbi_ret
+    //     );
+    // } else if hartid == 2 {
+    //     /* resume_addr should be physical address, and here pa == va */
+    //     let sbi_ret = sbi::hart_suspend(0x80000000, hart_2_resume as usize, 0x4567890a);
+    //     println!(">> Error for non-retentive suspend: {:?}", sbi_ret);
+    //     loop {}
+    // // } else if hartid == 4 {
+    // // unsafe { stvec::write(start_trap_addr, TrapMode::Direct) };
+    // // unsafe { sstatus::set_sie() };
+    // // unsafe { sie::set_ssoft() };
+    // // loop {} // wait for S-IPI
+    // // println!(">> Test-kernel: SBI S-IPI delegation success");
+    // // println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
+    // // todo: S-IPI
+    // } else {
+    //     // hartid == 3
+    //     loop {}
+    // }
+    // if hartid == 0 {
+    //     println!(
+    //         "<< Test-kernel: test for hart {} success, wake another hart",
+    //         hartid
+    //     );
+    //     let sbi_ret = sbi::send_ipi(0b10, 0); // wake hart 1
+    //     println!(">> Wake hart 1, sbi return value {:?}", sbi_ret);
+    //     loop {} // wait for machine shutdown
+    // } else if hartid == 1 {
+    //     // send software IPI to activate hart 2
+    //     let sbi_ret = sbi::send_ipi(0b1, 2);
+    //     println!(">> Wake hart 2, sbi return value {:?}", sbi_ret);
+    //     loop {}
+    // } else {
+    //     // hartid == 2 || hartid == 3 || hartid == 4
+    //     unreachable!()
+    // }
+    sbi::legacy::shutdown();
+    unreachable!()
+}
+
+extern "C" fn secondary_rust_main(hart_id: usize) -> ! {
+    sbi::hart_stop();
+    unreachable!()
 }
 
 extern "C" fn hart_2_resume(hart_id: usize, param: usize) {
@@ -115,54 +181,6 @@ extern "C" fn hart_3_start(hart_id: usize, param: usize) {
     // loop {} // wait for machine shutdown
 }
 
-fn test_base_extension() {
-    println!(">> Test-kernel: Testing base extension");
-    let base_version = sbi::probe_extension(sbi::EID_BASE);
-    if base_version == 0 {
-        println!("!! Test-kernel: no base extension probed; SBI call returned value '0'");
-        println!(
-            "!! Test-kernel: This SBI implementation may only have legacy extension implemented"
-        );
-        println!("!! Test-kernel: SBI test FAILED due to no base extension found");
-        sbi::legacy::shutdown()
-    }
-    println!("<< Test-kernel: Base extension version: {:x}", base_version);
-    let spec_version = sbi::get_spec_version();
-    let major = (spec_version >> 24) & 0x7F;
-    let minor = spec_version & 0xFFFFFF;
-    println!(
-        "<< Test-kernel: SBI specification version: {}.{}",
-        major, minor
-    );
-    println!(
-        "<< Test-kernel: SBI implementation Id: {:x}",
-        sbi::get_sbi_impl_id()
-    );
-    println!(
-        "<< Test-kernel: SBI implementation version: {:x}",
-        sbi::get_sbi_impl_version()
-    );
-    println!(
-        "<< Test-kernel: Device mvendorid: {:x}",
-        sbi::get_mvendorid()
-    );
-    println!("<< Test-kernel: Device marchid: {:x}", sbi::get_marchid());
-    println!("<< Test-kernel: Device mimpid: {:x}", sbi::get_mimpid());
-}
-
-fn test_sbi_ins_emulation() {
-    println!(">> Test-kernel: Testing SBI instruction emulation");
-    let time_start = riscv::register::time::read64();
-    println!("<< Test-kernel: Current time: {:x}", time_start);
-    let time_end = riscv::register::time::read64();
-    if time_end > time_start {
-        println!("<< Test-kernel: Time after operation: {:x}", time_end);
-    } else {
-        println!("!! Test-kernel: SBI test FAILED due to incorrect time counter");
-        sbi::legacy::shutdown()
-    }
-}
-
 extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
     if trap_frame.tp == 0 {
         let cause = scause::read().cause();
@@ -183,42 +201,6 @@ extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
         println!("!! Test-kernel: SBI test FAILED for this hart should not trap");
         sbi::legacy::shutdown()
     }
-}
-
-#[cfg_attr(not(test), panic_handler)]
-#[allow(unused)]
-fn panic(info: &PanicInfo) -> ! {
-    println!("!! Test-kernel: {}", info);
-    println!("!! Test-kernel: SBI test FAILED due to panic");
-    sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_SYSTEM_FAILURE);
-    loop {}
-}
-
-const BOOT_STACK_SIZE: usize = 4096 * 4 * 8;
-
-static mut BOOT_STACK: [u8; BOOT_STACK_SIZE] = [0; BOOT_STACK_SIZE];
-
-#[naked]
-#[link_section = ".text.entry"]
-#[export_name = "_start"]
-unsafe extern "C" fn entry() -> ! {
-    asm!("
-    # 1. set sp
-    # sp = bootstack + (hartid + 1) * 0x10000
-    add     t0, a0, 1
-    slli    t0, t0, 14
-1:  auipc   sp, %pcrel_hi({boot_stack})
-    addi    sp, sp, %pcrel_lo(1b)
-    add     sp, sp, t0
-
-    # 2. jump to rust_main (absolute address)
-1:  auipc   t0, %pcrel_hi({rust_main})
-    addi    t0, t0, %pcrel_lo(1b)
-    jr      t0
-    ",
-    boot_stack = sym BOOT_STACK,
-    rust_main = sym rust_main,
-    options(noreturn))
 }
 
 #[cfg(target_pointer_width = "128")]
@@ -261,10 +243,9 @@ macro_rules! define_store_load {
 }
 
 #[naked]
-#[link_section = ".text"]
+#[link_section = ".text.trap_handler"]
 unsafe extern "C" fn start_trap() {
     asm!(define_store_load!(), "
-    .p2align 2
     addi    sp, sp, -17 * {REGBYTES}
     STORE   ra, 0
     STORE   t0, 1
@@ -329,4 +310,60 @@ struct TrapFrame {
     a6: usize,
     a7: usize,
     tp: usize,
+}
+
+/// 根据硬件线程号设置启动栈。
+///
+/// # Safety
+///
+/// 裸函数。
+#[naked]
+unsafe extern "C" fn select_stack(hartid: usize) {
+    #[link_section = ".bss.uninit"]
+    static mut BOOT_STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
+
+    asm!("
+           mv   tp, a0
+           addi t0, a0,  1
+           la   sp, {stack}
+           li   t1, {len_per_hart}
+        1: add  sp, sp, t1
+           addi t0, t0, -1
+           bnez t0, 1b
+           ret
+        ",
+        stack = sym BOOT_STACK,
+        len_per_hart = const PER_HART_STACK_SIZE,
+        options(noreturn)
+    )
+}
+
+/// 清零 bss 段。
+#[inline(always)]
+fn zero_bss() {
+    #[cfg(target_pointer_width = "32")]
+    type Word = u32;
+    #[cfg(target_pointer_width = "64")]
+    type Word = u64;
+    extern "C" {
+        static mut sbss: Word;
+        static mut ebss: Word;
+    }
+    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+}
+
+/// 初始化堆和分配器。
+fn init_heap() {
+    use buddy_system_allocator::LockedHeap;
+
+    #[link_section = ".bss.uninit"]
+    static mut HEAP_SPACE: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+    #[global_allocator]
+    static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
+
+    unsafe {
+        SBI_HEAP
+            .lock()
+            .init(HEAP_SPACE.as_ptr() as usize, HEAP_SPACE.len())
+    }
 }

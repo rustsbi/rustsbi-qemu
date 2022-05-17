@@ -164,7 +164,7 @@ fn init_heap() {
     unsafe {
         SBI_HEAP
             .lock()
-            .init(HEAP_SPACE.as_ptr() as usize, SBI_HEAP_SIZE)
+            .init(HEAP_SPACE.as_ptr() as usize, HEAP_SPACE.len())
     }
 }
 
