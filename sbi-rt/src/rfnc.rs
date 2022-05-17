@@ -1,10 +1,8 @@
 ﻿//! Chapter 8. RFENCE Extension (EID #0x52464E43 "RFNC")
 
-#![deny(warnings)]
-
 use crate::binary::{eid_from_str, sbi_call_2, sbi_call_4, sbi_call_5, SbiRet};
 
-pub const EID_RFENCE: usize = eid_from_str("RFNC") as _;
+pub const EID_RFNC: usize = eid_from_str("RFNC") as _;
 
 const FID_REMOTE_FENCE_I: usize = 0;
 const FID_REMOTE_SFENCE_VMA: usize = 1;
@@ -16,7 +14,7 @@ const FID_REMOTE_HFENCE_VVMA: usize = 6;
 
 #[inline]
 pub fn remote_fence_i(hart_mask: usize, hart_mask_base: usize) -> SbiRet {
-    sbi_call_2(EID_RFENCE, FID_REMOTE_FENCE_I, hart_mask, hart_mask_base)
+    sbi_call_2(EID_RFNC, FID_REMOTE_FENCE_I, hart_mask, hart_mask_base)
 }
 
 #[inline]
@@ -27,7 +25,7 @@ pub fn remote_sfence_vma(
     size: usize,
 ) -> SbiRet {
     sbi_call_4(
-        EID_RFENCE,
+        EID_RFNC,
         FID_REMOTE_SFENCE_VMA,
         hart_mask,
         hart_mask_base,
@@ -45,7 +43,7 @@ pub fn remote_sfence_vma_asid(
     asid: usize,
 ) -> SbiRet {
     sbi_call_5(
-        EID_RFENCE,
+        EID_RFNC,
         FID_REMOTE_SFENCE_VMA_ASID,
         hart_mask,
         hart_mask_base,
@@ -64,7 +62,7 @@ pub fn remote_hfence_gvma_vmid(
     vmid: usize,
 ) -> SbiRet {
     sbi_call_5(
-        EID_RFENCE,
+        EID_RFNC,
         FID_REMOTE_HFENCE_GVMA_VMID,
         hart_mask,
         hart_mask_base,
@@ -82,7 +80,7 @@ pub fn remote_hfence_gvma(
     size: usize,
 ) -> SbiRet {
     sbi_call_4(
-        EID_RFENCE,
+        EID_RFNC,
         FID_REMOTE_HFENCE_GVMA_VMID,
         hart_mask,
         hart_mask_base,
@@ -100,7 +98,7 @@ pub fn remote_hfence_vvma_asid(
     asid: usize,
 ) -> SbiRet {
     sbi_call_5(
-        EID_RFENCE,
+        EID_RFNC,
         FID_REMOTE_HFENCE_GVMA_VMID,
         hart_mask,
         hart_mask_base,
@@ -118,7 +116,7 @@ pub fn remote_hfence_vvma(
     size: usize,
 ) -> SbiRet {
     sbi_call_4(
-        EID_RFENCE,
+        EID_RFNC,
         FID_REMOTE_HFENCE_GVMA_VMID,
         hart_mask,
         hart_mask_base,

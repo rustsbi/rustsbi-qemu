@@ -1,7 +1,5 @@
 ﻿//! Chapter 5. Legacy Extensions (EIDs #0x00 - #0x0F)
 
-#![deny(warnings)]
-
 const SBI_SET_TIMER: usize = 0;
 const SBI_CONSOLE_PUTCHAR: usize = 1;
 const SBI_CONSOLE_GETCHAR: usize = 2;
@@ -93,6 +91,22 @@ fn sbi_call_legacy_1(eid: usize, arg0: usize) -> usize {
             "ecall",
             in("a7") eid,
             in("a0") arg0,
+            lateout("a0") error,
+        );
+    }
+    error
+}
+
+#[cfg(target_pointer_width = "32")]
+#[inline(always)]
+fn sbi_call_legacy_2(eid: usize, arg0: usize, arg1: usize) -> usize {
+    let error;
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") eid,
+            in("a0") arg0,
+            in("a1") arg1,
             lateout("a0") error,
         );
     }

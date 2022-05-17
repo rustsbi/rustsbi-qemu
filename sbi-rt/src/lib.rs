@@ -1,8 +1,6 @@
 ﻿#![no_std]
 #![allow(unused)]
 
-use core::unreachable;
-
 // §3
 mod binary;
 // §4
@@ -10,19 +8,22 @@ mod base;
 // §5
 pub mod legacy;
 // §6
-mod timer;
+mod time;
 // §7
-mod ipi;
+mod spi;
 // §8
-mod rfence;
+mod rfnc;
 // §9
 mod hsm;
 // §10
-mod system_reset;
+mod srst;
+// §11
+mod pmu;
 
 pub use base::*;
 pub use binary::SbiRet;
 pub use hsm::*;
-pub use ipi::*;
-pub use system_reset::*;
-pub use timer::*;
+pub use pmu::*;
+pub use spi::*;
+pub use srst::*;
+pub use time::*;

@@ -1,7 +1,5 @@
 ﻿//! Chapter 9. Hart State Management Extension (EID #0x48534D "HSM")
 
-#![deny(warnings)]
-
 use crate::binary::{eid_from_str, sbi_call_0, sbi_call_1, sbi_call_3, SbiRet};
 
 pub const EID_HSM: usize = eid_from_str("HSM") as _;
