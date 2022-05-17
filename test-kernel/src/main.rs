@@ -5,10 +5,12 @@
 #![no_std]
 #![no_main]
 
-use core::arch::asm;
-use core::panic::PanicInfo;
+use core::{
+    arch::asm,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use riscv::register::{
-    scause::{self, Exception, Interrupt, Trap},
+    scause::{Exception, Interrupt, Trap},
     sepc,
     stvec::{self, TrapMode},
 };
@@ -77,6 +79,10 @@ unsafe extern "C" fn secondary_hart_start(hartid: usize) -> ! {
     )
 }
 
+/// 为每个核记录一个预期的陷入原因，实现陷入代理测试。
+/// 总是可以安全地使用，因为这是（硬件）线程独立变量。
+static mut EXPECTED: [Option<Trap>; 8] = [None; 8];
+
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
 
@@ -90,14 +96,12 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 ================================================
 boot hart id = {hartid}, dtb physical address = {dtb_pa:#x}"
     );
+
     test::base_extension();
     test::sbi_ins_emulation();
 
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
-    // init_heap();
-
-    println!(">> Test-kernel: Trigger illegal exception");
-    unsafe { asm!("csrw mcycle, x0") }; // mcycle cannot be written, this is always a 4-byte illegal instruction
+    test::trap_delegate(hartid);
 
     // if hartid == 0 {
     //     let sbi_ret = sbi::hart_stop();
@@ -182,24 +186,13 @@ extern "C" fn hart_3_start(hart_id: usize, param: usize) {
 }
 
 extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
-    if trap_frame.tp == 0 {
-        let cause = scause::read().cause();
-        println!("<< Test-kernel: Value of scause: {:?}", cause);
-        if cause != Trap::Exception(Exception::IllegalInstruction) {
-            println!("!! Test-kernel: Wrong cause associated to illegal instruction");
-            sbi::legacy::shutdown()
-        }
-        println!("<< Test-kernel: Illegal exception delegate success");
+    use riscv::register::scause;
+    let trap = unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) };
+
+    if Some(scause::read().cause()) == trap {
         sepc::write(sepc::read().wrapping_add(4));
-    } else if trap_frame.tp == 4 {
-        if scause::read().cause() != Trap::Interrupt(Interrupt::SupervisorSoft) {
-            println!("!! Test-kernel: Wrong cause associated to S-IPI delegation");
-            sbi::legacy::shutdown()
-        }
     } else {
-        println!("!! Test-kernel: hart {} should not trap", trap_frame.tp);
-        println!("!! Test-kernel: SBI test FAILED for this hart should not trap");
-        sbi::legacy::shutdown()
+        panic!("[test-kernel] SBI test FAILED due to unexpected trap");
     }
 }
 

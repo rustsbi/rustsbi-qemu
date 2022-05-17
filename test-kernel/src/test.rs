@@ -54,3 +54,26 @@ pub(crate) fn sbi_ins_emulation() {
         );
     }
 }
+
+pub(crate) fn trap_delegate(hartid: usize) {
+    use crate::EXPECTED;
+    use core::arch::asm;
+    use riscv::register::scause::{Exception, Trap};
+
+    println!(
+        "
+[test-kernel] Testing trap delegate
+[test-kernel] Trigger illegal exception"
+    );
+
+    unsafe {
+        // expect a trap from {hartid}
+        EXPECTED[hartid] = Some(Trap::Exception(Exception::IllegalInstruction));
+        // mcycle cannot be written, this is always a 4-byte illegal instruction
+        asm!("csrw mcycle, x0");
+    }
+    println!(
+        "\
+[test-kernel] Illegal exception delegate success"
+    );
+}
