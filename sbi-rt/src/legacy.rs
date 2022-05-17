@@ -77,6 +77,7 @@ fn sbi_call_legacy_0(eid: usize) -> usize {
         core::arch::asm!(
             "ecall",
             in("a7") eid,
+            in("a6") 0,
             lateout("a0") error,
         );
     }
@@ -90,6 +91,7 @@ fn sbi_call_legacy_1(eid: usize, arg0: usize) -> usize {
         core::arch::asm!(
             "ecall",
             in("a7") eid,
+            in("a6") 0,
             in("a0") arg0,
             lateout("a0") error,
         );
@@ -105,6 +107,7 @@ fn sbi_call_legacy_2(eid: usize, arg0: usize, arg1: usize) -> usize {
         core::arch::asm!(
             "ecall",
             in("a7") eid,
+            in("a6") 0,
             in("a0") arg0,
             in("a1") arg1,
             lateout("a0") error,
@@ -120,6 +123,7 @@ fn sbi_call_legacy_3(eid: usize, arg0: usize, arg1: usize, arg2: usize) -> usize
         core::arch::asm!(
             "ecall",
             in("a7") eid,
+            in("a6") 0,
             in("a0") arg0,
             in("a1") arg1,
             in("a2") arg2,
@@ -136,6 +140,7 @@ fn sbi_call_legacy_4(eid: usize, arg0: usize, arg1: usize, arg2: usize, arg3: us
         core::arch::asm!(
             "ecall",
             in("a7") eid,
+            in("a6") 0,
             in("a0") arg0,
             in("a1") arg1,
             in("a2") arg2,
