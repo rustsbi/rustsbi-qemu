@@ -12,15 +12,13 @@ use riscv::register::{
     mcause, mie, mip,
     scause::{Exception, Interrupt, Trap},
 };
-use rustsbi::Hsm;
 
-pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) -> ! {
+pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
     let mut rt = if let Some(HsmCommand::Start(mepc, a1)) = hsm.last_command() {
         hsm.record_current_start_finished();
         Runtime::new_sbi_supervisor(mepc, hart_id(), a1)
     } else {
-        hsm.hart_stop();
-        unreachable!()
+        return;
     };
     loop {
         match Pin::new(&mut rt).resume(()) {
@@ -28,6 +26,9 @@ pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) -> ! {
                 let ctx = rt.context_mut();
                 let param = [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5];
                 let ans = rustsbi::ecall(ctx.a7, ctx.a6, param);
+                if ctx.a7 == 0x48534D && ctx.a6 == 1 && ans.error == 0 {
+                    return;
+                }
                 if ans.error == 0x233 {
                     // hart non-retentive resume
                     if let Some(HsmCommand::Start(start_paddr, opaque)) = hsm.last_command() {

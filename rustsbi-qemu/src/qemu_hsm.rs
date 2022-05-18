@@ -138,18 +138,7 @@ impl rustsbi::Hsm for &'static QemuHsm {
     }
 
     fn hart_stop(&self) -> SbiRet {
-        use core::arch::asm;
         use hashbrown::hash_map::Entry::*;
-        use riscv::{
-            asm::wfi,
-            interrupt,
-            register::{mie, mip, mtvec},
-        };
-
-        // 除了 s-ecall，sbi 也可以直接调用这个函数，因此还要关中断
-        let mstatus: usize;
-        unsafe { asm!("csrrw {mstatus}, mstatus, zero", mstatus = out(reg) mstatus) };
-
         // 检查当前状态
         {
             match self.state.lock().entry(hart_id()) {
@@ -161,7 +150,6 @@ impl rustsbi::Hsm for &'static QemuHsm {
                         *current = HsmState::StopPending;
                     } else {
                         // highly unlikely
-                        unsafe { asm!("csrw mstatus, {}", in(reg) mstatus) };
                         return SbiRet::failed();
                     }
                 }
@@ -171,21 +159,8 @@ impl rustsbi::Hsm for &'static QemuHsm {
                 }
             };
         }
-
-        // 中断已关，打开 msoft 以接收 start 消息，收到直接启动
-        self.clint.clear_soft(hart_id());
-        unsafe {
-            mip::clear_msoft();
-            mtvec::write(reboot as _, mtvec::TrapMode::Direct);
-            mie::set_msoft();
-            interrupt::enable();
-        }
         self.last_command.lock().insert(hart_id(), HsmCommand::Stop);
-        self.state.lock().insert(hart_id(), HsmState::Stopped);
-        println!("hart {} waiting", hart_id());
-        loop {
-            unsafe { wfi() };
-        }
+        SbiRet::ok(0)
     }
 
     fn hart_get_status(&self, hart_id: usize) -> SbiRet {
@@ -280,17 +255,4 @@ pub(crate) fn pause() {
         unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
     }
     crate::clint::get().clear_soft(hart_id()); // Clear IPI
-}
-
-#[link_section = ".text.reboot"]
-extern "C" fn reboot() -> ! {
-    crate::clint::get().clear_soft(hart_id());
-    unsafe {
-        riscv::register::mip::clear_msoft();
-        core::arch::asm!(
-            "j {entry}",
-            entry = sym crate::entry,
-            options(noreturn)
-        )
-    }
 }

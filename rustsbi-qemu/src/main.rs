@@ -68,30 +68,33 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
 
     core::arch::asm!("
-           csrw  mie,  zero
-           la     sp, {stack}
-           li     t0, {per_hart_stack_size}
-           addi   t1,  a0, 1
-        1: add    sp,  sp, t0
-           addi   t1,  t1, -1
-           bnez   t1,  1b
-           j    {rust_main}
+           csrw     mie,  zero
+           la        sp, {stack}
+           li        t0, {per_hart_stack_size}
+           addi      t1,  a0, 1
+        1: add       sp,  sp, t0
+           addi      t1,  t1, -1
+           bnez      t1,  1b
+           call     {rust_main}
+           call     {finalize}
+           csrw mstatus,  1<<3
+           wfi
         ",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym SBI_STACK,
         rust_main           =   sym rust_main,
+        finalize            =   sym finalize,
         options(noreturn)
     )
 }
 
+use spin::Once;
+
+static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
+static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
+
 /// rust 入口。
-extern "C" fn rust_main(_hartid: usize, opaque: usize) -> ! {
-    use spin::Once;
-
-    static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
-    static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
-    static GENESIS: Once<()> = Once::new();
-
+extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     // 全局初始化过程
     let genesis = genesis();
     if genesis {
@@ -135,12 +138,32 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> ! {
     if genesis {
         hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor {SUPERVISOR_ENTRY:#x}");
-        GENESIS.call_once(|| ());
-    } else {
-        let _ = GENESIS.wait();
     }
 
-    execute::execute_supervisor(HSM.wait())
+    execute::execute_supervisor(HSM.wait());
+}
+
+extern "C" fn finalize() {
+    use riscv::register::{mie, mip, mtvec};
+    unsafe {
+        mtvec::write(reboot as _, mtvec::TrapMode::Direct);
+        mip::clear_msoft();
+        mie::set_msoft();
+    }
+    HSM.wait().record_current_stop_finished();
+}
+
+#[link_section = ".text.reboot"]
+extern "C" fn reboot() -> ! {
+    crate::clint::get().clear_soft(hart_id());
+    unsafe {
+        riscv::register::mip::clear_msoft();
+        core::arch::asm!(
+            "j {entry}",
+            entry = sym entry,
+            options(noreturn)
+        )
+    }
 }
 
 /// 抢夺启动权。
