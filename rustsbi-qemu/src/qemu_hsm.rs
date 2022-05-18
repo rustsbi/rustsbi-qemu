@@ -114,11 +114,13 @@ impl rustsbi::Hsm for &'static QemuHsm {
             return SbiRet::invalid_param();
         }
         // try to modify state to start hart
-        match self.state.lock().get_mut(&hart_id) {
-            Some(s) if *s == HsmState::Stopped => *s = HsmState::StartPending,
-            Some(s) if *s == HsmState::Started => return SbiRet::already_available(),
-            Some(_) => return SbiRet::failed(),
-            None => return SbiRet::invalid_param(),
+        {
+            match self.state.lock().get_mut(&hart_id) {
+                Some(s) if *s == HsmState::Stopped => *s = HsmState::StartPending,
+                Some(s) if *s == HsmState::Started => return SbiRet::already_available(),
+                Some(_) => return SbiRet::failed(),
+                None => return SbiRet::invalid_param(),
+            };
         }
         // todo: check start address
         // SBI_ERR_INVALID_ADDRESS: start_addr is not valid possibly due to following reasons:
@@ -135,14 +137,50 @@ impl rustsbi::Hsm for &'static QemuHsm {
     }
 
     fn hart_stop(&self) -> SbiRet {
-        // try to modify state to stop hart
-        match self.state.lock().get_mut(&hart_id()) {
-            Some(s) if *s == HsmState::Started => *s = HsmState::StopPending,
-            Some(_) | None => return SbiRet::failed(),
+        use core::arch::asm;
+        use hashbrown::hash_map::Entry::*;
+        use riscv::{asm::wfi, register::mtvec};
+
+        // 除了 s-ecall，sbi 也可以直接调用这个函数，因此还要关中断
+        let mstatus: usize;
+        unsafe { asm!("csrrw {mstatus}, mstatus, zero", mstatus = out(reg) mstatus) };
+
+        // 检查当前状态
+        {
+            match self.state.lock().entry(hart_id()) {
+                // 核非初次启动，当且仅当 Started 才能 stop
+                // （但实际这是必然的？必须 Started 才有机会调 stop。还是要防止 SBI 调错）
+                Occupied(mut entry) => {
+                    let current = entry.get_mut();
+                    if let HsmState::Started = *current {
+                        *current = HsmState::StopPending;
+                    } else {
+                        // highly unlikely
+                        unsafe { asm!("csrw mstatus, {}", in(reg) mstatus) };
+                        return SbiRet::failed();
+                    }
+                }
+                // 核初次启动
+                Vacant(entry) => {
+                    entry.insert(HsmState::StopPending);
+                }
+            };
+        }
+
+        // 中断已关，打开 msoft 以接收 start 消息，收到直接启动
+        extern "C" {
+            fn _start();
+        }
+        unsafe {
+            asm!("csrw mie,     1<<3");
+            asm!("csrw mstatus, 1<<3");
+            mtvec::write(_start as _, mtvec::TrapMode::Direct);
         }
         self.last_command.lock().insert(hart_id(), HsmCommand::Stop);
-        self.clint.send_soft(hart_id());
-        SbiRet::ok(0)
+        self.state.lock().insert(hart_id(), HsmState::Stopped);
+        loop {
+            unsafe { wfi() };
+        }
     }
 
     fn hart_get_status(&self, hart_id: usize) -> SbiRet {
@@ -154,9 +192,11 @@ impl rustsbi::Hsm for &'static QemuHsm {
 
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
         // try to modify state to suspend hart
-        match self.state.lock().get_mut(&hart_id()) {
-            Some(s) if *s == HsmState::Started => *s = HsmState::SuspendPending,
-            Some(_) | None => return SbiRet::failed(),
+        {
+            match self.state.lock().get_mut(&hart_id()) {
+                Some(s) if *s == HsmState::Started => *s = HsmState::SuspendPending,
+                Some(_) | None => return SbiRet::failed(),
+            };
         }
         // pause and wait for machine level ipi
         suspend_current_hart(self);

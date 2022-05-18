@@ -22,6 +22,8 @@ mod runtime;
 mod test_device;
 
 mod constants {
+    /// 特权软件入口
+    pub(crate) const SUPERVISOR_ENTRY: usize = 0x8020_0000;
     /// 每个核设置 16KiB 栈空间
     pub(crate) const LEN_STACK_PER_HART: usize = 16 * 1024;
     /// qemu-virt 最多 8 核
@@ -132,12 +134,11 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
 
     if genesis {
         hart_csr_utils::print_hart_csrs();
-        println!("[rustsbi] enter supervisor 0x80200000");
-        execute::execute_supervisor(0x80200000, hartid, opaque, HSM.wait());
+        println!("[rustsbi] enter supervisor {SUPERVISOR_ENTRY}");
+        execute::execute_supervisor(SUPERVISOR_ENTRY, hartid, opaque, HSM.wait());
     } else {
-        // use rustsbi::Hsm;
-        // qemu_hsm::get().hart_stop();
-        qemu_hsm::pause();
+        use rustsbi::Hsm;
+        HSM.wait().hart_stop();
         unreachable!()
     }
 }
