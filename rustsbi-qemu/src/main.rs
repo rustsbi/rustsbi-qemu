@@ -21,11 +21,14 @@ mod runtime;
 mod test_device;
 
 mod constants {
-    pub(crate) const LEN_PAGE: usize = 4096; // 4KiB
-    pub(crate) const PER_HART_STACK_SIZE: usize = 4 * LEN_PAGE; // 16KiB
-    pub(crate) const MAX_HART_NUMBER: usize = 8; // assume 8 cores in QEMU
-    pub(crate) const SBI_STACK_SIZE: usize = PER_HART_STACK_SIZE * MAX_HART_NUMBER;
-    pub(crate) const SBI_HEAP_SIZE: usize = 16 * LEN_PAGE; // 64KiB
+    /// 每个核设置 16KiB 栈空间
+    pub(crate) const LEN_STACK_PER_HART: usize = 16 * 1024;
+    /// qemu-virt 最多 8 核
+    pub(crate) const NUM_HART_MAX: usize = 8;
+    /// SBI 软件全部栈空间容量
+    pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
+    /// SBI 软件堆空间容量
+    pub(crate) const LEN_HEAP_SBI: usize = LEN_STACK_SBI;
 }
 
 use constants::*;
@@ -45,10 +48,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-lazy_static::lazy_static! {
-    pub static ref HSM: qemu_hsm::QemuHsm = qemu_hsm::QemuHsm::default();
-}
-
 /// 入口。
 ///
 /// 1. 关中断
@@ -63,7 +62,7 @@ lazy_static::lazy_static! {
 #[export_name = "_start"]
 unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     #[link_section = ".bss.uninit"]
-    static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+    static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
 
     core::arch::asm!("
            csrw  mie,  zero
@@ -75,7 +74,7 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
            bnez   t1,  1b
            j    {rust_main}
         ",
-        per_hart_stack_size = const PER_HART_STACK_SIZE,
+        per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym SBI_STACK,
         rust_main           =   sym rust_main,
         options(noreturn)
@@ -85,8 +84,8 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
 /// rust 入口。
 extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
     runtime::init();
-    let boot_hart = race_boot_hart();
-    if boot_hart {
+    let genesis = genesis();
+    if genesis {
         // 清零 bss 段
         zero_bss();
         // 初始化堆和分配器
@@ -96,6 +95,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         // 初始化外设
         let periperals = device_tree::get();
         clint::init(periperals.clint.start);
+        qemu_hsm::init(clint::get().clone());
         test_device::init(periperals.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(periperals.uart.start) };
         // 初始化 SBI 服务
@@ -103,7 +103,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         rustsbi::init_ipi(clint::get().clone());
         rustsbi::init_timer(clint::get().clone());
         rustsbi::init_reset(test_device::get().clone());
-        rustsbi::init_hsm(HSM.clone());
+        rustsbi::init_hsm(qemu_hsm::get().clone());
         // 打印启动信息
         println!(
             "\
@@ -117,24 +117,24 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
             model = device_tree::get().model
         );
     }
-    HSM.record_current_start_finished();
+    qemu_hsm::get().record_current_start_finished();
     set_pmp();
     delegate_supervisor_trap();
     enable_mint();
-    if boot_hart {
+    if genesis {
         hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor 0x80200000");
-        execute::execute_supervisor(0x80200000, hartid, opaque, HSM.clone());
+        execute::execute_supervisor(0x80200000, hartid, opaque, qemu_hsm::get().clone());
     } else {
         // use rustsbi::Hsm;
-        // HSM.hart_stop();
+        // qemu_hsm::get().hart_stop();
         qemu_hsm::pause();
         unreachable!()
     }
 }
 
 /// 抢夺启动权。
-fn race_boot_hart() -> bool {
+fn genesis() -> bool {
     use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
     #[link_section = ".bss.uninit"]
     static mut BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
@@ -160,7 +160,7 @@ fn init_heap() {
     use buddy_system_allocator::LockedHeap;
 
     #[link_section = ".bss.uninit"]
-    static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
+    static mut HEAP_SPACE: [u8; LEN_HEAP_SBI] = [0; LEN_HEAP_SBI];
     #[global_allocator]
     static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
 
@@ -171,25 +171,18 @@ fn init_heap() {
     }
 }
 
-/// 委托中断：把 S 的陷入全部委托给 S 层。
+/// 委托中断
 fn delegate_supervisor_trap() {
-    use riscv::register::{medeleg, mideleg};
+    use core::arch::asm;
+    use riscv::register::medeleg;
     unsafe {
-        mideleg::set_sext();
-        mideleg::set_stimer();
-        mideleg::set_ssoft();
-        mideleg::set_uext();
-        mideleg::set_utimer();
-        mideleg::set_usoft();
-        medeleg::set_instruction_misaligned();
-        medeleg::set_breakpoint();
-        medeleg::set_user_env_call();
-        medeleg::set_instruction_page_fault();
-        medeleg::set_load_page_fault();
-        medeleg::set_store_page_fault();
-        medeleg::set_instruction_fault();
-        medeleg::set_load_fault();
-        medeleg::set_store_fault();
+        asm!("csrrw zero, mideleg, {}", in(reg) usize::MAX);
+        asm!("csrrw zero, medeleg, {}", in(reg) usize::MAX);
+        medeleg::clear_illegal_instruction();
+        medeleg::clear_load_misaligned();
+        medeleg::clear_store_misaligned();
+        medeleg::clear_supervisor_env_call();
+        medeleg::clear_machine_env_call();
     }
 }
 
@@ -197,8 +190,8 @@ fn delegate_supervisor_trap() {
 fn enable_mint() {
     use riscv::{interrupt, register::mie};
     unsafe {
+        // mie::set_mtimer();
         mie::set_mext();
-        // 不打开 mie::set_mtimer
         mie::set_msoft();
         interrupt::enable();
     }

@@ -13,7 +13,12 @@ use crate::prv_mem::{self, SupervisorPointer};
 use crate::qemu_hsm::{pause, HsmCommand, QemuHsm};
 use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
 
-pub fn execute_supervisor(supervisor_mepc: usize, hart_id: usize, a1: usize, hsm: QemuHsm) -> ! {
+pub(crate) fn execute_supervisor(
+    supervisor_mepc: usize,
+    hart_id: usize,
+    a1: usize,
+    hsm: QemuHsm,
+) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, hart_id, a1);
     hsm.record_current_start_finished();
     loop {

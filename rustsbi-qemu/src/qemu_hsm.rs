@@ -1,9 +1,10 @@
 //! Hart state monitor designed for QEMU
 
+use crate::clint::Clint;
 use alloc::sync::Arc;
 use hashbrown::HashMap;
 use rustsbi::SbiRet;
-use spin::Mutex;
+use spin::{Mutex, Once};
 
 // RISC-V SBI Hart State Monitor states
 #[allow(unused)]
@@ -32,35 +33,41 @@ enum HsmState {
     ResumePending = 6,
 }
 
-// RustSBI-QEMU hart state monitor structure. It stores hart states for all harts,
-// and last command (see HsmCommand) when hart is requested to proceed HSM functions.
-//
-// RustSBI-QEMU makes use of machine software interrupt. Functions should modify `state` to
-// XxxPending before the actual procedure began. Then, caller should store next command structure
-// to `last_command`, and use IPI to invoke software interrupt on machine level.
-//
-// When target hart received machine software interrupt, it should read and proceed command
-// from `last_command`. Then, after command execution makes progress, it should modify
-// `state` variable to mark that the HSM function has taken effect.
-//
-// These functions above are defined as asynchronous procedures. That means it returns before
-// actual procedure has finished. There are functions to read its current state when the target hart
-// is still in transition or after the transition is done. These functions may read from `last_command`
-// variable at any time.
-#[derive(Clone, Default)]
-pub struct QemuHsm {
+/// RustSBI-QEMU hart state monitor structure.
+///
+/// It stores hart states for all harts,
+/// and last command (see [`HsmCommand`]) when hart is requested to proceed HSM functions.
+///
+/// RustSBI-QEMU makes use of machine software interrupt.
+/// Functions should modify `state` to XxxPending before the actual procedure began.
+/// Then, caller should store next command structure to `last_command`,
+/// and use IPI to invoke software interrupt on machine level.
+///
+/// When target hart received machine software interrupt,
+/// it should read and proceed command from `last_command`.
+/// Then, after command execution makes progress,
+/// it should modify `state` variable to mark that the HSM function has taken effect.
+///
+/// These functions above are defined as asynchronous procedures.
+/// That means it returns before actual procedure has finished.
+/// There are functions to read its current state
+/// when the target hart is still in transition or after the transition is done.
+/// These functions may read from `last_command` variable at any time.
+#[derive(Clone)]
+pub(crate) struct QemuHsm {
+    clint: Clint,
     state: Arc<Mutex<HashMap<usize, HsmState>>>,
     last_command: Arc<Mutex<HashMap<usize, HsmCommand>>>,
 }
 
-// RustSBI-QEMU HSM command, these commands apply to a remote given hart.
-//
-// Should be stored with hart id before software interrupt is invoked.
-// After software interrupt is received, the target hart should handle with HSM command structure
-// and run corresponding HSM procedures.
-//
-// By current version of SBI specification, suspend command only apply to current hart,
-// thus RustSBI does not use remote HSM command in this case.
+/// RustSBI-QEMU HSM command, these commands apply to a remote given hart.
+///
+/// Should be stored with hart id before software interrupt is invoked.
+/// After software interrupt is received,
+/// the target hart should handle with HSM command structure and run corresponding HSM procedures.
+///
+/// By current version of SBI specification, suspend command only apply to current hart,
+/// thus RustSBI does not use remote HSM command in this case.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum HsmCommand {
     Start(usize, usize),
@@ -68,25 +75,44 @@ pub enum HsmCommand {
 }
 
 impl QemuHsm {
-    // Return last command by current hart id.
-    // This function is used in software interrupt handler to check which HSM function should we execute.
-    pub(crate) fn last_command(&self) -> Option<HsmCommand> {
+    /// Return last command by current hart id.
+    /// This function is used in software interrupt handler to check which HSM function should we execute.
+    pub fn last_command(&self) -> Option<HsmCommand> {
         self.last_command.lock().get(&hart_id()).copied()
     }
-    // Record that current hart id is marked as `Stopped` state.
-    // It is used in interrupt handler, when hart stop command is received. Before this function,
-    // the target hart is making preparations to stop; it records state and must stop immediately after
-    // this function is called.
-    pub(crate) fn record_current_stop_finished(&self) {
+
+    /// Record that current hart id is marked as `Stopped` state.
+    /// It is used in interrupt handler, when hart stop command is received. Before this function,
+    /// the target hart is making preparations to stop;
+    /// it records state and must stop immediately after this function is called.
+    pub fn record_current_stop_finished(&self) {
         self.state.lock().insert(hart_id(), HsmState::Stopped);
     }
-    // Record that current hart id is marked as `Started` state.
-    // It is used when hart stop command is received in interrupt handler.
-    // The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started',
-    // and should jump to target address right away.
-    pub(crate) fn record_current_start_finished(&self) {
+
+    /// Record that current hart id is marked as `Started` state.
+    /// It is used when hart stop command is received in interrupt handler.
+    /// The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started',
+    /// and should jump to target address right away.
+    pub fn record_current_start_finished(&self) {
         self.state.lock().insert(hart_id(), HsmState::Started);
     }
+}
+
+static HSM: Once<QemuHsm> = Once::new();
+
+/// 初始化 HSM。
+///
+/// 依赖堆，务必先初始化堆再调用。
+pub(crate) fn init(clint: Clint) {
+    HSM.call_once(|| QemuHsm {
+        clint,
+        state: Default::default(),
+        last_command: Default::default(),
+    });
+}
+
+pub(crate) fn get() -> &'static QemuHsm {
+    HSM.wait()
 }
 
 // Adapt RustSBI interface to RustSBI-QEMU's QemuHsm.
@@ -102,7 +128,12 @@ impl rustsbi::Hsm for QemuHsm {
         match self.state.lock().get_mut(&hart_id) {
             Some(s) if *s == HsmState::Stopped => *s = HsmState::StartPending,
             Some(s) if *s == HsmState::Started => return SbiRet::already_available(),
-            Some(_) => return SbiRet::failed(),
+            Some(x) => {
+                return SbiRet {
+                    error: 0xffff0000 | *x as usize,
+                    value: 0,
+                }
+            }
             None => return SbiRet::invalid_param(),
         }
         // todo: check start address
@@ -112,7 +143,7 @@ impl rustsbi::Hsm for QemuHsm {
         self.last_command
             .lock()
             .insert(hart_id, HsmCommand::Start(start_addr, opaque));
-        crate::clint::get().send_soft(hart_id);
+        self.clint.send_soft(hart_id);
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
         // and the function returns immediately as starting a hart is defined as an asynchronous procedure.
@@ -126,7 +157,7 @@ impl rustsbi::Hsm for QemuHsm {
             Some(_) | None => return SbiRet::failed(),
         }
         self.last_command.lock().insert(hart_id(), HsmCommand::Stop);
-        crate::clint::get().send_soft(hart_id());
+        self.clint.send_soft(hart_id());
         SbiRet::ok(0)
     }
 
@@ -160,7 +191,7 @@ impl rustsbi::Hsm for QemuHsm {
                 self.last_command
                     .lock()
                     .insert(hart_id(), HsmCommand::Start(resume_addr, opaque));
-                crate::clint::get().send_soft(hart_id());
+                self.clint.send_soft(hart_id());
                 unreachable!()
             }
             // There could be other platform specific suspend types; RustSBI-QEMU does not define any
@@ -174,12 +205,11 @@ const SUSPEND_RETENTIVE: u32 = 0x00000000;
 const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
 
 // Suspend current hart and record resume state when wake
-pub fn suspend_current_hart(hsm: &QemuHsm) {
+pub(crate) fn suspend_current_hart(hsm: &QemuHsm) {
     use riscv::asm::wfi;
     use riscv::register::{mie, mip};
 
-    let clint = crate::clint::get();
-    clint.clear_soft(hart_id()); // Clear IPI
+    hsm.clint.clear_soft(hart_id()); // Clear IPI
     unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
     let prev_msoft = mie::read().msoft();
     unsafe { mie::set_msoft() }; // Start listening for software interrupts
@@ -198,30 +228,28 @@ pub fn suspend_current_hart(hsm: &QemuHsm) {
     if !prev_msoft {
         unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
     }
-    clint.clear_soft(hart_id()); // Clear IPI
+    hsm.clint.clear_soft(hart_id()); // Clear IPI
 }
 
 // Pause current hart, wake through inter-processor interrupt
-pub fn pause() {
+pub(crate) fn pause() {
     use riscv::asm::wfi;
     use riscv::register::{mie, mip};
-    unsafe {
-        let clint = crate::clint::get();
-        clint.clear_soft(hart_id()); // Clear IPI
-        mip::clear_msoft(); // clear machine software interrupt flag
-        let prev_msoft = mie::read().msoft();
-        mie::set_msoft(); // Start listening for software interrupts
-        loop {
-            wfi();
-            if mip::read().msoft() {
-                break;
-            }
+
+    get().clint.clear_soft(hart_id()); // Clear IPI
+    unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
+    let prev_msoft = mie::read().msoft();
+    unsafe { mie::set_msoft() }; // Start listening for software interrupts
+    loop {
+        unsafe { wfi() };
+        if mip::read().msoft() {
+            break;
         }
-        if !prev_msoft {
-            mie::clear_msoft(); // Stop listening for software interrupts
-        }
-        clint.clear_soft(hart_id()); // Clear IPI
     }
+    if !prev_msoft {
+        unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
+    }
+    get().clint.clear_soft(hart_id()); // Clear IPI
 }
 
 #[inline(always)]

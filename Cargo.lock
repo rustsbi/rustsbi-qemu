@@ -298,7 +298,6 @@ dependencies = [
  "buddy_system_allocator",
  "embedded-hal",
  "hashbrown",
- "lazy_static",
  "nb 1.0.0",
  "r0",
  "riscv 0.8.0",

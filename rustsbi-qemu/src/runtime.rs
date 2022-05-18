@@ -50,14 +50,14 @@ impl Generator for Runtime {
     type Return = ();
     fn resume(mut self: Pin<&mut Self>, _arg: ()) -> GeneratorState<Self::Yield, Self::Return> {
         unsafe { do_resume(&mut self.context as *mut _) };
-        let mtval = mtval::read();
         let trap = match mcause::read().cause() {
             Trap::Exception(Exception::SupervisorEnvCall) => MachineTrap::SbiCall(),
             Trap::Exception(Exception::IllegalInstruction) => MachineTrap::IllegalInstruction(),
             Trap::Interrupt(Interrupt::MachineTimer) => MachineTrap::MachineTimer(),
             Trap::Interrupt(Interrupt::MachineSoft) => MachineTrap::MachineSoft(),
             e => panic!(
-                "unhandled exception: {e:?}! mtval: {mtval:#x?}, ctx: {:#x?}",
+                "unhandled exception: {e:?}! mtval: {:#x?}, ctx: {:#x?}",
+                mtval::read(),
                 self.context
             ),
         };

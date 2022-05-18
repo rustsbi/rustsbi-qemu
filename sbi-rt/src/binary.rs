@@ -35,7 +35,7 @@ impl core::fmt::Debug for SbiRet {
             SBI_ERR_ALREADY_AVAILABLE => write!(f, "<SBI already available>"),
             SBI_ERR_ALREADY_STARTED => write!(f, "<SBI already started>"),
             SBI_ERR_ALREADY_STOPPED => write!(f, "<SBI already stopped>"),
-            unknown => write!(f, "[SBI Unknown error: {unknown}]"),
+            unknown => write!(f, "[SBI Unknown error: {unknown:#x}]"),
         }
     }
 }
