@@ -90,6 +90,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> ! {
 
     static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
     static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
+    static GENESIS: Once<()> = Once::new();
 
     // 全局初始化过程
     let genesis = genesis();
@@ -133,7 +134,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> ! {
     enable_mint();
     if genesis {
         hart_csr_utils::print_hart_csrs();
-        println!("[rustsbi] enter supervisor {SUPERVISOR_ENTRY}");
+        println!("[rustsbi] enter supervisor {SUPERVISOR_ENTRY:#x}");
+        GENESIS.call_once(|| ());
+    } else {
+        let _ = GENESIS.wait();
     }
 
     execute::execute_supervisor(HSM.wait())

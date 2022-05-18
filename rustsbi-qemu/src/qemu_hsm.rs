@@ -140,7 +140,11 @@ impl rustsbi::Hsm for &'static QemuHsm {
     fn hart_stop(&self) -> SbiRet {
         use core::arch::asm;
         use hashbrown::hash_map::Entry::*;
-        use riscv::{asm::wfi, register::mtvec};
+        use riscv::{
+            asm::wfi,
+            interrupt,
+            register::{mie, mip, mtvec},
+        };
 
         // 除了 s-ecall，sbi 也可以直接调用这个函数，因此还要关中断
         let mstatus: usize;
@@ -172,13 +176,16 @@ impl rustsbi::Hsm for &'static QemuHsm {
         extern "C" {
             fn _start();
         }
+        self.clint.clear_soft(hart_id());
         unsafe {
-            asm!("csrw mie,     1<<3");
-            asm!("csrw mstatus, 1<<3");
+            mip::clear_msoft();
             mtvec::write(_start as _, mtvec::TrapMode::Direct);
+            mie::set_msoft();
+            interrupt::enable();
         }
         self.last_command.lock().insert(hart_id(), HsmCommand::Stop);
         self.state.lock().insert(hart_id(), HsmState::Stopped);
+        println!("hart {} waiting", hart_id());
         loop {
             unsafe { wfi() };
         }

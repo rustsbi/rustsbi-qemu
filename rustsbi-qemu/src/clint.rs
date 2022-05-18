@@ -25,26 +25,18 @@ pub(crate) fn get() -> &'static Clint {
 impl Clint {
     #[inline]
     pub fn get_mtime(&self) -> u64 {
-        unsafe {
-            let base = self.base as *mut u8;
-            core::ptr::read_volatile(base.add(0xbff8) as *mut u64)
-        }
+        unsafe { ((self.base as *mut u8).add(0xbff8) as *mut u64).read_volatile() }
     }
 
     #[inline]
     pub fn send_soft(&self, hart_id: usize) {
-        unsafe {
-            let base = self.base as *mut u8;
-            core::ptr::write_volatile((base as *mut u32).add(hart_id), 1);
-        }
+        println!("send ipi => {hart_id}");
+        unsafe { (self.base as *mut u32).add(hart_id).write_volatile(1) };
     }
 
     #[inline]
     pub fn clear_soft(&self, hart_id: usize) {
-        unsafe {
-            let base = self.base as *mut u8;
-            core::ptr::write_volatile((base as *mut u32).add(hart_id), 0);
-        }
+        unsafe { (self.base as *mut u32).add(hart_id).write_volatile(0) };
     }
 }
 
