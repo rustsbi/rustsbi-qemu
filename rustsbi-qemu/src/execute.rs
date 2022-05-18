@@ -1,5 +1,5 @@
 use crate::{
-    feature,
+    feature, hart_id,
     prv_mem::{self, SupervisorPointer},
     qemu_hsm::{pause, HsmCommand, QemuHsm},
     runtime::{MachineTrap, Runtime, SupervisorContext},
@@ -12,15 +12,16 @@ use riscv::register::{
     mcause, mie, mip,
     scause::{Exception, Interrupt, Trap},
 };
+use rustsbi::Hsm;
 
-pub(crate) fn execute_supervisor(
-    supervisor_mepc: usize,
-    hart_id: usize,
-    a1: usize,
-    hsm: &'static QemuHsm,
-) -> ! {
-    let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, hart_id, a1);
-    hsm.record_current_start_finished();
+pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) -> ! {
+    let mut rt = if let Some(HsmCommand::Start(mepc, a1)) = hsm.last_command() {
+        hsm.record_current_start_finished();
+        Runtime::new_sbi_supervisor(mepc, hart_id(), a1)
+    } else {
+        hsm.hart_stop();
+        unreachable!()
+    };
     loop {
         match Pin::new(&mut rt).resume(()) {
             GeneratorState::Yielded(MachineTrap::SbiCall()) => {
@@ -36,7 +37,7 @@ pub(crate) fn execute_supervisor(
                         }
                         hsm.record_current_start_finished();
                         ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
-                        ctx.a0 = hart_id;
+                        ctx.a0 = hart_id();
                         ctx.a1 = opaque;
                         ctx.mepc = start_paddr;
                     }
@@ -98,7 +99,7 @@ pub(crate) fn execute_supervisor(
                         hsm.record_current_start_finished();
                         let ctx = rt.context_mut();
                         ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
-                        ctx.a0 = hart_id;
+                        ctx.a0 = hart_id();
                         ctx.a1 = opaque;
                         ctx.mepc = start_paddr;
                     }
@@ -106,7 +107,7 @@ pub(crate) fn execute_supervisor(
                 None => unsafe {
                     // machine software interrupt but no HSM commands - delegate to S mode;
                     let ctx = rt.context_mut();
-                    crate::clint::get().clear_soft(hart_id); // Clear IPI
+                    crate::clint::get().clear_soft(hart_id()); // Clear IPI
                     if feature::should_transfer_trap(ctx) {
                         feature::do_transfer_trap(ctx, Trap::Interrupt(Interrupt::SupervisorSoft))
                     } else {

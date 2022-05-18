@@ -73,11 +73,12 @@ pub enum HsmCommand {
 }
 
 impl QemuHsm {
-    pub fn new(clint: &'static Clint) -> Self {
+    pub fn new(clint: &'static Clint, opaque: usize) -> Self {
+        let command = HsmCommand::Start(crate::SUPERVISOR_ENTRY, opaque);
         Self {
             clint,
-            state: Default::default(),
-            last_command: Default::default(),
+            state: Mutex::new(HashMap::from([(hart_id(), HsmState::Started)])),
+            last_command: Mutex::new(HashMap::from([(hart_id(), command)])),
         }
     }
 

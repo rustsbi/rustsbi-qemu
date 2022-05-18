@@ -85,7 +85,7 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
 }
 
 /// rust 入口。
-extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
+extern "C" fn rust_main(_hartid: usize, opaque: usize) -> ! {
     use spin::Once;
 
     static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
@@ -105,7 +105,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
 
         test_device::init(board_info.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get()));
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), opaque));
         // 初始化 SBI 服务
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
         rustsbi::init_ipi(clint::get());
@@ -131,16 +131,12 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
     set_pmp(BOARD_INFO.wait());
     delegate_supervisor_trap();
     enable_mint();
-
     if genesis {
         hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor {SUPERVISOR_ENTRY}");
-        execute::execute_supervisor(SUPERVISOR_ENTRY, hartid, opaque, HSM.wait());
-    } else {
-        use rustsbi::Hsm;
-        HSM.wait().hart_stop();
-        unreachable!()
     }
+
+    execute::execute_supervisor(HSM.wait())
 }
 
 /// 抢夺启动权。
