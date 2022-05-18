@@ -1,7 +1,6 @@
 //! Hart state monitor designed for QEMU
 
-use crate::clint::Clint;
-use alloc::sync::Arc;
+use crate::{clint::Clint, hart_id};
 use hashbrown::HashMap;
 use rustsbi::SbiRet;
 use spin::Mutex;
@@ -53,11 +52,10 @@ enum HsmState {
 /// There are functions to read its current state
 /// when the target hart is still in transition or after the transition is done.
 /// These functions may read from `last_command` variable at any time.
-#[derive(Clone)]
 pub(crate) struct QemuHsm {
-    clint: Clint,
-    state: Arc<Mutex<HashMap<usize, HsmState>>>,
-    last_command: Arc<Mutex<HashMap<usize, HsmCommand>>>,
+    clint: &'static Clint,
+    state: Mutex<HashMap<usize, HsmState>>,
+    last_command: Mutex<HashMap<usize, HsmCommand>>,
 }
 
 /// RustSBI-QEMU HSM command, these commands apply to a remote given hart.
@@ -75,7 +73,7 @@ pub enum HsmCommand {
 }
 
 impl QemuHsm {
-    pub fn new(clint: Clint) -> Self {
+    pub fn new(clint: &'static Clint) -> Self {
         Self {
             clint,
             state: Default::default(),
@@ -107,7 +105,7 @@ impl QemuHsm {
 }
 
 // Adapt RustSBI interface to RustSBI-QEMU's QemuHsm.
-impl rustsbi::Hsm for QemuHsm {
+impl rustsbi::Hsm for &'static QemuHsm {
     fn hart_start(&self, hart_id: usize, start_addr: usize, opaque: usize) -> SbiRet {
         use riscv::register::mstatus::{self, MPP};
 
@@ -237,9 +235,4 @@ pub(crate) fn pause() {
         unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
     }
     crate::clint::get().clear_soft(hart_id()); // Clear IPI
-}
-
-#[inline(always)]
-fn hart_id() -> usize {
-    riscv::register::mhartid::read()
 }

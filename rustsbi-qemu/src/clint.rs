@@ -2,11 +2,11 @@
 //! 如今，PLIC 有了自己的独立[标准](https://github.com/riscv/riscv-plic-spec)，
 //! CLINT 却消失不见了。
 
+use crate::hart_id;
 use rustsbi::SbiRet;
 use rustsbi::{HartMask, Ipi, Timer};
 use spin::Once;
 
-#[derive(Clone)]
 pub(crate) struct Clint {
     base: usize,
     smp: usize,
@@ -32,14 +32,6 @@ impl Clint {
     }
 
     #[inline]
-    pub fn set_timer(&self, hart_id: usize, instant: u64) {
-        unsafe {
-            let base = self.base as *mut u8;
-            core::ptr::write_volatile((base.offset(0x4000) as *mut u64).add(hart_id), instant);
-        }
-    }
-
-    #[inline]
     pub fn send_soft(&self, hart_id: usize) {
         unsafe {
             let base = self.base as *mut u8;
@@ -56,7 +48,7 @@ impl Clint {
     }
 }
 
-impl Ipi for Clint {
+impl Ipi for &'static Clint {
     #[inline]
     fn send_ipi_many(&self, hart_mask: HartMask) -> SbiRet {
         // println!("[rustsbi] send ipi many, {:?}", hart_mask);
@@ -69,10 +61,13 @@ impl Ipi for Clint {
     }
 }
 
-impl Timer for Clint {
+impl Timer for &'static Clint {
     #[inline]
     fn set_timer(&self, time_value: u64) {
-        let this_mhartid = riscv::register::mhartid::read();
-        self.set_timer(this_mhartid, time_value);
+        unsafe {
+            ((self.base as *mut u8).offset(0x4000) as *mut u64)
+                .add(hart_id())
+                .write_volatile(time_value);
+        }
     }
 }

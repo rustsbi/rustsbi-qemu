@@ -17,7 +17,7 @@ pub(crate) fn execute_supervisor(
     supervisor_mepc: usize,
     hart_id: usize,
     a1: usize,
-    hsm: QemuHsm,
+    hsm: &'static QemuHsm,
 ) -> ! {
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, hart_id, a1);
     hsm.record_current_start_finished();

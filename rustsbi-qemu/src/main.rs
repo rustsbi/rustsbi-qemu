@@ -6,6 +6,7 @@
 #![feature(default_alloc_error_handler)]
 
 extern crate alloc;
+
 #[macro_use]
 extern crate rustsbi;
 
@@ -102,13 +103,13 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
 
         test_device::init(board_info.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get().clone()));
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get()));
         // 初始化 SBI 服务
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
-        rustsbi::init_ipi(clint::get().clone());
-        rustsbi::init_timer(clint::get().clone());
+        rustsbi::init_ipi(clint::get());
+        rustsbi::init_timer(clint::get());
         rustsbi::init_reset(test_device::get().clone());
-        rustsbi::init_hsm(hsm.clone());
+        rustsbi::init_hsm(hsm);
         // 打印启动信息
         println!(
             "\
@@ -132,7 +133,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
     if genesis {
         hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor 0x80200000");
-        execute::execute_supervisor(0x80200000, hartid, opaque, HSM.wait().clone());
+        execute::execute_supervisor(0x80200000, hartid, opaque, HSM.wait());
     } else {
         // use rustsbi::Hsm;
         // qemu_hsm::get().hart_stop();
@@ -283,4 +284,9 @@ impl PmpCfg {
     fn bits(&self) -> usize {
         self.0
     }
+}
+
+#[inline(always)]
+fn hart_id() -> usize {
+    riscv::register::mhartid::read()
 }
