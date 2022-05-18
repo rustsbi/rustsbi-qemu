@@ -173,13 +173,10 @@ impl rustsbi::Hsm for &'static QemuHsm {
         }
 
         // 中断已关，打开 msoft 以接收 start 消息，收到直接启动
-        extern "C" {
-            fn _start();
-        }
         self.clint.clear_soft(hart_id());
         unsafe {
             mip::clear_msoft();
-            mtvec::write(_start as _, mtvec::TrapMode::Direct);
+            mtvec::write(reboot as _, mtvec::TrapMode::Direct);
             mie::set_msoft();
             interrupt::enable();
         }
@@ -283,4 +280,17 @@ pub(crate) fn pause() {
         unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
     }
     crate::clint::get().clear_soft(hart_id()); // Clear IPI
+}
+
+#[link_section = ".text.reboot"]
+extern "C" fn reboot() -> ! {
+    crate::clint::get().clear_soft(hart_id());
+    unsafe {
+        riscv::register::mip::clear_msoft();
+        core::arch::asm!(
+            "j {entry}",
+            entry = sym crate::entry,
+            options(noreturn)
+        )
+    }
 }

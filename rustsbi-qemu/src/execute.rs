@@ -16,7 +16,6 @@ use rustsbi::Hsm;
 
 pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) -> ! {
     let mut rt = if let Some(HsmCommand::Start(mepc, a1)) = hsm.last_command() {
-        println!("execute hart {} at {mepc:#x}", hart_id());
         hsm.record_current_start_finished();
         Runtime::new_sbi_supervisor(mepc, hart_id(), a1)
     } else {

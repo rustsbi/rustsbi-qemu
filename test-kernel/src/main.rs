@@ -117,18 +117,19 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     for id in 0..smp {
         if id != hartid {
             println!("hart{id} is booting...");
-            println!("before {ret:?}", ret = sbi::hart_get_status(id));
             let ret = sbi::hart_start(id, secondary_hart_start as usize, 0);
             if ret.error != sbi::SBI_SUCCESS {
                 panic!("start hart{id} failed: {ret:?}");
             }
-            println!("after {ret:?}", ret = sbi::hart_get_status(id));
         } else {
             println!("hart{id} is the primary hart.");
         }
     }
-    println!("{}/{smp}", STARTED.load(Ordering::SeqCst));
-    loop {}
+    while STARTED.load(Ordering::SeqCst) < smp {
+        unsafe { riscv::asm::nop() };
+    }
+    println!("All harts boot successfully!");
+    shutdown()
 
     // if hartid == 0 {
     //     let sbi_ret = sbi::hart_stop();
@@ -182,9 +183,9 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 
 extern "C" fn secondary_rust_main(_hart_id: usize) -> ! {
     STARTED.fetch_add(1, Ordering::Release);
-    println!("!");
-    sbi::hart_stop();
-    unreachable!()
+    loop {
+        unsafe { riscv::asm::nop() };
+    }
 }
 
 extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
@@ -368,7 +369,9 @@ fn init_heap() {
 fn shutdown() -> ! {
     use sbi::{system_reset, RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN};
     system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
-    loop {}
+    loop {
+        unsafe { riscv::asm::nop() };
+    }
 }
 
 // extern "C" fn hart_2_resume(hart_id: usize, param: usize) {

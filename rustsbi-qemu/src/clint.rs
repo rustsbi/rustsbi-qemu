@@ -30,7 +30,6 @@ impl Clint {
 
     #[inline]
     pub fn send_soft(&self, hart_id: usize) {
-        println!("send ipi => {hart_id}");
         unsafe { (self.base as *mut u32).add(hart_id).write_volatile(1) };
     }
 
