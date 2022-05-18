@@ -4,7 +4,7 @@ use crate::clint::Clint;
 use alloc::sync::Arc;
 use hashbrown::HashMap;
 use rustsbi::SbiRet;
-use spin::{Mutex, Once};
+use spin::Mutex;
 
 // RISC-V SBI Hart State Monitor states
 #[allow(unused)]
@@ -75,6 +75,14 @@ pub enum HsmCommand {
 }
 
 impl QemuHsm {
+    pub fn new(clint: Clint) -> Self {
+        Self {
+            clint,
+            state: Default::default(),
+            last_command: Default::default(),
+        }
+    }
+
     /// Return last command by current hart id.
     /// This function is used in software interrupt handler to check which HSM function should we execute.
     pub fn last_command(&self) -> Option<HsmCommand> {
@@ -98,23 +106,6 @@ impl QemuHsm {
     }
 }
 
-static HSM: Once<QemuHsm> = Once::new();
-
-/// 初始化 HSM。
-///
-/// 依赖堆，务必先初始化堆再调用。
-pub(crate) fn init(clint: Clint) {
-    HSM.call_once(|| QemuHsm {
-        clint,
-        state: Default::default(),
-        last_command: Default::default(),
-    });
-}
-
-pub(crate) fn get() -> &'static QemuHsm {
-    HSM.wait()
-}
-
 // Adapt RustSBI interface to RustSBI-QEMU's QemuHsm.
 impl rustsbi::Hsm for QemuHsm {
     fn hart_start(&self, hart_id: usize, start_addr: usize, opaque: usize) -> SbiRet {
@@ -128,12 +119,7 @@ impl rustsbi::Hsm for QemuHsm {
         match self.state.lock().get_mut(&hart_id) {
             Some(s) if *s == HsmState::Stopped => *s = HsmState::StartPending,
             Some(s) if *s == HsmState::Started => return SbiRet::already_available(),
-            Some(x) => {
-                return SbiRet {
-                    error: 0xffff0000 | *x as usize,
-                    value: 0,
-                }
-            }
+            Some(_) => return SbiRet::failed(),
             None => return SbiRet::invalid_param(),
         }
         // todo: check start address
@@ -194,8 +180,9 @@ impl rustsbi::Hsm for QemuHsm {
                 self.clint.send_soft(hart_id());
                 unreachable!()
             }
-            // There could be other platform specific suspend types; RustSBI-QEMU does not define any
-            // platform suspend types. It gives SBI return value as not supported.
+            // There could be other platform specific suspend types;
+            // RustSBI-QEMU does not define any platform suspend types.
+            // It gives SBI return value as not supported.
             _ => SbiRet::not_supported(),
         }
     }
@@ -236,7 +223,7 @@ pub(crate) fn pause() {
     use riscv::asm::wfi;
     use riscv::register::{mie, mip};
 
-    get().clint.clear_soft(hart_id()); // Clear IPI
+    crate::clint::get().clear_soft(hart_id()); // Clear IPI
     unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
     let prev_msoft = mie::read().msoft();
     unsafe { mie::set_msoft() }; // Start listening for software interrupts
@@ -249,7 +236,7 @@ pub(crate) fn pause() {
     if !prev_msoft {
         unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
     }
-    get().clint.clear_soft(hart_id()); // Clear IPI
+    crate::clint::get().clear_soft(hart_id()); // Clear IPI
 }
 
 #[inline(always)]

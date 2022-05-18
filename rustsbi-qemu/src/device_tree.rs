@@ -1,15 +1,13 @@
-﻿use core::ops::Range;
-
-use alloc::{
+﻿use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use core::ops::Range;
 use serde::Deserialize;
 use serde_device_tree::{
     buildin::{NodeSeq, Reg, StrSeq},
     from_raw_mut, Dtb, DtbPtr,
 };
-use spin::Once;
 
 pub(crate) struct BoardInfo {
     pub model: Vec<String>,
@@ -23,36 +21,28 @@ pub(crate) struct BoardInfo {
     pub plic: Range<usize>,
 }
 
-static BOARD: Once<BoardInfo> = Once::new();
+pub(crate) fn parse(opaque: usize) -> BoardInfo {
+    let ptr = DtbPtr::from_raw(opaque as _).unwrap();
+    let dtb = Dtb::from(ptr).share();
+    let t: Tree = from_raw_mut(&dtb).unwrap();
 
-pub(crate) fn init(opaque: usize) {
-    BOARD.call_once(|| {
-        let ptr = DtbPtr::from_raw(opaque as _).unwrap();
-        let dtb = Dtb::from(ptr).share();
-        let t: Tree = from_raw_mut(&dtb).unwrap();
-
-        BoardInfo {
-            model: t.model.iter().map(|m| m.to_string()).collect(),
-            smp: t.cpus.cpu.len(),
-            memory: t
-                .memory
-                .iter()
-                .map(|m| m.deserialize::<Memory>())
-                .find(|m| m.device_type.iter().any(|t| t == "memory"))
-                .map(|m| m.reg.iter().next().unwrap().0)
-                .unwrap(),
-            rtc: take_one_peripheral(&t.soc.rtc, "google,goldfish-rtc"),
-            uart: take_one_peripheral(&t.soc.uart, "ns16550a"),
-            test: take_one_peripheral(&t.soc.test, "syscon"),
-            pci: take_one_peripheral(&t.soc.pci, "pci-host-ecam-generic"),
-            clint: take_one_peripheral(&t.soc.clint, "riscv,clint0"),
-            plic: take_one_peripheral(&t.soc.plic, "riscv,plic0"),
-        }
-    });
-}
-
-pub(crate) fn get() -> &'static BoardInfo {
-    BOARD.wait()
+    BoardInfo {
+        model: t.model.iter().map(|m| m.to_string()).collect(),
+        smp: t.cpus.cpu.len(),
+        memory: t
+            .memory
+            .iter()
+            .map(|m| m.deserialize::<Memory>())
+            .find(|m| m.device_type.iter().any(|t| t == "memory"))
+            .map(|m| m.reg.iter().next().unwrap().0)
+            .unwrap(),
+        rtc: take_one_peripheral(&t.soc.rtc, "google,goldfish-rtc"),
+        uart: take_one_peripheral(&t.soc.uart, "ns16550a"),
+        test: take_one_peripheral(&t.soc.test, "syscon"),
+        pci: take_one_peripheral(&t.soc.pci, "pci-host-ecam-generic"),
+        clint: take_one_peripheral(&t.soc.clint, "riscv,clint0"),
+        plic: take_one_peripheral(&t.soc.plic, "riscv,plic0"),
+    }
 }
 
 #[derive(Deserialize)]

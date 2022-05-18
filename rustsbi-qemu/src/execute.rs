@@ -1,17 +1,17 @@
+use crate::{
+    feature,
+    prv_mem::{self, SupervisorPointer},
+    qemu_hsm::{pause, HsmCommand, QemuHsm},
+    runtime::{MachineTrap, Runtime, SupervisorContext},
+};
 use core::{
     ops::{Generator, GeneratorState},
     pin::Pin,
 };
-
 use riscv::register::{
     mcause, mie, mip,
     scause::{Exception, Interrupt, Trap},
 };
-
-use crate::feature;
-use crate::prv_mem::{self, SupervisorPointer};
-use crate::qemu_hsm::{pause, HsmCommand, QemuHsm};
-use crate::runtime::{MachineTrap, Runtime, SupervisorContext};
 
 pub(crate) fn execute_supervisor(
     supervisor_mepc: usize,

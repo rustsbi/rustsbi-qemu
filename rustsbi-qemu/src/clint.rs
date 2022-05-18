@@ -9,12 +9,13 @@ use spin::Once;
 #[derive(Clone)]
 pub(crate) struct Clint {
     base: usize,
+    smp: usize,
 }
 
 static CLINT: Once<Clint> = Once::new();
 
-pub(crate) fn init(base: usize) {
-    CLINT.call_once(|| Clint { base });
+pub(crate) fn init(base: usize, smp: usize) {
+    CLINT.call_once(|| Clint { base, smp });
 }
 
 pub(crate) fn get() -> &'static Clint {
@@ -59,8 +60,7 @@ impl Ipi for Clint {
     #[inline]
     fn send_ipi_many(&self, hart_mask: HartMask) -> SbiRet {
         // println!("[rustsbi] send ipi many, {:?}", hart_mask);
-        let num_harts = crate::device_tree::get().smp;
-        for i in 0..num_harts {
+        for i in 0..self.smp {
             if hart_mask.has_bit(i) {
                 self.send_soft(i);
             }

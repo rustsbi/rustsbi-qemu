@@ -8,9 +8,10 @@
 //! as parameters.
 // Code ref: https://github.com/luojia65/zihai/blob/adb4e69ca1a4118a4de634c0682e34b67810cb0c/zihai/src/detect.rs
 
-use core::arch::asm;
-use core::mem::{self, MaybeUninit};
-
+use core::{
+    arch::asm,
+    mem::{self, MaybeUninit},
+};
 use riscv::register::{
     mcause::{self, Exception, Mcause, Trap},
     mstatus,

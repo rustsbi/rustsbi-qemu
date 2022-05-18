@@ -83,7 +83,12 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
 
 /// rust 入口。
 extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
-    runtime::init();
+    use spin::Once;
+
+    static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
+    static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
+
+    // 全局初始化过程
     let genesis = genesis();
     if genesis {
         // 清零 bss 段
@@ -91,19 +96,19 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
         // 初始化堆和分配器
         init_heap();
         // 解析设备树，需要堆来保存结果里的字符串等
-        device_tree::init(opaque);
+        let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
-        let periperals = device_tree::get();
-        clint::init(periperals.clint.start);
-        qemu_hsm::init(clint::get().clone());
-        test_device::init(periperals.test.start);
-        let uart = unsafe { ns16550a::Ns16550a::new(periperals.uart.start) };
+        clint::init(board_info.clint.start, board_info.smp);
+
+        test_device::init(board_info.test.start);
+        let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get().clone()));
         // 初始化 SBI 服务
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
         rustsbi::init_ipi(clint::get().clone());
         rustsbi::init_timer(clint::get().clone());
         rustsbi::init_reset(test_device::get().clone());
-        rustsbi::init_hsm(qemu_hsm::get().clone());
+        rustsbi::init_hsm(hsm.clone());
         // 打印启动信息
         println!(
             "\
@@ -114,17 +119,20 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) -> ! {
             ver_sbi = rustsbi::VERSION,
             logo = rustsbi::LOGO,
             ver_impl = env!("CARGO_PKG_VERSION"),
-            model = device_tree::get().model
+            model = board_info.model
         );
     }
-    qemu_hsm::get().record_current_start_finished();
-    set_pmp();
+
+    runtime::init();
+    HSM.wait().record_current_start_finished();
+    set_pmp(BOARD_INFO.wait());
     delegate_supervisor_trap();
     enable_mint();
+
     if genesis {
         hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor 0x80200000");
-        execute::execute_supervisor(0x80200000, hartid, opaque, qemu_hsm::get().clone());
+        execute::execute_supervisor(0x80200000, hartid, opaque, HSM.wait().clone());
     } else {
         // use rustsbi::Hsm;
         // qemu_hsm::get().hart_stop();
@@ -200,7 +208,7 @@ fn enable_mint() {
 /// 设置 PMP。
 ///
 /// FIXME 需要判断一个外设区域是否能用 NAPOT 表示，最好能实现一个排序+合并连续区域的复杂算法
-fn set_pmp() {
+fn set_pmp(board_info: &device_tree::BoardInfo) {
     use core::ops::Range;
     use riscv::register::{
         pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpaddr6, pmpaddr7, pmpaddr8,
@@ -208,14 +216,13 @@ fn set_pmp() {
     };
 
     // todo: 根据QEMU的loader device等等，设置这里的权限配置
-    let periperals = device_tree::get();
-    let memory = &periperals.memory;
-    let rtc = &periperals.rtc;
-    let uart = &periperals.uart;
-    let test = &periperals.test;
-    let pci = &periperals.pci;
-    let clint = &periperals.clint;
-    let plic = &periperals.plic;
+    let memory = &board_info.memory;
+    let rtc = &board_info.rtc;
+    let uart = &board_info.uart;
+    let test = &board_info.test;
+    let pci = &board_info.pci;
+    let clint = &board_info.clint;
+    let plic = &board_info.plic;
 
     fn calc_pmpaddr_napot(range: &Range<usize>) -> usize {
         let start = range.start;
