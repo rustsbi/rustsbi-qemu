@@ -1,4 +1,4 @@
-use crate::{clint, hart_id};
+use crate::{clint, hart_id, qemu_hsm::Supervisor};
 use core::{
     arch::asm,
     ops::{Generator, GeneratorState},
@@ -15,11 +15,12 @@ pub(super) struct Runtime {
 }
 
 impl Runtime {
-    /// 初始化 M 上下文，并构造准备换入的 S 上下文
-    pub fn new(supervisor_mepc: usize, a0: usize, a1: usize) -> Self {
+    /// 初始化为 S 服务的 M 上下文，并构造准备换入的 S 上下文
+    pub fn new(supervisor: Supervisor) -> Self {
         use riscv::register::mstatus;
 
         unsafe {
+            asm!("csrw mstatus, {}", in(reg)0);
             mstatus::set_mpp(mstatus::MPP::Supervisor);
             mstatus::set_mie();
         };
@@ -35,8 +36,8 @@ impl Runtime {
                 t2: 0,
                 s0: 0,
                 s1: 0,
-                a0,
-                a1,
+                a0: hart_id(),
+                a1: supervisor.opaque,
                 a2: 0,
                 a3: 0,
                 a4: 0,
@@ -58,7 +59,7 @@ impl Runtime {
                 t5: 0,
                 t6: 0,
                 mstatus: mstatus::read(),
-                mepc: supervisor_mepc,
+                mepc: supervisor.start_addr,
                 machine_stack: 0x2333333366666666, // 将会被resume函数覆盖
             },
         };
@@ -66,14 +67,16 @@ impl Runtime {
         clint::get().clear_soft(hart_id());
         unsafe {
             use riscv::register::{medeleg, mie, mtvec};
+
             mstatus::clear_mie();
-            mtvec::write(from_supervisor_save as usize, mtvec::TrapMode::Direct);
             asm!("csrw     mip, {}", in(reg) 0);
             asm!("csrw mideleg, {}", in(reg) usize::MAX);
             asm!("csrw medeleg, {}", in(reg) usize::MAX);
             medeleg::clear_illegal_instruction();
             medeleg::clear_supervisor_env_call();
             medeleg::clear_machine_env_call();
+
+            mtvec::write(from_supervisor_save as usize, mtvec::TrapMode::Direct);
             mie::set_mext();
             mie::set_msoft();
         }

@@ -61,7 +61,7 @@ enum HsmState {
 pub(crate) struct QemuHsm {
     clint: &'static Clint,
     state: Mutex<HashMap<usize, HsmState>>,
-    last_command: Mutex<HashMap<usize, HsmCommand>>,
+    supervisor: Mutex<HashMap<usize, Supervisor>>,
 }
 
 /// RustSBI-QEMU HSM command, these commands apply to a remote given hart.
@@ -73,25 +73,28 @@ pub(crate) struct QemuHsm {
 /// By current version of SBI specification, suspend command only apply to current hart,
 /// thus RustSBI does not use remote HSM command in this case.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum HsmCommand {
-    Start(usize, usize),
-    Stop,
+pub(crate) struct Supervisor {
+    pub start_addr: usize,
+    pub opaque: usize,
 }
 
 impl QemuHsm {
     pub fn new(clint: &'static Clint, opaque: usize) -> Self {
-        let command = HsmCommand::Start(crate::SUPERVISOR_ENTRY, opaque);
+        let command = Supervisor {
+            start_addr: crate::SUPERVISOR_ENTRY,
+            opaque,
+        };
         Self {
             clint,
             state: Mutex::new(HashMap::from([(hart_id(), HsmState::Started)])),
-            last_command: Mutex::new(HashMap::from([(hart_id(), command)])),
+            supervisor: Mutex::new(HashMap::from([(hart_id(), command)])),
         }
     }
 
     /// Return last command by current hart id.
     /// This function is used in software interrupt handler to check which HSM function should we execute.
-    pub fn last_command(&self) -> Option<HsmCommand> {
-        self.last_command.lock().get(&hart_id()).copied()
+    pub fn take_supervisor(&self) -> Option<Supervisor> {
+        self.supervisor.lock().remove(&hart_id())
     }
 
     /// Record that current hart id is marked as `Stopped` state.
@@ -141,9 +144,9 @@ impl rustsbi::Hsm for &'static QemuHsm {
         // SBI_ERR_INVALID_ADDRESS: start_addr is not valid possibly due to following reasons:
         // - It is not a valid physical address.
         // - The address is prohibited by PMP to run in supervisor mode. */
-        self.last_command
+        self.supervisor
             .lock()
-            .insert(hart_id, HsmCommand::Start(start_addr, opaque));
+            .insert(hart_id, Supervisor { start_addr, opaque });
         self.clint.send_soft(hart_id);
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
@@ -159,7 +162,7 @@ impl rustsbi::Hsm for &'static QemuHsm {
                 Some(_) | None => return SbiRet::failed(),
             };
         }
-        self.last_command.lock().insert(hart_id(), HsmCommand::Stop);
+        self.supervisor.lock().remove(&hart_id());
         SbiRet::ok(0)
     }
 
@@ -180,9 +183,13 @@ impl rustsbi::Hsm for &'static QemuHsm {
         match suspend_type {
             SUSPEND_RETENTIVE => todo!(),
             SUSPEND_NON_RETENTIVE => {
-                self.last_command
-                    .lock()
-                    .insert(hart_id(), HsmCommand::Start(resume_addr, opaque));
+                self.supervisor.lock().insert(
+                    hart_id(),
+                    Supervisor {
+                        start_addr: resume_addr,
+                        opaque,
+                    },
+                );
                 SbiRet::ok(0)
             }
             _ => SbiRet::not_supported(),
