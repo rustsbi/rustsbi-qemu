@@ -118,7 +118,7 @@ fn print_pmps() {
 
     let mut i_cfg = 0;
     while i_cfg < 4 {
-        let base = i_cfg * ITEM_PER_CFG;
+        let base = i_cfg * core::mem::size_of::<u32>();
         let mut cfg = pmpcfg(i_cfg);
         let mut i_addr = 0;
         while i_addr < ITEM_PER_CFG {

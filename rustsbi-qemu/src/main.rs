@@ -165,6 +165,8 @@ fn zero_bss() {
     type Word = u32;
     #[cfg(target_pointer_width = "64")]
     type Word = u64;
+    #[cfg(target_pointer_width = "128")]
+    type Word = u128;
     extern "C" {
         static mut sbss: Word;
         static mut ebss: Word;
@@ -176,7 +178,6 @@ fn zero_bss() {
 fn init_heap() {
     use buddy_system_allocator::LockedHeap;
 
-    #[link_section = ".bss.uninit"]
     static mut HEAP_SPACE: [u8; LEN_HEAP_SBI] = [0; LEN_HEAP_SBI];
     #[global_allocator]
     static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
@@ -247,7 +248,6 @@ fn set_pmp(board_info: &device_tree::BoardInfo) {
     // virtio_mmio
     pmpcfg0.set_next(0b01011);
     pmpaddr7::write(0x1000_1000 >> 2);
-    pmpcfg0.set_next(0b00000);
     pmpaddr8::write(0x1000_9000 >> 2);
     // cfg
     pmpcfg0::write(pmpcfg0.bits());
