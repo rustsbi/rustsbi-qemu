@@ -125,8 +125,8 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
         }
     }
     while STARTED.load(Ordering::SeqCst) < smp {
-        // println!("{}/{smp}", STARTED.load(Ordering::Relaxed));
-        unsafe { riscv::asm::delay(0x10) };
+        unsafe { riscv::asm::delay(0x400) };
+        println!("{}/{smp}", STARTED.load(Ordering::Relaxed));
     }
     println!("All harts boot successfully!");
     shutdown()

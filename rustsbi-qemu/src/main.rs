@@ -141,25 +141,12 @@ extern "C" fn finalize() {
         register::{mie, mip, mtvec},
     };
     unsafe {
-        mtvec::write(reboot as _, mtvec::TrapMode::Direct);
+        mtvec::write(entry as _, mtvec::TrapMode::Direct);
         mip::clear_msoft();
         mie::set_msoft();
     }
     HSM.wait().record_ready_to_reboot();
-    unsafe { interrupt::enable() }
-}
-
-#[link_section = ".text.reboot"]
-extern "C" fn reboot() -> ! {
-    crate::clint::get().clear_soft(hart_id());
-    unsafe {
-        riscv::register::mip::clear_msoft();
-        core::arch::asm!(
-            "j {entry}",
-            entry = sym entry,
-            options(noreturn)
-        )
-    }
+    unsafe { interrupt::enable() };
 }
 
 /// 抢夺启动权。

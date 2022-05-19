@@ -12,8 +12,6 @@ SECTIONS
         *(.text.entry)
         . = ALIGN(4);
         *(.text.trap_handler)
-        . = ALIGN(4);
-        *(.text.reboot)
         *(.text .text.*)
     }
 

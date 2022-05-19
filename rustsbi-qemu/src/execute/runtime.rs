@@ -1,3 +1,4 @@
+use crate::{clint, hart_id};
 use core::{
     arch::asm,
     ops::{Generator, GeneratorState},
@@ -5,7 +6,7 @@ use core::{
 };
 use riscv::register::{
     mcause::{self, Exception, Interrupt, Trap},
-    mstatus::{self, Mstatus, MPP},
+    mstatus::Mstatus,
     mtval,
 };
 
@@ -16,8 +17,10 @@ pub(super) struct Runtime {
 impl Runtime {
     /// 初始化 M 上下文，并构造准备换入的 S 上下文
     pub fn new(supervisor_mepc: usize, a0: usize, a1: usize) -> Self {
+        use riscv::register::mstatus;
+
         unsafe {
-            mstatus::set_mpp(MPP::Supervisor);
+            mstatus::set_mpp(mstatus::MPP::Supervisor);
             mstatus::set_mie();
         };
 
@@ -60,12 +63,14 @@ impl Runtime {
             },
         };
 
+        clint::get().clear_soft(hart_id());
         unsafe {
             use riscv::register::{medeleg, mie, mtvec};
             mstatus::clear_mie();
             mtvec::write(from_supervisor_save as usize, mtvec::TrapMode::Direct);
-            asm!("csrrw zero, mideleg, {}", in(reg) usize::MAX);
-            asm!("csrrw zero, medeleg, {}", in(reg) usize::MAX);
+            asm!("csrw     mip, {}", in(reg) 0);
+            asm!("csrw mideleg, {}", in(reg) usize::MAX);
+            asm!("csrw medeleg, {}", in(reg) usize::MAX);
             medeleg::clear_illegal_instruction();
             medeleg::clear_supervisor_env_call();
             medeleg::clear_machine_env_call();
