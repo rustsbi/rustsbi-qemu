@@ -1,4 +1,4 @@
-use crate::runtime::SupervisorContext;
+use super::super::runtime::SupervisorContext;
 
 #[inline]
 pub fn emulate_rdtime(ctx: &mut SupervisorContext, ins: usize) -> bool {

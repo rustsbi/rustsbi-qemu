@@ -5,20 +5,17 @@
 #![feature(generator_trait)]
 #![feature(default_alloc_error_handler)]
 
-extern crate alloc;
-
 #[macro_use]
 extern crate rustsbi;
+extern crate alloc;
 
 mod clint;
 mod device_tree;
 mod execute;
-mod feature;
 mod hart_csr_utils;
 mod ns16550a;
 mod prv_mem;
 mod qemu_hsm;
-mod runtime;
 mod test_device;
 
 mod constants {
@@ -38,14 +35,13 @@ use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use riscv::register::mhartid;
     use rustsbi::{
         reset::{RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN},
         Reset,
     };
 
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
-    println!("[rustsbi-panic] hart {} {info}", mhartid::read());
+    println!("[rustsbi-panic] hart {} {info}", hart_id());
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
     test_device::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
     loop {}
@@ -130,10 +126,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         );
     }
 
-    runtime::init();
     set_pmp(BOARD_INFO.wait());
-    delegate_supervisor_trap();
-    enable_mint();
     if genesis {
         hart_csr_utils::print_hart_csrs();
         println!("[rustsbi] enter supervisor {SUPERVISOR_ENTRY:#x}");
@@ -204,32 +197,6 @@ fn init_heap() {
         SBI_HEAP
             .lock()
             .init(HEAP_SPACE.as_ptr() as usize, HEAP_SPACE.len())
-    }
-}
-
-/// 委托中断
-fn delegate_supervisor_trap() {
-    use core::arch::asm;
-    use riscv::register::medeleg;
-    unsafe {
-        asm!("csrrw zero, mideleg, {}", in(reg) usize::MAX);
-        asm!("csrrw zero, medeleg, {}", in(reg) usize::MAX);
-        medeleg::clear_illegal_instruction();
-        medeleg::clear_load_misaligned();
-        medeleg::clear_store_misaligned();
-        medeleg::clear_supervisor_env_call();
-        medeleg::clear_machine_env_call();
-    }
-}
-
-/// 使能中断。
-fn enable_mint() {
-    use riscv::{interrupt, register::mie};
-    unsafe {
-        // mie::set_mtimer();
-        mie::set_mext();
-        mie::set_msoft();
-        interrupt::enable();
     }
 }
 

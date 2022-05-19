@@ -7,41 +7,78 @@ use riscv::register::{
     mcause::{self, Exception, Interrupt, Trap},
     mstatus::{self, Mstatus, MPP},
     mtval,
-    mtvec::{self, TrapMode},
 };
 
-pub fn init() {
-    unsafe { mtvec::write(from_supervisor_save as usize, TrapMode::Direct) };
-}
-
-pub struct Runtime {
+pub(super) struct Runtime {
     context: SupervisorContext,
 }
 
 impl Runtime {
-    pub fn new_sbi_supervisor(supervisor_mepc: usize, a0: usize, a1: usize) -> Self {
-        let context: SupervisorContext = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
-        let mut ans = Runtime { context };
-        ans.prepare_supervisor(supervisor_mepc);
-        ans.context.a0 = a0;
-        ans.context.a1 = a1;
-        ans
-    }
+    /// 初始化 M 上下文，并构造准备换入的 S 上下文
+    pub fn new(supervisor_mepc: usize, a0: usize, a1: usize) -> Self {
+        unsafe {
+            mstatus::set_mpp(MPP::Supervisor);
+            mstatus::set_mie();
+        };
 
-    fn reset(&mut self) {
-        unsafe { mstatus::set_mpp(MPP::Supervisor) };
-        self.context.mstatus = mstatus::read();
-        self.context.machine_stack = 0x2333333366666666; // 将会被resume函数覆盖
+        let ans = Runtime {
+            context: SupervisorContext {
+                ra: 0,
+                sp: 0,
+                gp: 0,
+                tp: 0,
+                t0: 0,
+                t1: 0,
+                t2: 0,
+                s0: 0,
+                s1: 0,
+                a0,
+                a1,
+                a2: 0,
+                a3: 0,
+                a4: 0,
+                a5: 0,
+                a6: 0,
+                a7: 0,
+                s2: 0,
+                s3: 0,
+                s4: 0,
+                s5: 0,
+                s6: 0,
+                s7: 0,
+                s8: 0,
+                s9: 0,
+                s10: 0,
+                s11: 0,
+                t3: 0,
+                t4: 0,
+                t5: 0,
+                t6: 0,
+                mstatus: mstatus::read(),
+                mepc: supervisor_mepc,
+                machine_stack: 0x2333333366666666, // 将会被resume函数覆盖
+            },
+        };
+
+        unsafe {
+            use riscv::register::{medeleg, mie, mtvec};
+            mstatus::clear_mie();
+            mtvec::write(from_supervisor_save as usize, mtvec::TrapMode::Direct);
+            asm!("csrrw zero, mideleg, {}", in(reg) usize::MAX);
+            asm!("csrrw zero, medeleg, {}", in(reg) usize::MAX);
+            medeleg::clear_illegal_instruction();
+            medeleg::clear_supervisor_env_call();
+            medeleg::clear_machine_env_call();
+            mie::set_mext();
+            mie::set_msoft();
+        }
+
+        ans
     }
 
     // 在处理异常的时候，使用context_mut得到运行时当前用户的上下文，可以改变上下文的内容
     pub fn context_mut(&mut self) -> &mut SupervisorContext {
         &mut self.context
-    }
-
-    pub fn prepare_supervisor(&mut self, new_mepc: usize) {
-        self.reset();
-        self.context.mepc = new_mepc;
     }
 }
 

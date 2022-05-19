@@ -1,4 +1,4 @@
-use crate::runtime::SupervisorContext;
+use super::super::runtime::SupervisorContext;
 use riscv::register::{
     mstatus::{self, MPP, SPP},
     mtval, scause, sepc, stval, stvec,
