@@ -15,6 +15,7 @@ use spin::Once;
 #[derive(Clone)]
 pub struct SiFiveTest(usize);
 
+#[link_section = ".bss.uninit"]
 static TEST: Once<SiFiveTest> = Once::new();
 
 pub(crate) fn init(base: usize) {

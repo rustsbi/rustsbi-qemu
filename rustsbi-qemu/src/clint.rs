@@ -12,6 +12,7 @@ pub(crate) struct Clint {
     smp: usize,
 }
 
+#[link_section = ".bss.uninit"]
 static CLINT: Once<Clint> = Once::new();
 
 pub(crate) fn init(base: usize, smp: usize) {

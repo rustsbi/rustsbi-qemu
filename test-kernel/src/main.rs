@@ -117,24 +117,24 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     let pc: usize;
     unsafe { asm!("auipc {}, 0", out(reg) pc) };
     println!("pc = {pc:#x}");
-    // 启动副核
-    for id in 0..smp {
-        if id != hartid {
-            println!("hart{id} is booting...");
-            let ret = sbi::hart_start(id, secondary_hart_start as usize, 0);
-            if ret.error != sbi::SBI_SUCCESS {
-                panic!("start hart{id} failed: {ret:?}");
-            }
-        } else {
-            println!("hart{id} is the primary hart.");
-        }
-    }
+    // // 启动副核
+    // for id in 0..smp {
+    //     if id != hartid {
+    //         println!("hart{id} is booting...");
+    //         let ret = sbi::hart_start(id, secondary_hart_start as usize, 0);
+    //         if ret.error != sbi::SBI_SUCCESS {
+    //             panic!("start hart{id} failed: {ret:?}");
+    //         }
+    //     } else {
+    //         println!("hart{id} is the primary hart.");
+    //     }
+    // }
 
-    while STARTED.load(Ordering::SeqCst) < smp {
-        unsafe { riscv::asm::nop() };
-    }
+    // while STARTED.load(Ordering::SeqCst) < smp {
+    //     unsafe { riscv::asm::nop() };
+    // }
     println!("All harts boot successfully!");
-    shutdown()
+    loop {}
 }
 
 extern "C" fn secondary_rust_main(_hart_id: usize) -> ! {

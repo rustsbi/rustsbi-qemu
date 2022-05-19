@@ -122,7 +122,7 @@ impl QemuHsm {
     /// The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started',
     /// and should jump to target address right away.
     pub fn record_current_start_finished(&self) {
-        self.state.lock().insert(hart_id(), HsmState::Started);
+        self.state.lock()[hart_id()] = HsmState::Started;
     }
 }
 

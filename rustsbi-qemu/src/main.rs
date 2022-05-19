@@ -46,6 +46,20 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+#[link_section = ".text.exception"]
+extern "C" fn exception() -> ! {
+    println!(
+        "{:?} {} {} {:#x?}",
+        riscv::register::mcause::read().cause(),
+        riscv::register::mepc::read(),
+        riscv::register::mtval::read(),
+        riscv::register::mstatus::read(),
+    );
+    loop {
+        unsafe { riscv::asm::nop() };
+    }
+}
+
 /// 入口。
 ///
 /// 1. 关中断
@@ -63,17 +77,17 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
 
     core::arch::asm!("
-           csrw mstatus,  zero
-           la        sp, {stack}
-           li        t0, {per_hart_stack_size}
-           addi      t1,  a0, 1
-        1: add       sp,  sp, t0
-           addi      t1,  t1, -1
-           bnez      t1,  1b
-           call     {rust_main}
-           call     {finalize}
+           mv    tp,  a0
+           la    sp, {stack}
+           li    t0, {per_hart_stack_size}
+           addi  t1,  a0, 1
+        1: add   sp,  sp, t0
+           addi  t1,  t1, -1
+           bnez  t1,  1b
+           call {rust_main}
+           call {finalize}
         1: wfi
-           j         1b
+           j     1b
         ",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym SBI_STACK,
@@ -85,11 +99,19 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
 
 use spin::Once;
 
+#[link_section = ".bss.uninit"]
 static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
+
+#[link_section = ".bss.uninit"]
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
+
+#[link_section = ".bss.uninit"]
+static GENESIS: Once<()> = Once::new();
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
+    use riscv::register::mtvec;
+    unsafe { mtvec::write(exception as _, mtvec::TrapMode::Direct) };
     // 全局初始化过程
     let genesis = genesis();
     if genesis {
@@ -123,8 +145,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             ver_impl = env!("CARGO_PKG_VERSION"),
             model = board_info.model
         );
+        GENESIS.call_once(|| ());
     }
 
+    GENESIS.wait();
     set_pmp(BOARD_INFO.wait());
     if genesis {
         hart_csr_utils::print_hart_csrs();
@@ -178,7 +202,9 @@ fn zero_bss() {
 fn init_heap() {
     use buddy_system_allocator::LockedHeap;
 
+    #[link_section = ".bss.uninit"]
     static mut HEAP_SPACE: [u8; LEN_HEAP_SBI] = [0; LEN_HEAP_SBI];
+    #[link_section = ".bss.uninit"]
     #[global_allocator]
     static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
 
@@ -193,6 +219,8 @@ fn init_heap() {
 ///
 /// FIXME 需要判断一个外设区域是否能用 NAPOT 表示，最好能实现一个排序+合并连续区域的复杂算法
 fn set_pmp(board_info: &device_tree::BoardInfo) {
+    #![allow(unused)]
+
     use core::ops::Range;
     use riscv::register::{
         pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpaddr6, pmpaddr7, pmpaddr8,
@@ -227,28 +255,28 @@ fn set_pmp(board_info: &device_tree::BoardInfo) {
     // memory
     pmpcfg0.set_next(0b11111);
     pmpaddr0::write(calc_pmpaddr_napot(memory));
-    // rtc
-    pmpcfg0.set_next(0b11011);
-    pmpaddr1::write(calc_pmpaddr_napot(rtc));
-    // uart
-    pmpcfg0.set_next(0b11011);
-    pmpaddr2::write(calc_pmpaddr_napot(uart));
-    // test
-    pmpcfg0.set_next(0b11011);
-    pmpaddr3::write(calc_pmpaddr_napot(test));
-    // pci
-    pmpcfg0.set_next(0b11011);
-    pmpaddr4::write(calc_pmpaddr_napot(pci));
-    // clint
-    pmpcfg0.set_next(0b11011);
-    pmpaddr5::write(calc_pmpaddr_napot(clint));
-    // plic
-    pmpcfg0.set_next(0b11011);
-    pmpaddr6::write(calc_pmpaddr_napot(plic));
-    // virtio_mmio
-    pmpcfg0.set_next(0b01011);
-    pmpaddr7::write(0x1000_1000 >> 2);
-    pmpaddr8::write(0x1000_9000 >> 2);
+    // // rtc
+    // pmpcfg0.set_next(0b11011);
+    // pmpaddr1::write(calc_pmpaddr_napot(rtc));
+    // // uart
+    // pmpcfg0.set_next(0b11011);
+    // pmpaddr2::write(calc_pmpaddr_napot(uart));
+    // // test
+    // pmpcfg0.set_next(0b11011);
+    // pmpaddr3::write(calc_pmpaddr_napot(test));
+    // // pci
+    // pmpcfg0.set_next(0b11011);
+    // pmpaddr4::write(calc_pmpaddr_napot(pci));
+    // // clint
+    // pmpcfg0.set_next(0b11011);
+    // pmpaddr5::write(calc_pmpaddr_napot(clint));
+    // // plic
+    // pmpcfg0.set_next(0b11011);
+    // pmpaddr6::write(calc_pmpaddr_napot(plic));
+    // // virtio_mmio
+    // pmpcfg0.set_next(0b01011);
+    // pmpaddr7::write(0x1000_1000 >> 2);
+    // pmpaddr8::write(0x1000_9000 >> 2);
     // cfg
     pmpcfg0::write(pmpcfg0.bits());
 }
@@ -270,5 +298,7 @@ impl PmpCfg {
 
 #[inline(always)]
 fn hart_id() -> usize {
-    riscv::register::mhartid::read()
+    let ans: usize;
+    unsafe { core::arch::asm!("mv {}, tp", out(reg) ans) }
+    ans
 }
