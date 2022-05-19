@@ -14,7 +14,6 @@ mod device_tree;
 mod execute;
 mod hart_csr_utils;
 mod ns16550a;
-mod prv_mem;
 mod qemu_hsm;
 mod test_device;
 
@@ -153,8 +152,10 @@ extern "C" fn finalize() {
 fn genesis() -> bool {
     use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
     #[link_section = ".bss.uninit"]
-    static mut BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
-    unsafe { BOOT_SELECTOR.compare_exchange(false, true, SeqCst, SeqCst) }.is_ok()
+    static BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
+    BOOT_SELECTOR
+        .compare_exchange(false, true, SeqCst, SeqCst)
+        .is_ok()
 }
 
 /// 清零 bss 段。

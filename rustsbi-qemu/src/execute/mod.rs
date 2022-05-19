@@ -1,6 +1,5 @@
 use crate::{
     hart_id,
-    prv_mem::{self, SupervisorPointer},
     qemu_hsm::{QemuHsm, EID_HSM, FID_HART_STOP, FID_HART_SUSPEND, SUSPEND_NON_RETENTIVE},
 };
 use core::{
@@ -8,13 +7,15 @@ use core::{
     pin::Pin,
 };
 use riscv::register::{
-    mcause, mie, mip,
+    mcause,
     scause::{Exception, Interrupt, Trap},
 };
 
 mod feature;
+mod prv_mem;
 mod runtime;
 
+use prv_mem::SupervisorPointer;
 use runtime::{MachineTrap, Runtime, SupervisorContext};
 
 pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
@@ -65,6 +66,7 @@ pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
                 }
             }
             GeneratorState::Yielded(MachineTrap::MachineTimer()) => unsafe {
+                use riscv::register::{mie, mip};
                 mip::set_stimer();
                 mie::clear_mtimer();
             },
@@ -74,11 +76,9 @@ pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
                 crate::clint::get().clear_soft(hart_id()); // Clear IPI
                 unsafe {
                     if feature::should_transfer_trap(ctx) {
-                        feature::do_transfer_trap(ctx, Trap::Interrupt(Interrupt::SupervisorSoft))
+                        feature::do_transfer_trap(ctx, Trap::Interrupt(Interrupt::SupervisorSoft));
                     } else {
-                        panic!(
-                        "rustsbi-qemu: machine soft interrupt with no hart state monitor command"
-                    )
+                        panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command");
                     }
                 }
             }
