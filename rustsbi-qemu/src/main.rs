@@ -63,7 +63,7 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
 
     core::arch::asm!("
-           csrw     mie,  zero
+           csrw mstatus,  zero
            la        sp, {stack}
            li        t0, {per_hart_stack_size}
            addi      t1,  a0, 1
@@ -104,7 +104,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 
         test_device::init(board_info.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), opaque));
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), board_info.smp, opaque));
         // 初始化 SBI 服务
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
         rustsbi::init_ipi(clint::get());
