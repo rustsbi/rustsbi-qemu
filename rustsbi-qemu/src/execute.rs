@@ -1,7 +1,9 @@
 use crate::{
     feature, hart_id,
     prv_mem::{self, SupervisorPointer},
-    qemu_hsm::{pause, HsmCommand, QemuHsm},
+    qemu_hsm::{
+        HsmCommand, QemuHsm, EID_HSM, FID_HART_STOP, FID_HART_SUSPEND, SUSPEND_NON_RETENTIVE,
+    },
     runtime::{MachineTrap, Runtime, SupervisorContext},
 };
 use core::{
@@ -26,27 +28,17 @@ pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
                 let ctx = rt.context_mut();
                 let param = [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5];
                 let ans = rustsbi::ecall(ctx.a7, ctx.a6, param);
-                if ctx.a7 == 0x48534D && ctx.a6 == 1 && ans.error == 0 {
-                    return;
-                }
-                if ans.error == 0x233 {
-                    // hart non-retentive resume
-                    if let Some(HsmCommand::Start(start_paddr, opaque)) = hsm.last_command() {
-                        unsafe {
-                            riscv::register::satp::write(0);
-                            riscv::register::sstatus::clear_sie();
-                        }
-                        hsm.record_current_start_finished();
-                        ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
-                        ctx.a0 = hart_id();
-                        ctx.a1 = opaque;
-                        ctx.mepc = start_paddr;
+                if ctx.a7 == EID_HSM && ans.error == 0 {
+                    if ctx.a6 == FID_HART_STOP {
+                        return;
                     }
-                } else {
-                    ctx.a0 = ans.error;
-                    ctx.a1 = ans.value;
-                    ctx.mepc = ctx.mepc.wrapping_add(4);
+                    if ctx.a6 == FID_HART_SUSPEND && ctx.a0 == SUSPEND_NON_RETENTIVE as usize {
+                        return;
+                    }
                 }
+                ctx.a0 = ans.error;
+                ctx.a1 = ans.value;
+                ctx.mepc = ctx.mepc.wrapping_add(4);
             }
             GeneratorState::Yielded(MachineTrap::IllegalInstruction()) => {
                 let ctx = rt.context_mut();
@@ -73,49 +65,20 @@ pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
                 mip::set_stimer();
                 mie::clear_mtimer();
             },
-            GeneratorState::Yielded(MachineTrap::MachineSoft()) => match hsm.last_command() {
-                Some(HsmCommand::Start(_start_paddr, _opaque)) => {
-                    panic!("rustsbi-qemu: illegal state")
-                }
-                Some(HsmCommand::Stop) => {
-                    // no hart stop command in qemu, record stop state and pause
-                    hsm.record_current_stop_finished();
-                    pause();
-                    if let Some(HsmCommand::Start(start_paddr, opaque)) = hsm.last_command() {
-                        // Resuming from a non-retentive suspend state is relatively more involved and requires software
-                        // to restore various hart registers and CSRs for all privilege modes.
-                        // Upon resuming from non-retentive suspend state, the hart will jump to supervisor-mode at address
-                        // specified by `resume_addr` with specific registers values described in the table below:
-                        //
-                        // | Register Name | Register Value
-                        // |:--------------|:--------------
-                        // | `satp`        | 0
-                        // | `sstatus.SIE` | 0
-                        // | a0            | hartid
-                        // | a1            | `opaque` parameter
-                        unsafe {
-                            riscv::register::satp::write(0);
-                            riscv::register::sstatus::clear_sie();
-                        }
-                        hsm.record_current_start_finished();
-                        let ctx = rt.context_mut();
-                        ctx.mstatus = riscv::register::mstatus::read(); // get from modified sstatus
-                        ctx.a0 = hart_id();
-                        ctx.a1 = opaque;
-                        ctx.mepc = start_paddr;
-                    }
-                }
-                None => unsafe {
-                    // machine software interrupt but no HSM commands - delegate to S mode;
-                    let ctx = rt.context_mut();
-                    crate::clint::get().clear_soft(hart_id()); // Clear IPI
+            GeneratorState::Yielded(MachineTrap::MachineSoft()) => {
+                // machine software interrupt but no HSM commands - delegate to S mode;
+                let ctx = rt.context_mut();
+                crate::clint::get().clear_soft(hart_id()); // Clear IPI
+                unsafe {
                     if feature::should_transfer_trap(ctx) {
                         feature::do_transfer_trap(ctx, Trap::Interrupt(Interrupt::SupervisorSoft))
                     } else {
-                        panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command")
+                        panic!(
+                        "rustsbi-qemu: machine soft interrupt with no hart state monitor command"
+                    )
                     }
-                },
-            },
+                }
+            }
             GeneratorState::Complete(()) => {
                 use rustsbi::{
                     reset::{RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN},

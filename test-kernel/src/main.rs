@@ -27,7 +27,6 @@ mod constants {
     pub(crate) const PER_HART_STACK_SIZE: usize = 4 * LEN_PAGE; // 16KiB
     pub(crate) const MAX_HART_NUMBER: usize = 8; // assume 8 cores in QEMU
     pub(crate) const STACK_SIZE: usize = PER_HART_STACK_SIZE * MAX_HART_NUMBER;
-    pub(crate) const HEAP_SIZE: usize = 16 * LEN_PAGE; // 64KiB
 }
 
 use constants::*;
@@ -112,7 +111,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     test::trap_delegate(hartid);
 
     println!();
-    STARTED.fetch_add(1, Ordering::Release);
+    STARTED.fetch_add(1, Ordering::SeqCst);
     // 启动副核
     for id in 0..smp {
         if id != hartid {
@@ -126,63 +125,15 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
         }
     }
     while STARTED.load(Ordering::SeqCst) < smp {
-        unsafe { riscv::asm::nop() };
+        println!("{}/{smp}", STARTED.load(Ordering::Relaxed));
+        unsafe { riscv::asm::delay(0x10) };
     }
     println!("All harts boot successfully!");
     shutdown()
-
-    // if hartid == 0 {
-    //     let sbi_ret = sbi::hart_stop();
-    //     println!(">> Stop hart 3, return value {:?}", sbi_ret);
-    //     for i in 0..5 {
-    //         let sbi_ret = sbi::hart_get_status(i);
-    //         println!(">> Hart {} state return value: {:?}", i, sbi_ret);
-    //     }
-    // } else if hartid == 1 {
-    //     let sbi_ret = sbi::hart_suspend(0x00000000, 0, 0);
-    //     println!(
-    //         ">> Start test for hart {}, retentive suspend return value {:?}",
-    //         hartid, sbi_ret
-    //     );
-    // } else if hartid == 2 {
-    //     /* resume_addr should be physical address, and here pa == va */
-    //     let sbi_ret = sbi::hart_suspend(0x80000000, hart_2_resume as usize, 0x4567890a);
-    //     println!(">> Error for non-retentive suspend: {:?}", sbi_ret);
-    //     loop {}
-    // // } else if hartid == 4 {
-    // // unsafe { stvec::write(start_trap_addr, TrapMode::Direct) };
-    // // unsafe { sstatus::set_sie() };
-    // // unsafe { sie::set_ssoft() };
-    // // loop {} // wait for S-IPI
-    // // println!(">> Test-kernel: SBI S-IPI delegation success");
-    // // println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
-    // // todo: S-IPI
-    // } else {
-    //     // hartid == 3
-    //     loop {}
-    // }
-    // if hartid == 0 {
-    //     println!(
-    //         "<< Test-kernel: test for hart {} success, wake another hart",
-    //         hartid
-    //     );
-    //     let sbi_ret = sbi::send_ipi(0b10, 0); // wake hart 1
-    //     println!(">> Wake hart 1, sbi return value {:?}", sbi_ret);
-    //     loop {} // wait for machine shutdown
-    // } else if hartid == 1 {
-    //     // send software IPI to activate hart 2
-    //     let sbi_ret = sbi::send_ipi(0b1, 2);
-    //     println!(">> Wake hart 2, sbi return value {:?}", sbi_ret);
-    //     loop {}
-    // } else {
-    //     // hartid == 2 || hartid == 3 || hartid == 4
-    //     unreachable!()
-    // }
-    // shutdown()
 }
 
 extern "C" fn secondary_rust_main(_hart_id: usize) -> ! {
-    STARTED.fetch_add(1, Ordering::Release);
+    STARTED.fetch_add(1, Ordering::SeqCst);
     loop {
         unsafe { riscv::asm::nop() };
     }
@@ -350,22 +301,6 @@ fn zero_bss() {
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
-/// 初始化堆和分配器。
-fn init_heap() {
-    use buddy_system_allocator::LockedHeap;
-
-    #[link_section = ".bss.uninit"]
-    static mut HEAP_SPACE: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
-    #[global_allocator]
-    static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
-
-    unsafe {
-        SBI_HEAP
-            .lock()
-            .init(HEAP_SPACE.as_ptr() as usize, HEAP_SPACE.len())
-    }
-}
-
 fn shutdown() -> ! {
     use sbi::{system_reset, RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN};
     system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
@@ -373,29 +308,3 @@ fn shutdown() -> ! {
         unsafe { riscv::asm::nop() };
     }
 }
-
-// extern "C" fn hart_2_resume(hart_id: usize, param: usize) {
-//     println!(
-//         "<< The parameter passed to hart {} resume is: {:#x}",
-//         hart_id, param
-//     );
-//     let param = 0x12345678;
-//     println!(">> Start hart 3 with parameter {:#x}", param);
-//     /* start_addr should be physical address, and here pa == va */
-//     let sbi_ret = sbi::hart_start(3, hart_3_start as usize, param);
-//     println!(">> SBI return value: {:?}", sbi_ret);
-//     loop {} // wait for machine shutdown
-// }
-
-// extern "C" fn hart_3_start(hart_id: usize, param: usize) {
-//     println!(
-//         "<< The parameter passed to hart {} start is: {:#x}",
-//         hart_id, param
-//     );
-//     println!("<< Test-kernel: All hart SBI test SUCCESS, shutdown");
-//     sbi::legacy::shutdown()
-//     // todo: S-IPI
-//     // println!(">> Send IPI to hart 4, should delegate IPI to S-level");
-//     // let _ = sbi::send_ipi(0b1, 4); // IPI to hart 4
-//     // loop {} // wait for machine shutdown
-// }

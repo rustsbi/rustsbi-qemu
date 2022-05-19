@@ -5,6 +5,12 @@ use hashbrown::HashMap;
 use rustsbi::SbiRet;
 use spin::Mutex;
 
+pub(crate) const SUSPEND_RETENTIVE: u32 = 0x00000000;
+pub(crate) const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
+pub(crate) const EID_HSM: usize = 0x48534D;
+pub(crate) const FID_HART_STOP: usize = 1;
+pub(crate) const FID_HART_SUSPEND: usize = 3;
+
 // RISC-V SBI Hart State Monitor states
 #[allow(unused)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -92,8 +98,16 @@ impl QemuHsm {
     /// It is used in interrupt handler, when hart stop command is received. Before this function,
     /// the target hart is making preparations to stop;
     /// it records state and must stop immediately after this function is called.
-    pub fn record_current_stop_finished(&self) {
-        self.state.lock().insert(hart_id(), HsmState::Stopped);
+    pub fn record_ready_to_reboot(&self) {
+        self.state
+            .lock()
+            .entry(hart_id())
+            .and_modify(|state| match *state {
+                HsmState::StopPending => *state = HsmState::Stopped,
+                HsmState::SuspendPending => *state = HsmState::Suspended,
+                s => panic!("wrong state {s:?}!"),
+            })
+            .or_insert(HsmState::Stopped);
     }
 
     /// Record that current hart id is marked as `Started` state.
@@ -138,25 +152,11 @@ impl rustsbi::Hsm for &'static QemuHsm {
     }
 
     fn hart_stop(&self) -> SbiRet {
-        use hashbrown::hash_map::Entry::*;
-        // 检查当前状态
+        // try to modify state to suspend hart
         {
-            match self.state.lock().entry(hart_id()) {
-                // 核非初次启动，当且仅当 Started 才能 stop
-                // （但实际这是必然的？必须 Started 才有机会调 stop。还是要防止 SBI 调错）
-                Occupied(mut entry) => {
-                    let current = entry.get_mut();
-                    if let HsmState::Started = *current {
-                        *current = HsmState::StopPending;
-                    } else {
-                        // highly unlikely
-                        return SbiRet::failed();
-                    }
-                }
-                // 核初次启动
-                Vacant(entry) => {
-                    entry.insert(HsmState::StopPending);
-                }
+            match self.state.lock().get_mut(&hart_id()) {
+                Some(s) if *s == HsmState::Started => *s = HsmState::StopPending,
+                Some(_) | None => return SbiRet::failed(),
             };
         }
         self.last_command.lock().insert(hart_id(), HsmCommand::Stop);
@@ -171,88 +171,21 @@ impl rustsbi::Hsm for &'static QemuHsm {
     }
 
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
-        // try to modify state to suspend hart
         {
             match self.state.lock().get_mut(&hart_id()) {
                 Some(s) if *s == HsmState::Started => *s = HsmState::SuspendPending,
                 Some(_) | None => return SbiRet::failed(),
             };
         }
-        // pause and wait for machine level ipi
-        suspend_current_hart(self);
         match suspend_type {
-            // Resuming from a retentive suspend state is straight forward
-            // and the supervisor-mode software will see SBI suspend call return without any failures.
-            SUSPEND_RETENTIVE => {
-                // mark current hart as started
-                self.state.lock().insert(hart_id(), HsmState::Started);
-                SbiRet::ok(0)
-            }
-            // Resuming from a non-retentive suspend state is relatively more involved
-            // and requires software to restore various hart registers and CSRs for all privilege modes.
+            SUSPEND_RETENTIVE => todo!(),
             SUSPEND_NON_RETENTIVE => {
-                // send start command to runtime of current hart
                 self.last_command
                     .lock()
                     .insert(hart_id(), HsmCommand::Start(resume_addr, opaque));
-                self.clint.send_soft(hart_id());
-                unreachable!()
+                SbiRet::ok(0)
             }
-            // There could be other platform specific suspend types;
-            // RustSBI-QEMU does not define any platform suspend types.
-            // It gives SBI return value as not supported.
             _ => SbiRet::not_supported(),
         }
     }
-}
-
-const SUSPEND_RETENTIVE: u32 = 0x00000000;
-const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
-
-// Suspend current hart and record resume state when wake
-pub(crate) fn suspend_current_hart(hsm: &QemuHsm) {
-    use riscv::asm::wfi;
-    use riscv::register::{mie, mip};
-
-    hsm.clint.clear_soft(hart_id()); // Clear IPI
-    unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
-    let prev_msoft = mie::read().msoft();
-    unsafe { mie::set_msoft() }; // Start listening for software interrupts
-                                 // mark current state as suspended
-    hsm.state.lock().insert(hart_id(), HsmState::Suspended);
-    // actual suspended process
-    loop {
-        unsafe { wfi() };
-        if mip::read().msoft() {
-            break;
-        }
-    }
-    // mark current state as resume pending
-    hsm.state.lock().insert(hart_id(), HsmState::ResumePending);
-    // resume
-    if !prev_msoft {
-        unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
-    }
-    hsm.clint.clear_soft(hart_id()); // Clear IPI
-}
-
-// Pause current hart, wake through inter-processor interrupt
-pub(crate) fn pause() {
-    use riscv::asm::wfi;
-    use riscv::register::{mie, mip};
-
-    crate::clint::get().clear_soft(hart_id()); // Clear IPI
-    unsafe { mip::clear_msoft() }; // clear machine software interrupt flag
-    let prev_msoft = mie::read().msoft();
-    unsafe { mie::set_msoft() }; // Start listening for software interrupts
-    loop {
-        unsafe { wfi() };
-        if mip::read().msoft() {
-            break;
-        }
-    }
-    if !prev_msoft {
-        unsafe { mie::clear_msoft() }; // Stop listening for software interrupts
-    }
-    crate::clint::get().clear_soft(hart_id()); // Clear IPI
 }

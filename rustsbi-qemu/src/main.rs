@@ -77,8 +77,8 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
            bnez      t1,  1b
            call     {rust_main}
            call     {finalize}
-           csrw mstatus,  1<<3
-           wfi
+        1: wfi
+           j         1b
         ",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym SBI_STACK,
@@ -131,7 +131,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     }
 
     runtime::init();
-    HSM.wait().record_current_start_finished();
     set_pmp(BOARD_INFO.wait());
     delegate_supervisor_trap();
     enable_mint();
@@ -144,13 +143,17 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 }
 
 extern "C" fn finalize() {
-    use riscv::register::{mie, mip, mtvec};
+    use riscv::{
+        interrupt,
+        register::{mie, mip, mtvec},
+    };
     unsafe {
         mtvec::write(reboot as _, mtvec::TrapMode::Direct);
         mip::clear_msoft();
         mie::set_msoft();
     }
-    HSM.wait().record_current_stop_finished();
+    HSM.wait().record_ready_to_reboot();
+    unsafe { interrupt::enable() }
 }
 
 #[link_section = ".text.reboot"]

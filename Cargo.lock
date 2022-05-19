@@ -394,7 +394,6 @@ dependencies = [
 name = "test-kernel"
 version = "0.1.0"
 dependencies = [
- "buddy_system_allocator",
  "lazy_static",
  "r0",
  "riscv 0.8.0",
