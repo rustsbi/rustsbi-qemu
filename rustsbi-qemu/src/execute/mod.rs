@@ -78,7 +78,7 @@ pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
                     if feature::should_transfer_trap(ctx) {
                         feature::do_transfer_trap(ctx, Trap::Interrupt(Interrupt::SupervisorSoft));
                     } else {
-                        panic!("rustsbi-qemu: machine soft interrupt with no hart state monitor command");
+                        println!("rustsbi-qemu: machine soft interrupt with no hart state monitor command");
                     }
                 }
             }
