@@ -15,5 +15,3 @@ r0 = "1"
 nb = "1"
 buddy_system_allocator = "0.8"
 uart_16550 = "0.2"
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde-device-tree = { git = "https://github.com/rustsbi/serde-device-tree.git", rev = "b8c2da9", default-features = false }

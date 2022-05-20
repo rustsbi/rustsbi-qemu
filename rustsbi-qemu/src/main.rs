@@ -137,11 +137,13 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             "\
 [rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v1.0.0
 {logo}
-[rustsbi] Implementation    : RustSBI-QEMU Version {ver_impl}
-[rustsbi] Platform Name     : {model:?}
-[rustsbi] Platform SMP      : {smp}
-[rustsbi] Boot HART         : {hartid}
-[rustsbi] Supervisor Address: {SUPERVISOR_ENTRY:#x}
+[rustsbi] Implementation     : RustSBI-QEMU Version {ver_impl}
+[rustsbi] Platform Name      : {model:?}
+[rustsbi] Platform SMP       : {smp}
+[rustsbi] Boot HART          : {hartid}
+[rustsbi] Device Tree Address: {dtb:#x}
+[rustsbi] Firmware Address   : {firmware:#x}
+[rustsbi] Supervisor Address : {SUPERVISOR_ENTRY:#x}
 ",
             ver_sbi = rustsbi::VERSION,
             logo = rustsbi::LOGO,
@@ -149,16 +151,14 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             model = board_info.model,
             smp = board_info.smp,
             hartid = hart_id(),
+            dtb = opaque,
+            firmware = entry as usize,
         );
         board_info
     });
 
-    print!("hart{} complete\r\n", hart_id());
-    loop {
-        core::hint::spin_loop();
-    }
-    // set_pmp(BOARD_INFO.wait());
-    // execute::execute_supervisor(HSM.wait());
+    set_pmp(BOARD_INFO.wait());
+    execute::execute_supervisor(HSM.wait());
 }
 
 extern "C" fn finalize() {

@@ -264,8 +264,6 @@ dependencies = [
  "r0",
  "riscv 0.8.0",
  "rustsbi",
- "serde",
- "serde-device-tree",
  "spin 0.9.3",
  "uart_16550",
 ]
