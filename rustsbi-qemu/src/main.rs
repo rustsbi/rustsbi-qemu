@@ -83,25 +83,46 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     )
 }
 
+#[link_section = ".text.early_trap"]
+extern "C" fn early_trap() -> ! {
+    print!(
+        "\
+{:?} at hart[{}]{:#x}
+{:#x?}
+",
+        riscv::register::mcause::read().cause(),
+        hart_id(),
+        riscv::register::mepc::read(),
+        riscv::register::mstatus::read(),
+    );
+    loop {
+        unsafe { riscv::asm::wfi() };
+    }
+}
+
 use spin::Once;
 
-static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
+#[link_section = ".bss.uninit"]
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
+    use riscv::register::mtvec;
+    unsafe { mtvec::write(early_trap as _, mtvec::TrapMode::Direct) };
+
+    #[link_section = ".bss.uninit"]
+    static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
+
     // 全局初始化过程
-    let genesis = genesis();
-    if genesis {
+    BOARD_INFO.call_once(|| {
         // 清零 bss 段
         zero_bss();
         // 初始化堆和分配器
         init_heap();
         // 解析设备树，需要堆来保存结果里的字符串等
-        let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
+        let board_info = device_tree::parse(opaque);
         // 初始化外设
         clint::init(board_info.clint.start, board_info.smp);
-
         test_device::init(board_info.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
         let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), board_info.smp, opaque));
@@ -112,26 +133,32 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         rustsbi::init_reset(test_device::get().clone());
         rustsbi::init_hsm(hsm);
         // 打印启动信息
-        println!(
+        print!(
             "\
 [rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v1.0.0
 {logo}
-[rustsbi] Implementation: RustSBI-QEMU Version {ver_impl}
-[rustsbi] Device model: {model:?}",
+[rustsbi] Implementation    : RustSBI-QEMU Version {ver_impl}
+[rustsbi] Platform Name     : {model:?}
+[rustsbi] Platform SMP      : {smp}
+[rustsbi] Boot HART         : {hartid}
+[rustsbi] Supervisor Address: {SUPERVISOR_ENTRY:#x}
+",
             ver_sbi = rustsbi::VERSION,
             logo = rustsbi::LOGO,
             ver_impl = env!("CARGO_PKG_VERSION"),
-            model = board_info.model
+            model = board_info.model,
+            smp = board_info.smp,
+            hartid = hart_id(),
         );
-    }
+        board_info
+    });
 
-    set_pmp(BOARD_INFO.wait());
-    if genesis {
-        hart_csr_utils::print_hart_csrs();
-        println!("[rustsbi] enter supervisor {SUPERVISOR_ENTRY:#x}");
+    print!("hart{} complete\r\n", hart_id());
+    loop {
+        core::hint::spin_loop();
     }
-
-    execute::execute_supervisor(HSM.wait());
+    // set_pmp(BOARD_INFO.wait());
+    // execute::execute_supervisor(HSM.wait());
 }
 
 extern "C" fn finalize() {
@@ -146,16 +173,6 @@ extern "C" fn finalize() {
     }
     HSM.wait().record_ready_to_reboot();
     unsafe { interrupt::enable() };
-}
-
-/// 抢夺启动权。
-fn genesis() -> bool {
-    use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
-    #[link_section = ".bss.uninit"]
-    static BOOT_SELECTOR: AtomicBool = AtomicBool::new(false);
-    BOOT_SELECTOR
-        .compare_exchange(false, true, SeqCst, SeqCst)
-        .is_ok()
 }
 
 /// 清零 bss 段。
