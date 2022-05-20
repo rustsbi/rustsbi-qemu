@@ -26,7 +26,7 @@ pub const SBI_ERR_ALREADY_STOPPED: usize = -8isize as _;
 impl core::fmt::Debug for SbiRet {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.error {
-            SBI_SUCCESS => write!(f, "{:#x}", self.value),
+            SBI_SUCCESS => self.value.fmt(f),
             SBI_ERR_FAILED => write!(f, "<SBI call failed>"),
             SBI_ERR_NOT_SUPPORTED => write!(f, "<SBI feature not supported>"),
             SBI_ERR_INVALID_PARAM => write!(f, "<SBI invalid parameter>"),

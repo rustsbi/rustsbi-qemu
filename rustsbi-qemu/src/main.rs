@@ -104,7 +104,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 
         test_device::init(board_info.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), opaque));
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), board_info.smp, opaque));
         // 初始化 SBI 服务
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
         rustsbi::init_ipi(clint::get());

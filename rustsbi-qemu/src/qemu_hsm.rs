@@ -1,7 +1,7 @@
 //! Hart state monitor designed for QEMU
 
-use crate::{clint::Clint, hart_id};
-use hashbrown::HashMap;
+use crate::{clint::Clint, constants::SUPERVISOR_ENTRY, hart_id};
+use alloc::{vec, vec::Vec};
 use rustsbi::SbiRet;
 use spin::Mutex;
 
@@ -60,8 +60,8 @@ enum HsmState {
 /// These functions may read from `last_command` variable at any time.
 pub(crate) struct QemuHsm {
     clint: &'static Clint,
-    state: Mutex<HashMap<usize, HsmState>>,
-    supervisor: Mutex<HashMap<usize, Supervisor>>,
+    state: Mutex<Vec<HsmState>>,
+    supervisor: Mutex<Vec<Option<Supervisor>>>,
 }
 
 /// RustSBI-QEMU HSM command, these commands apply to a remote given hart.
@@ -79,22 +79,27 @@ pub(crate) struct Supervisor {
 }
 
 impl QemuHsm {
-    pub fn new(clint: &'static Clint, opaque: usize) -> Self {
-        let command = Supervisor {
-            start_addr: crate::SUPERVISOR_ENTRY,
+    pub fn new(clint: &'static Clint, smp: usize, opaque: usize) -> Self {
+        let mut state = vec![HsmState::StopPending; smp];
+        state[hart_id()] = HsmState::StartPending;
+
+        let mut supervisor = vec![None; smp];
+        supervisor[hart_id()] = Some(Supervisor {
+            start_addr: SUPERVISOR_ENTRY,
             opaque,
-        };
+        });
+
         Self {
             clint,
-            state: Mutex::new(HashMap::from([(hart_id(), HsmState::Started)])),
-            supervisor: Mutex::new(HashMap::from([(hart_id(), command)])),
+            state: Mutex::new(state),
+            supervisor: Mutex::new(supervisor),
         }
     }
 
     /// Return last command by current hart id.
     /// This function is used in software interrupt handler to check which HSM function should we execute.
     pub fn take_supervisor(&self) -> Option<Supervisor> {
-        self.supervisor.lock().remove(&hart_id())
+        self.supervisor.lock()[hart_id()].take()
     }
 
     /// Record that current hart id is marked as `Stopped` state.
@@ -102,15 +107,12 @@ impl QemuHsm {
     /// the target hart is making preparations to stop;
     /// it records state and must stop immediately after this function is called.
     pub fn record_ready_to_reboot(&self) {
-        self.state
-            .lock()
-            .entry(hart_id())
-            .and_modify(|state| match *state {
-                HsmState::StopPending => *state = HsmState::Stopped,
-                HsmState::SuspendPending => *state = HsmState::Suspended,
-                s => panic!("wrong state {s:?}!"),
-            })
-            .or_insert(HsmState::Stopped);
+        match self.state.lock().get_mut(hart_id()) {
+            Some(s) if *s == HsmState::StopPending => *s = HsmState::Stopped,
+            Some(s) if *s == HsmState::SuspendPending => *s = HsmState::Suspended,
+            Some(s) => panic!("wrong state {s:?}!"),
+            None => unreachable!(),
+        };
     }
 
     /// Record that current hart id is marked as `Started` state.
@@ -118,7 +120,7 @@ impl QemuHsm {
     /// The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started',
     /// and should jump to target address right away.
     pub fn record_current_start_finished(&self) {
-        self.state.lock().insert(hart_id(), HsmState::Started);
+        self.state.lock()[hart_id()] = HsmState::Started;
     }
 }
 
@@ -133,7 +135,7 @@ impl rustsbi::Hsm for &'static QemuHsm {
         }
         // try to modify state to start hart
         {
-            match self.state.lock().get_mut(&hart_id) {
+            match self.state.lock().get_mut(hart_id) {
                 Some(s) if *s == HsmState::Stopped => *s = HsmState::StartPending,
                 Some(s) if *s == HsmState::Started => return SbiRet::already_available(),
                 Some(_) => return SbiRet::failed(),
@@ -144,9 +146,7 @@ impl rustsbi::Hsm for &'static QemuHsm {
         // SBI_ERR_INVALID_ADDRESS: start_addr is not valid possibly due to following reasons:
         // - It is not a valid physical address.
         // - The address is prohibited by PMP to run in supervisor mode. */
-        self.supervisor
-            .lock()
-            .insert(hart_id, Supervisor { start_addr, opaque });
+        self.supervisor.lock()[hart_id] = Some(Supervisor { start_addr, opaque });
         self.clint.send_soft(hart_id);
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
@@ -157,17 +157,17 @@ impl rustsbi::Hsm for &'static QemuHsm {
     fn hart_stop(&self) -> SbiRet {
         // try to modify state to suspend hart
         {
-            match self.state.lock().get_mut(&hart_id()) {
+            match self.state.lock().get_mut(hart_id()) {
                 Some(s) if *s == HsmState::Started => *s = HsmState::StopPending,
                 Some(_) | None => return SbiRet::failed(),
             };
         }
-        self.supervisor.lock().remove(&hart_id());
+        self.supervisor.lock()[hart_id()] = None;
         SbiRet::ok(0)
     }
 
     fn hart_get_status(&self, hart_id: usize) -> SbiRet {
-        self.state.lock().get(&hart_id).map_or(
+        self.state.lock().get(hart_id).map_or(
             SbiRet::invalid_param(), // not in `state` map structure, the given hart id is invalid
             |s| SbiRet::ok(*s as usize),
         )
@@ -175,7 +175,7 @@ impl rustsbi::Hsm for &'static QemuHsm {
 
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
         {
-            match self.state.lock().get_mut(&hart_id()) {
+            match self.state.lock().get_mut(hart_id()) {
                 Some(s) if *s == HsmState::Started => *s = HsmState::SuspendPending,
                 Some(_) | None => return SbiRet::failed(),
             };
@@ -183,13 +183,10 @@ impl rustsbi::Hsm for &'static QemuHsm {
         match suspend_type {
             SUSPEND_RETENTIVE => todo!(),
             SUSPEND_NON_RETENTIVE => {
-                self.supervisor.lock().insert(
-                    hart_id(),
-                    Supervisor {
-                        start_addr: resume_addr,
-                        opaque,
-                    },
-                );
+                self.supervisor.lock()[hart_id()] = Some(Supervisor {
+                    start_addr: resume_addr,
+                    opaque,
+                });
                 SbiRet::ok(0)
             }
             _ => SbiRet::not_supported(),

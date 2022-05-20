@@ -35,9 +35,11 @@ use constants::*;
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
 
-    let hard_id: usize;
-    unsafe { asm!("mv {}, tp", out(reg) hard_id) };
+    let (hard_id, pc): (usize, usize);
+    unsafe { asm!("mv    {}, tp", out(reg) hard_id) };
+    unsafe { asm!("auipc {},  0", out(reg) pc) };
     println!("[test-kernel-panic] hart {hard_id} {info}");
+    println!("[test-kernel-panic] pc = {pc:#x}");
     println!("[test-kernel-panic] SBI test FAILED due to panic");
     system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
     loop {}
@@ -112,6 +114,9 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 
     println!();
     STARTED.fetch_add(1, Ordering::SeqCst);
+    let pc: usize;
+    unsafe { asm!("auipc {}, 0", out(reg) pc) };
+    println!("pc = {pc:#x}");
     // 启动副核
     for id in 0..smp {
         if id != hartid {
@@ -125,8 +130,13 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
         }
     }
     while STARTED.load(Ordering::SeqCst) < smp {
-        unsafe { riscv::asm::delay(0x400) };
-        println!("{}/{smp}", STARTED.load(Ordering::Relaxed));
+        for id in 0..smp {
+            print!("{:?}", sbi::hart_get_status(id));
+        }
+        println!();
+        for _ in 0..0x8000_0000usize {
+            unsafe { riscv::asm::nop() };
+        }
     }
     println!("All harts boot successfully!");
     shutdown()
