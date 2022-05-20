@@ -147,7 +147,10 @@ impl rustsbi::Hsm for &'static QemuHsm {
         // - It is not a valid physical address.
         // - The address is prohibited by PMP to run in supervisor mode. */
         self.supervisor.lock()[hart_id] = Some(Supervisor { start_addr, opaque });
-        self.clint.send_soft(hart_id);
+        while self.state.lock()[hart_id] == HsmState::StartPending {
+            self.clint.send_soft(hart_id);
+            unsafe { riscv::asm::delay(0x20_0000) };
+        }
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
         // and the function returns immediately as starting a hart is defined as an asynchronous procedure.
