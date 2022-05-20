@@ -14,10 +14,7 @@ impl Read<u8> for Ns16550a {
     type Error = Infallible;
 
     fn read(&mut self) -> nb::Result<u8, Self::Error> {
-        match self.0.receive() {
-            b'\r' => Ok(b'\n'),
-            c => Ok(c),
-        }
+        Ok(self.0.receive())
     }
 }
 
