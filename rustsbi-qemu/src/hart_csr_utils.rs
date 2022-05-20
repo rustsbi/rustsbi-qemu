@@ -120,23 +120,18 @@ fn print_pmps() {
     while i_cfg < 4 {
         let base = i_cfg * core::mem::size_of::<u32>();
         let mut cfg = pmpcfg(i_cfg);
-        let mut i_addr = 0;
-        while i_addr < ITEM_PER_CFG {
-            let step = match (cfg >> 3) & 0b11 {
-                0b00 => 1,
-                0b01 => {
-                    dump_pmp(
-                        base + i_addr,
-                        pmpaddr(base + i_addr) << 2,
-                        pmpaddr(base + i_addr + 1) << 2,
-                        cfg,
-                    );
-                    2
-                }
+        for i_addr in 0..ITEM_PER_CFG {
+            match (cfg >> 3) & 0b11 {
+                0b00 => {}
+                0b01 => dump_pmp(
+                    base + i_addr,
+                    pmpaddr(base + i_addr - 1) << 2,
+                    pmpaddr(base + i_addr) << 2,
+                    cfg,
+                ),
                 0b10 => {
                     let s = pmpaddr(base + i_addr);
                     dump_pmp(base + i_addr, s << 2, (s + 1) << 2, cfg);
-                    1
                 }
                 0b11 => {
                     let addr = pmpaddr(base + i_addr);
@@ -144,12 +139,10 @@ fn print_pmps() {
                     let s = (addr & !(len - 1)) << 2;
                     let e = s + len;
                     dump_pmp(base + i_addr, s, e, cfg);
-                    1
                 }
                 _ => unreachable!(),
             };
             cfg >>= 8;
-            i_addr += step;
         }
         i_cfg += CFG_STEP;
     }
@@ -158,7 +151,7 @@ fn print_pmps() {
 #[inline]
 fn dump_pmp(i: usize, s: usize, e: usize, cfg: usize) {
     println!(
-        "[rustsbi] pmp{i}: {s:#010x}..{e:#010x} ({}{}{})",
+        "[rustsbi] pmp{i:02}: {s:#010x}..{e:#010x} ({}{}{})",
         if cfg & 0b100 != 0 { "x" } else { "-" },
         if cfg & 0b010 != 0 { "w" } else { "-" },
         if cfg & 0b001 != 0 { "r" } else { "-" },

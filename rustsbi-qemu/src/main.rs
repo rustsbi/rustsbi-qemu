@@ -191,15 +191,14 @@ fn init_heap() {
 
 /// 设置 PMP。
 ///
-/// FIXME 需要判断一个外设区域是否能用 NAPOT 表示，最好能实现一个排序+合并连续区域的复杂算法
+/// FIXME 最好能实现一个排序+合并连续区域的复杂算法，尽量将地址段配置为 NAPOT 以节省 PMP 段，不过全部 TOR 也够用了
 fn set_pmp(board_info: &device_tree::BoardInfo) {
-    use core::ops::Range;
     use riscv::register::{
-        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpaddr6, pmpaddr7, pmpaddr8,
-        pmpcfg0,
+        pmpaddr0, pmpaddr1, pmpaddr10, pmpaddr11, pmpaddr12, pmpaddr13, pmpaddr14, pmpaddr15,
+        pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpaddr6, pmpaddr7, pmpaddr8, pmpaddr9, pmpcfg0,
+        pmpcfg2,
     };
 
-    // todo: 根据QEMU的loader device等等，设置这里的权限配置
     let memory = &board_info.memory;
     let rtc = &board_info.rtc;
     let uart = &board_info.uart;
@@ -208,49 +207,53 @@ fn set_pmp(board_info: &device_tree::BoardInfo) {
     let clint = &board_info.clint;
     let plic = &board_info.plic;
 
-    fn calc_pmpaddr_napot(range: &Range<usize>) -> usize {
-        let start = range.start;
-        let len = range.len();
-        let len = if len.count_ones() == 1 {
-            len
-        } else {
-            let mut i = 1;
-            while i < range.len() {
-                i <<= 1;
-            }
-            i
-        };
-        (start >> 2) | ((len >> 2) - 1)
-    }
-
     let mut pmpcfg0 = PmpCfg::ZERO;
-    // memory
-    pmpcfg0.set_next(0b11111);
-    pmpaddr0::write(calc_pmpaddr_napot(memory));
     // rtc
-    pmpcfg0.set_next(0b11011);
-    pmpaddr1::write(calc_pmpaddr_napot(rtc));
+    pmpcfg0.set_next(0);
+    pmpaddr0::write(rtc.start >> 2);
+    pmpcfg0.set_next(0b1011);
+    pmpaddr1::write(rtc.end >> 2);
     // uart
-    pmpcfg0.set_next(0b11011);
-    pmpaddr2::write(calc_pmpaddr_napot(uart));
+    pmpcfg0.set_next(0);
+    pmpaddr2::write(uart.start >> 2);
+    pmpcfg0.set_next(0b1011);
+    pmpaddr3::write(uart.end >> 2);
     // test
-    pmpcfg0.set_next(0b11011);
-    pmpaddr3::write(calc_pmpaddr_napot(test));
+    pmpcfg0.set_next(0);
+    pmpaddr4::write(test.start >> 2);
+    pmpcfg0.set_next(0b1011);
+    pmpaddr5::write(test.end >> 2);
     // pci
-    pmpcfg0.set_next(0b11011);
-    pmpaddr4::write(calc_pmpaddr_napot(pci));
-    // clint
-    pmpcfg0.set_next(0b11011);
-    pmpaddr5::write(calc_pmpaddr_napot(clint));
-    // plic
-    pmpcfg0.set_next(0b11011);
-    pmpaddr6::write(calc_pmpaddr_napot(plic));
-    // virtio_mmio
-    pmpcfg0.set_next(0b01011);
-    pmpaddr7::write(0x1000_1000 >> 2);
-    pmpaddr8::write(0x1000_9000 >> 2);
+    pmpcfg0.set_next(0);
+    pmpaddr6::write(pci.start >> 2);
+    pmpcfg0.set_next(0b1011);
+    pmpaddr7::write(pci.end >> 2);
     // cfg
     pmpcfg0::write(pmpcfg0.bits());
+
+    let mut pmpcfg2 = PmpCfg::ZERO;
+    // clint
+    pmpcfg2.set_next(0);
+    pmpaddr8::write(clint.start >> 2);
+    pmpcfg2.set_next(0b1011);
+    pmpaddr9::write(clint.end >> 2);
+    // plic
+    pmpcfg2.set_next(0);
+    pmpaddr10::write(plic.start >> 2);
+    pmpcfg2.set_next(0b1011);
+    pmpaddr11::write(plic.end >> 2);
+    // virtio_mmio
+    pmpcfg2.set_next(0);
+    pmpaddr12::write(0x1000_1000 >> 2);
+    pmpcfg2.set_next(0b1011);
+    pmpaddr13::write(0x1000_9000 >> 2);
+    // memory
+    pmpcfg2.set_next(0);
+    pmpaddr14::write(SUPERVISOR_ENTRY >> 2);
+    pmpcfg2.set_next(0b1111);
+    pmpaddr15::write(memory.end >> 2);
+    // cfg
+    pmpcfg2::write(pmpcfg2.bits());
 }
 
 struct PmpCfg(usize, usize);
