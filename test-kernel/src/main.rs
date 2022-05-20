@@ -133,7 +133,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
         for id in 0..smp {
             print!("{:?}", sbi::hart_get_status(id));
         }
-        println!();
+        println!("({}/{smp})", STARTED.load(Ordering::SeqCst));
         for _ in 0..0x8000_0000usize {
             unsafe { riscv::asm::nop() };
         }
