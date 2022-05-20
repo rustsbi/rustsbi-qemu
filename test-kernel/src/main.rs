@@ -112,6 +112,16 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
     test::trap_delegate(hartid);
 
+    loop {
+        println!("Press ENTER to continue");
+        let c = sbi::legacy::console_getchar();
+        if c == b'\n' as usize {
+            break;
+        } else {
+            println!("You pressed {:?}", c as u8 as char);
+        }
+    }
+
     println!();
     STARTED.fetch_add(1, Ordering::SeqCst);
     let pc: usize;
