@@ -12,7 +12,6 @@ extern crate alloc;
 mod clint;
 mod device_tree;
 mod execute;
-mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
 mod test_device;
@@ -161,18 +160,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     execute::execute_supervisor(HSM.wait());
 }
 
+/// 准备好深度休眠或关闭
 extern "C" fn finalize() {
-    use riscv::{
-        interrupt,
-        register::{mie, mip, mtvec},
-    };
-    unsafe {
-        mtvec::write(entry as _, mtvec::TrapMode::Direct);
-        mip::clear_msoft();
-        mie::set_msoft();
-    }
+    //! 在隔离的环境调用，以确保 main 中使用的堆资源完全释放
     HSM.wait().record_ready_to_reboot();
-    unsafe { interrupt::enable() };
 }
 
 /// 清零 bss 段。
