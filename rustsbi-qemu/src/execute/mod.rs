@@ -1,6 +1,7 @@
 use crate::{
     hart_id,
-    qemu_hsm::{QemuHsm, EID_HSM, FID_HART_STOP, FID_HART_SUSPEND, SUSPEND_NON_RETENTIVE},
+    qemu_hsm::{EID_HSM, FID_HART_STOP, FID_HART_SUSPEND, SUSPEND_NON_RETENTIVE},
+    Supervisor,
 };
 use core::{
     ops::{Generator, GeneratorState},
@@ -18,14 +19,8 @@ mod runtime;
 use prv_mem::SupervisorPointer;
 use runtime::{MachineTrap, Runtime, SupervisorContext};
 
-pub(crate) fn execute_supervisor(hsm: &'static QemuHsm) {
-    let mut rt = if let Some(supervisor) = hsm.take_supervisor() {
-        Runtime::new(supervisor)
-    } else {
-        return;
-    };
-
-    hsm.record_current_start_finished();
+pub(crate) fn execute_supervisor(supervisor: Supervisor) {
+    let mut rt = Runtime::new(supervisor);
     loop {
         match Pin::new(&mut rt).resume(()) {
             GeneratorState::Yielded(MachineTrap::SbiCall()) => {

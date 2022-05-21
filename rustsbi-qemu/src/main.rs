@@ -16,16 +16,22 @@ mod ns16550a;
 mod qemu_hsm;
 mod test_device;
 
+/// 特权软件信息。
+struct Supervisor {
+    start_addr: usize,
+    opaque: usize,
+}
+
 mod constants {
-    /// 特权软件入口
+    /// 特权软件入口。
     pub(crate) const SUPERVISOR_ENTRY: usize = 0x8020_0000;
-    /// 每个核设置 16KiB 栈空间
+    /// 每个核设置 16KiB 栈空间。
     pub(crate) const LEN_STACK_PER_HART: usize = 16 * 1024;
-    /// qemu-virt 最多 8 核
+    /// qemu-virt 最多 8 核。
     pub(crate) const NUM_HART_MAX: usize = 8;
-    /// SBI 软件全部栈空间容量
+    /// SBI 软件全部栈空间容量。
     pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
-    /// SBI 软件堆空间容量
+    /// SBI 软件堆空间容量。
     pub(crate) const LEN_HEAP_SBI: usize = LEN_STACK_SBI;
 }
 
@@ -156,14 +162,19 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         board_info
     });
 
-    set_pmp(BOARD_INFO.wait());
-    execute::execute_supervisor(HSM.wait());
+    let hsm = HSM.wait();
+    if let Some(supervisor) = hsm.take_supervisor() {
+        set_pmp(BOARD_INFO.wait());
+        hsm.record_current_start_finished();
+        execute::execute_supervisor(supervisor);
+    }
 }
 
 /// 准备好深度休眠或关闭
 extern "C" fn finalize() {
     //! 在隔离的环境调用，以确保 main 中使用的堆资源完全释放
-    HSM.wait().record_ready_to_reboot();
+    HSM.wait().finallize_before_stop();
+    unsafe { riscv::interrupt::enable() };
 }
 
 /// 清零 bss 段。

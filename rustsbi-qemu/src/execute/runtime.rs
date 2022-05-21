@@ -1,4 +1,4 @@
-use crate::{clint, hart_id, qemu_hsm::Supervisor};
+use crate::{clint, hart_id, Supervisor};
 use core::{
     arch::asm,
     ops::{Generator, GeneratorState},

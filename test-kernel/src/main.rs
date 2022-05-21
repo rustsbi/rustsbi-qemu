@@ -135,7 +135,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
         }
         println!("({}/{smp})", STARTED.load(Ordering::SeqCst));
         for _ in 0..0x8000_0000usize {
-            unsafe { riscv::asm::nop() };
+            core::hint::spin_loop();
         }
     }
     println!("All harts boot successfully!");
@@ -145,7 +145,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 extern "C" fn secondary_rust_main(_hart_id: usize) -> ! {
     STARTED.fetch_add(1, Ordering::SeqCst);
     loop {
-        unsafe { riscv::asm::nop() };
+        core::hint::spin_loop();
     }
 }
 
@@ -315,6 +315,6 @@ fn shutdown() -> ! {
     use sbi::{system_reset, RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN};
     system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
     loop {
-        unsafe { riscv::asm::nop() };
+        core::hint::spin_loop();
     }
 }
