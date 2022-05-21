@@ -20,7 +20,6 @@ impl Runtime {
         use riscv::register::mstatus;
 
         unsafe {
-            asm!("csrw mstatus, {}", in(reg)0);
             mstatus::set_mpp(mstatus::MPP::Supervisor);
             mstatus::set_mie();
         };
@@ -66,7 +65,7 @@ impl Runtime {
 
         clint::get().clear_soft(hart_id());
         unsafe {
-            use riscv::register::{medeleg, mie, mtvec};
+            use riscv::register::{medeleg, mie};
 
             mstatus::clear_mie();
             asm!("csrw     mip, {}", in(reg) 0);
@@ -76,7 +75,7 @@ impl Runtime {
             medeleg::clear_supervisor_env_call();
             medeleg::clear_machine_env_call();
 
-            mtvec::write(from_supervisor_save as usize, mtvec::TrapMode::Direct);
+            crate::set_mtcev(from_supervisor_save as usize);
             mie::set_mext();
             mie::set_msoft();
         }

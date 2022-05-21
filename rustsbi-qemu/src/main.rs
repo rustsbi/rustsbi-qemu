@@ -112,8 +112,7 @@ static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
-    use riscv::register::mtvec;
-    unsafe { mtvec::write(early_trap as _, mtvec::TrapMode::Direct) };
+    unsafe { set_mtcev(early_trap as _) };
 
     #[link_section = ".bss.uninit"]
     static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
@@ -293,4 +292,10 @@ impl PmpCfg {
 #[inline(always)]
 fn hart_id() -> usize {
     riscv::register::mhartid::read()
+}
+
+#[inline(always)]
+unsafe fn set_mtcev(trap_handler: usize) {
+    use riscv::register::mtvec;
+    mtvec::write(trap_handler, mtvec::TrapMode::Direct);
 }

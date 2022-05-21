@@ -1,6 +1,6 @@
 //! Hart state monitor designed for QEMU
 
-use crate::{clint::Clint, entry, hart_id, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
+use crate::{clint::Clint, entry, hart_id, set_mtcev, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
 use core::{mem::MaybeUninit, sync::atomic::AtomicU8};
 use rustsbi::SbiRet;
 use spin::Mutex;
@@ -35,15 +35,19 @@ impl QemuHsm {
         let mut supervisor = unsafe { supervisor.assume_init() };
         for id in 0..smp {
             state[id] = AtomicU8::new(START_PENDING);
-            // 执行全局初始化的硬件线程将直通特权软件
-            supervisor[id] = Mutex::new(if id == hart_id() {
-                Some(Supervisor {
-                    start_addr: SUPERVISOR_ENTRY,
-                    opaque,
-                })
-            } else {
-                None
-            });
+            supervisor[id] = Mutex::new(
+                // 执行全局初始化的硬件线程将直通特权软件
+                if id == hart_id() {
+                    Some(Supervisor {
+                        start_addr: SUPERVISOR_ENTRY,
+                        opaque,
+                    })
+                }
+                // 否则将在下一个步骤被关闭
+                else {
+                    None
+                },
+            );
         }
 
         Self {
@@ -95,7 +99,7 @@ impl QemuHsm {
     /// 此时核状态必然是不可干预的 Pending 状态，中断业已关闭。
     pub fn finallize_before_stop(&self) {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
-        use riscv::register::{mie, mip, mtvec};
+        use riscv::register::{mie, mip};
 
         // 检查当前状态是重启前的挂起状态
         let state = &self.state[hart_id()];
@@ -117,7 +121,7 @@ impl QemuHsm {
         unsafe {
             mip::clear_msoft();
             mie::set_msoft();
-            mtvec::write(entry as _, mtvec::TrapMode::Direct);
+            set_mtcev(entry as _);
         }
         if let Err(unexpected) = state.compare_exchange(current, new, AcqRel, Acquire) {
             panic!("failed to reboot for a race {current:?} => {unexpected:?}")
