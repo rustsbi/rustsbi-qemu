@@ -112,13 +112,15 @@ static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
+    use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
+
     unsafe { set_mtcev(early_trap as _) };
 
     #[link_section = ".bss.uninit"]
-    static BOARD_INFO: Once<device_tree::BoardInfo> = Once::new();
+    static GENESIS: AtomicBool = AtomicBool::new(false);
 
     // 全局初始化过程
-    BOARD_INFO.call_once(|| {
+    if !GENESIS.swap(true, AcqRel) {
         // 清零 bss 段
         zero_bss();
         // 初始化堆和分配器
@@ -158,12 +160,11 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             dtb = opaque,
             firmware = entry as usize,
         );
-        board_info
-    });
+    }
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
-        set_pmp(BOARD_INFO.wait());
+        set_pmp();
         hsm.record_current_start_finished();
         execute::execute_supervisor(supervisor);
     }
@@ -208,85 +209,14 @@ fn init_heap() {
 }
 
 /// 设置 PMP。
-///
-/// FIXME 最好能实现一个排序+合并连续区域的复杂算法，尽量将地址段配置为 NAPOT 以节省 PMP 段，不过全部 TOR 也够用了
-fn set_pmp(board_info: &device_tree::BoardInfo) {
-    use riscv::register::{
-        pmpaddr0, pmpaddr1, pmpaddr10, pmpaddr11, pmpaddr12, pmpaddr13, pmpaddr14, pmpaddr15,
-        pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpaddr6, pmpaddr7, pmpaddr8, pmpaddr9, pmpcfg0,
-        pmpcfg2,
-    };
-
-    let memory = &board_info.memory;
-    let rtc = &board_info.rtc;
-    let uart = &board_info.uart;
-    let test = &board_info.test;
-    let pci = &board_info.pci;
-    let clint = &board_info.clint;
-    let plic = &board_info.plic;
-
-    let mut pmpcfg0 = PmpCfg::ZERO;
-    // rtc
-    pmpcfg0.set_next(0);
-    pmpaddr0::write(rtc.start >> 2);
-    pmpcfg0.set_next(0b1011);
-    pmpaddr1::write(rtc.end >> 2);
-    // uart
-    pmpcfg0.set_next(0);
-    pmpaddr2::write(uart.start >> 2);
-    pmpcfg0.set_next(0b1011);
-    pmpaddr3::write(uart.end >> 2);
-    // test
-    pmpcfg0.set_next(0);
-    pmpaddr4::write(test.start >> 2);
-    pmpcfg0.set_next(0b1011);
-    pmpaddr5::write(test.end >> 2);
-    // pci
-    pmpcfg0.set_next(0);
-    pmpaddr6::write(pci.start >> 2);
-    pmpcfg0.set_next(0b1011);
-    pmpaddr7::write(pci.end >> 2);
-    // cfg
-    pmpcfg0::write(pmpcfg0.bits());
-
-    let mut pmpcfg2 = PmpCfg::ZERO;
-    // clint
-    pmpcfg2.set_next(0);
-    pmpaddr8::write(clint.start >> 2);
-    pmpcfg2.set_next(0b1011);
-    pmpaddr9::write(clint.end >> 2);
-    // plic
-    pmpcfg2.set_next(0);
-    pmpaddr10::write(plic.start >> 2);
-    pmpcfg2.set_next(0b1011);
-    pmpaddr11::write(plic.end >> 2);
-    // virtio_mmio
-    pmpcfg2.set_next(0);
-    pmpaddr12::write(0x1000_1000 >> 2);
-    pmpcfg2.set_next(0b1011);
-    pmpaddr13::write(0x1000_9000 >> 2);
-    // memory
-    pmpcfg2.set_next(0);
-    pmpaddr14::write(SUPERVISOR_ENTRY >> 2);
-    pmpcfg2.set_next(0b1111);
-    pmpaddr15::write(memory.end >> 2);
-    // cfg
-    pmpcfg2::write(pmpcfg2.bits());
-}
-
-struct PmpCfg(usize, usize);
-
-impl PmpCfg {
-    const ZERO: Self = Self(0, 0);
-
-    fn set_next(&mut self, value: u8) {
-        self.0 |= (value as usize) << self.1;
-        self.1 += 8;
+fn set_pmp() {
+    use riscv::register::{pmpaddr0, pmpaddr1, pmpcfg0, Permission, Range};
+    unsafe {
+        pmpcfg0::set_pmp(0, Range::NAPOT, Permission::RWX, false);
+        pmpcfg0::set_pmp(1, Range::NAPOT, Permission::NONE, false);
     }
-
-    fn bits(&self) -> usize {
-        self.0
-    }
+    pmpaddr0::write(usize::MAX);
+    pmpaddr1::write((entry as usize >> 2) | 0x10_0000 >> 2);
 }
 
 #[inline(always)]
