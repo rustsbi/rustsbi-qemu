@@ -1,35 +1,9 @@
 use crate::{clint, hart_id, Supervisor};
 
-#[repr(C)]
-#[derive(Debug)]
-struct Context {
-    msp: usize,
-    x: [usize; 31],
-    mstatus: usize,
-    mepc: usize,
-}
+mod context;
+mod transfer_trap;
 
-impl Context {
-    #[inline]
-    fn a(&self, n: usize) -> usize {
-        self.x[n + 9]
-    }
-
-    #[inline]
-    fn a_mut(&mut self, n: usize) -> &mut usize {
-        &mut self.x[n + 9]
-    }
-
-    #[inline]
-    fn x(&self, n: usize) -> usize {
-        self.x[n - 1]
-    }
-
-    #[inline]
-    fn x_mut(&mut self, n: usize) -> &mut usize {
-        &mut self.x[n - 1]
-    }
-}
+use context::Context;
 
 pub(crate) fn execute_supervisor(supervisor: Supervisor) {
     use core::arch::asm;
@@ -40,19 +14,10 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
         mstatus::set_mie();
     };
 
-    let mut ctx = Context {
-        msp: 0,
-        x: [0; 31],
-        mstatus: 0,
-        mepc: supervisor.start_addr,
-    };
-
-    *ctx.a_mut(0) = hart_id();
-    *ctx.a_mut(1) = supervisor.opaque;
+    let mut ctx = Context::new(supervisor);
 
     clint::get().clear_soft(hart_id());
     unsafe {
-        asm!("csrr {}, mstatus", out(reg) ctx.mstatus);
         asm!("csrw     mip, {}", in(reg) 0);
         asm!("csrw mideleg, {}", in(reg) usize::MAX);
         asm!("csrw medeleg, {}", in(reg) usize::MAX);
@@ -73,6 +38,26 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
         unsafe { m_to_s(&mut ctx) };
 
         match mcause::read().cause() {
+            T::Interrupt(I::MachineTimer) => unsafe {
+                use riscv::register::mip;
+                mip::clear_mtimer();
+                mip::set_stimer();
+            },
+            T::Interrupt(I::MachineSoft) => {
+                use riscv::register::{mip, scause};
+
+                crate::clint::get().clear_soft(hart_id());
+                unsafe { mip::clear_msoft() };
+                if transfer_trap::should_transfer_trap(&ctx) {
+                    transfer_trap::do_transfer_trap(
+                        &mut ctx,
+                        scause::Trap::Interrupt(scause::Interrupt::SupervisorSoft),
+                    );
+                } else {
+                    println!("{:?}", I::MachineSoft);
+                    break;
+                }
+            }
             T::Exception(E::SupervisorEnvCall) => {
                 let param = [ctx.a(0), ctx.a(1), ctx.a(2), ctx.a(3), ctx.a(4), ctx.a(5)];
                 let ans = rustsbi::ecall(ctx.a(7), ctx.a(6), param);
@@ -88,13 +73,8 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
                 *ctx.a_mut(1) = ans.value;
                 ctx.mepc = ctx.mepc.wrapping_add(4);
             }
-            T::Interrupt(I::MachineTimer) => unsafe {
-                use riscv::register::mip;
-                mip::clear_mtimer();
-                mip::set_stimer();
-            },
             T::Exception(E::IllegalInstruction) => {
-                use riscv::register::mtval;
+                use riscv::register::{mtval, scause};
 
                 const OPCODE_MASK: usize = (1 << 7) - 1;
                 const REG_MASK: usize = (1 << 5) - 1;
@@ -113,28 +93,15 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
                 }
                 // 如果不是可修正的指令，且不是 M 态本身发出的，转交给 S 态处理
                 // mpp != machine
-                if (ctx.mstatus >> 11) & 0b11 != 0b11 {
-                    use riscv::register::{
-                        scause::{self, Exception, Trap},
-                        sepc, stval, stvec,
-                    };
-                    unsafe {
-                        scause::set(Trap::Exception(Exception::IllegalInstruction));
-                        stval::write(instruction);
-                        sepc::write(ctx.mepc);
-                        mstatus::set_mpp(mstatus::MPP::Supervisor);
-                        mstatus::set_spp(mstatus::SPP::Supervisor);
-                        if mstatus::read().sie() {
-                            mstatus::set_spie()
-                        }
-                        mstatus::clear_sie();
-                        core::arch::asm!("csrr {}, mstatus", out(reg) ctx.mstatus);
-                        ctx.mepc = stvec::read().address();
-                    }
-                    continue;
+                if transfer_trap::should_transfer_trap(&ctx) {
+                    transfer_trap::do_transfer_trap(
+                        &mut ctx,
+                        scause::Trap::Exception(scause::Exception::IllegalInstruction),
+                    );
+                } else {
+                    println!("{:?}", I::MachineSoft);
+                    break;
                 }
-                println!("{:?}", E::IllegalInstruction);
-                break;
             }
             t => {
                 println!("{t:?}");
