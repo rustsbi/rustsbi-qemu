@@ -1,7 +1,7 @@
 use crate::{clint, hart_id, Supervisor};
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Debug)]
 struct Context {
     msp: usize,
     x: [usize; 31],
@@ -11,7 +11,7 @@ struct Context {
 
 pub(crate) fn execute_supervisor(supervisor: Supervisor) {
     use core::arch::asm;
-    use riscv::register::{medeleg, mie, mstatus};
+    use riscv::register::{medeleg, mie, mip, mstatus};
 
     unsafe {
         mstatus::set_mpp(mstatus::MPP::Supervisor);
@@ -46,7 +46,7 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
 
     loop {
         use crate::qemu_hsm::{EID_HSM, FID_HART_STOP, FID_HART_SUSPEND, SUSPEND_NON_RETENTIVE};
-        use riscv::register::mcause::{self, Exception as E, Trap as T};
+        use riscv::register::mcause::{self, Exception as E, Interrupt as I, Trap as T};
 
         unsafe { m_to_s(&mut ctx) };
 
@@ -66,13 +66,22 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
                 *ctx.a_mut(1) = ans.value;
                 ctx.mepc = ctx.mepc.wrapping_add(4);
             }
+            T::Interrupt(I::MachineTimer) => unsafe {
+                mip::clear_mtimer();
+                mip::set_stimer();
+            },
+            T::Exception(E::IllegalInstruction) => {
+                println!("TODO emulate or forward illegal instruction");
+                break;
+            }
             t => {
                 println!("{t:?}");
-                loop {
-                    core::hint::spin_loop();
-                }
+                break;
             }
         }
+    }
+    loop {
+        core::hint::spin_loop();
     }
 }
 

@@ -99,30 +99,30 @@ impl QemuHsm {
     /// 此时核状态必然是不可干预的 Pending 状态，中断业已关闭。
     pub fn finallize_before_stop(&self) {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
-        use riscv::register::{mie, mip};
+        use riscv::register::mie;
 
         // 检查当前状态是重启前的挂起状态
         let state = &self.state[hart_id()];
         let current = state.load(Acquire);
         let new: u8 = match current {
-            STOP_PENDING => STOPPED,
-            SUSPEND_PENDING => SUSPEND,
+            STOP_PENDING => {
+                // 一旦关闭，只能通过软件中断重启
+                unsafe { mie::clear_mext() };
+                STOPPED
+            }
+            SUSPEND_PENDING => {
+                // 休眠也可以通过外部中断唤醒
+                unsafe { mie::set_mext() };
+                SUSPEND
+            }
             s => panic!("wrong state {s:?}!"),
         };
-
-        // TODO: SBI 在 M 态应该总是处于这样干净的状态，即：
-        // 1. 所有中断标记清除
-        // 2. 所有中断已关闭
-        //
-        // 这样，发生状态转换时只需要：
-        // 1. 重设 mtvec
-        // 2. 开启需要的中断
-        self.clint.clear_soft(hart_id());
+        // 通过软件中断重启
         unsafe {
-            mip::clear_msoft();
             mie::set_msoft();
-            set_mtcev(entry as _);
-        }
+            set_mtcev(entry as _)
+        };
+        // 转移状态
         if let Err(unexpected) = state.compare_exchange(current, new, AcqRel, Acquire) {
             panic!("failed to reboot for a race {current:?} => {unexpected:?}")
         }

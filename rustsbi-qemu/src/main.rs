@@ -170,7 +170,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     }
 }
 
-/// 准备好深度休眠或关闭
+/// 准备好不可恢复休眠或关闭
 extern "C" fn finalize() {
     //! 在隔离的环境调用，以确保 main 中使用的堆资源完全释放
     HSM.wait().finallize_before_stop();

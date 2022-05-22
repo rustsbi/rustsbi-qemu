@@ -109,8 +109,8 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     test::base_extension();
     test::sbi_ins_emulation();
 
-    unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
-    test::trap_delegate(hartid);
+    // unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
+    // test::trap_delegate(hartid);
 
     println!();
     STARTED.fetch_add(1, Ordering::SeqCst);
