@@ -5,6 +5,7 @@
 /// > SBI functions must return a pair of values in a0 and a1,
 /// > with a0 returning an error code.
 /// > This is analogous to returning the C structure `SbiRet`.
+#[derive(PartialEq, Eq)]
 #[repr(C)]
 pub struct SbiRet {
     /// Error number

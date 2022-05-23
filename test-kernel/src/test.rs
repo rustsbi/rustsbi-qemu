@@ -1,4 +1,6 @@
-﻿pub(crate) fn base_extension() {
+﻿use core::sync::atomic::{AtomicUsize, Ordering};
+
+pub(crate) fn base_extension() {
     println!(
         "
 [test-kernel] Testing base extension"
@@ -76,4 +78,82 @@ pub(crate) fn trap_delegate(hartid: usize) {
         "\
 [test-kernel] Illegal exception delegate success"
     );
+}
+
+/// 操作一个静态的原子变量。
+/// 现在除启动核外，所有核都处于 STOPPED 状态，
+/// 主核在 [`sbi::hart_start`] 之前给原子变量 +1。
+/// 核启动后，会自动给原子变量 -1。
+/// 所有核成功启动则原子变量值归零。
+/// 所有核一起等待原子变量归零，然后副核调用 [`sbi::hart_stop`] 关闭。
+/// 主核等待所有副核关闭，然后退出。
+pub(crate) fn start_stop_harts(hartid: usize, smp: usize) {
+    static STARTED: AtomicUsize = AtomicUsize::new(0);
+
+    #[naked]
+    unsafe extern "C" fn test_start_entry(hartid: usize) -> ! {
+        core::arch:: asm!(
+            "csrw sie, zero",      // 关中断
+            "call {select_stack}", // 设置启动栈
+            "j    {main}",         // 进入 rust
+            select_stack = sym crate::select_stack,
+            main = sym secondary_rust_main,
+            options(noreturn)
+        )
+    }
+
+    extern "C" fn secondary_rust_main(_hart_id: usize) -> ! {
+        STARTED.fetch_sub(1, Ordering::AcqRel);
+        while STARTED.load(Ordering::Acquire) != 0 {
+            delay(0x8000_0000usize);
+        }
+        sbi::hart_stop();
+        unreachable!()
+    }
+
+    println!(
+        "
+[test-kernel] Testing start harts"
+    );
+
+    // 启动副核
+    for id in 0..smp {
+        if id != hartid {
+            println!("[test-kernel] Hart{id} is booting...");
+            STARTED.fetch_add(1, Ordering::AcqRel);
+            let ret = sbi::hart_start(id, test_start_entry as usize, 0);
+            if ret.error != sbi::SBI_SUCCESS {
+                panic!("[test-kernel] Start hart{id} failed: {ret:?}");
+            }
+        } else {
+            println!("[test-kernel] Hart{id} is the primary hart.");
+        }
+    }
+    // 等待副核启动完成
+    while STARTED.load(Ordering::Acquire) != 0 {
+        for id in 0..smp {
+            print!("{:?}", sbi::hart_get_status(id));
+        }
+        println!("({}/{smp})", STARTED.load(Ordering::SeqCst));
+        delay(0x8000_0000usize);
+    }
+    println!("[test-kernel] All harts boot successfully!");
+    // 等待副核关闭
+    for id in 0..smp {
+        const STOPPED: sbi::SbiRet = sbi::SbiRet { error: 0, value: 1 };
+        if id != hartid {
+            while sbi::hart_get_status(id) != STOPPED {
+                delay(0x8000_0000usize);
+            }
+            println!("[test-kernel] Hart{id} stopped.");
+        }
+    }
+    println!("[test-kernel] All harts stop successfully!");
+}
+
+#[inline(always)]
+fn delay(cycle: usize) {
+    for _ in 0..cycle {
+        core::hint::spin_loop();
+    }
 }

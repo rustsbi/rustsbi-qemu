@@ -5,10 +5,7 @@
 #![no_std]
 #![no_main]
 
-use core::{
-    arch::asm,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use core::arch::asm;
 use riscv::register::{
     scause::Trap,
     sepc,
@@ -64,29 +61,9 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     )
 }
 
-/// 副核入口。此前副核被 SBI 阻塞。
-///
-/// # Safety
-///
-/// 裸函数。
-#[naked]
-unsafe extern "C" fn secondary_hart_start(hartid: usize) -> ! {
-    asm!(
-        "csrw sie, zero",      // 关中断
-        "call {select_stack}", // 设置启动栈
-        "j    {main}",         // 进入 rust
-        select_stack = sym select_stack,
-        main = sym secondary_rust_main,
-        options(noreturn)
-    )
-}
-
 /// 为每个核记录一个预期的陷入原因，实现陷入代理测试。
 /// 总是可以安全地使用，因为这是（硬件）线程独立变量。
 static mut EXPECTED: [Option<Trap>; 8] = [None; 8];
-
-/// 每个核的启动函数里 +1
-static STARTED: AtomicUsize = AtomicUsize::new(0);
 
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
@@ -112,41 +89,10 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
     test::trap_delegate(hartid);
 
-    println!();
-    STARTED.fetch_add(1, Ordering::SeqCst);
-    let pc: usize;
-    unsafe { asm!("auipc {}, 0", out(reg) pc) };
-    println!("pc = {pc:#x}");
-    // 启动副核
-    for id in 0..smp {
-        if id != hartid {
-            println!("hart{id} is booting...");
-            let ret = sbi::hart_start(id, secondary_hart_start as usize, 0);
-            if ret.error != sbi::SBI_SUCCESS {
-                panic!("start hart{id} failed: {ret:?}");
-            }
-        } else {
-            println!("hart{id} is the primary hart.");
-        }
-    }
-    while STARTED.load(Ordering::SeqCst) < smp {
-        for id in 0..smp {
-            print!("{:?}", sbi::hart_get_status(id));
-        }
-        println!("({}/{smp})", STARTED.load(Ordering::SeqCst));
-        for _ in 0..0x8000_0000usize {
-            core::hint::spin_loop();
-        }
-    }
-    println!("All harts boot successfully!");
-    shutdown()
-}
+    test::start_stop_harts(hartid, smp);
 
-extern "C" fn secondary_rust_main(_hart_id: usize) -> ! {
-    STARTED.fetch_add(1, Ordering::SeqCst);
-    loop {
-        core::hint::spin_loop();
-    }
+    sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
+    unreachable!()
 }
 
 extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
@@ -309,12 +255,4 @@ fn zero_bss() {
         static mut ebss: Word;
     }
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
-}
-
-fn shutdown() -> ! {
-    use sbi::{system_reset, RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN};
-    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
-    loop {
-        core::hint::spin_loop();
-    }
 }
