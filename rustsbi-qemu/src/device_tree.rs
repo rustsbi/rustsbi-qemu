@@ -12,7 +12,7 @@ pub(crate) struct BoardInfo {
 pub(crate) fn parse(_opaque: usize) -> BoardInfo {
     BoardInfo {
         model: vec![String::from("riscv-virtio,qemu")],
-        smp: 4,
+        smp: 8,
         uart: 0x1000_0000..0x1000_0100,
         test: 0x10_0000..0x10_1000,
         clint: 0x200_0000..0x201_0000,

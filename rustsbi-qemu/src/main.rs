@@ -142,7 +142,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         clint::init(board_info.clint.start);
         test_device::init(board_info.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), board_info.smp, opaque));
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), NUM_HART_MAX, opaque));
         // 初始化 SBI 服务
         rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
         rustsbi::init_ipi(clint::get());
@@ -166,7 +166,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             logo = rustsbi::LOGO,
             ver_impl = env!("CARGO_PKG_VERSION"),
             model = board_info.model,
-            smp = board_info.smp,
+            smp = SMP.load(Acquire),
             hartid = hart_id(),
             dtb = opaque,
             firmware = entry as usize,
