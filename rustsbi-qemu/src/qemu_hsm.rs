@@ -136,6 +136,17 @@ impl QemuHsm {
         use core::sync::atomic::Ordering::Release;
         self.state[hart_id()].store(STARTED, Release);
     }
+
+    /// 如果一个核可以接受 ipi，返回 `true`。
+    ///
+    /// 运行状态的核可以接受权限低于 SBI 软件的核间中断，将转交给特权软件。
+    /// 挂起状态的核可以接受核间中断以恢复运行。
+    pub fn is_ipi_allowed(&self, hart_id: usize) -> bool {
+        use core::sync::atomic::Ordering::Acquire;
+        self.state
+            .get(hart_id)
+            .map_or(false, |s| matches!(s.load(Acquire), STARTED | SUSPEND))
+    }
 }
 
 // Adapt RustSBI interface to RustSBI-QEMU's QemuHsm.

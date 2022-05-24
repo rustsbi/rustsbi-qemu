@@ -105,19 +105,30 @@ extern "C" fn early_trap() -> ! {
     }
 }
 
+use core::sync::atomic::{
+    AtomicBool, AtomicUsize,
+    Ordering::{AcqRel, Acquire},
+};
 use spin::Once;
 
 #[link_section = ".bss.uninit"]
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
+#[link_section = ".bss.uninit"]
+static SMP: AtomicUsize = AtomicUsize::new(0);
+
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
-    use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
-
     unsafe { set_mtcev(early_trap as _) };
 
     #[link_section = ".bss.uninit"]
     static GENESIS: AtomicBool = AtomicBool::new(false);
+
+    let mut smp = SMP.load(Acquire);
+    let mask = 1 << hart_id();
+    while let Err(val) = SMP.compare_exchange(smp, smp | mask, AcqRel, Acquire) {
+        smp = val;
+    }
 
     // 全局初始化过程
     if !GENESIS.swap(true, AcqRel) {
@@ -128,7 +139,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         // 解析设备树，需要堆来保存结果里的字符串等
         let board_info = device_tree::parse(opaque);
         // 初始化外设
-        clint::init(board_info.clint.start, board_info.smp);
+        clint::init(board_info.clint.start);
         test_device::init(board_info.test.start);
         let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
         let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), board_info.smp, opaque));

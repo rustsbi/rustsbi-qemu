@@ -40,8 +40,8 @@ impl Context {
     //     self.x[n - 1]
     // }
 
-    #[inline]
-    pub fn x_mut(&mut self, n: usize) -> &mut usize {
-        &mut self.x[n - 1]
-    }
+    // #[inline]
+    // pub fn x_mut(&mut self, n: usize) -> &mut usize {
+    //     &mut self.x[n - 1]
+    // }
 }

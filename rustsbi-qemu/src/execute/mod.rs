@@ -33,29 +33,24 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
 
     loop {
         use crate::qemu_hsm::{EID_HSM, FID_HART_STOP, FID_HART_SUSPEND, SUSPEND_NON_RETENTIVE};
-        use riscv::register::mcause::{self, Exception as E, Interrupt as I, Trap as T};
+        use riscv::register::{
+            mcause::{self, Exception as E, Interrupt as I, Trap as T},
+            mip,
+        };
 
         unsafe { m_to_s(&mut ctx) };
 
         match mcause::read().cause() {
             T::Interrupt(I::MachineTimer) => unsafe {
-                use riscv::register::mip;
+                mie::clear_mtimer();
                 mip::clear_mtimer();
                 mip::set_stimer();
             },
             T::Interrupt(I::MachineSoft) => {
-                use riscv::register::{mip, scause};
-
                 crate::clint::get().clear_soft(hart_id());
-                unsafe { mip::clear_msoft() };
-                if transfer_trap::should_transfer_trap(&ctx) {
-                    transfer_trap::do_transfer_trap(
-                        &mut ctx,
-                        scause::Trap::Interrupt(scause::Interrupt::SupervisorSoft),
-                    );
-                } else {
-                    println!("{:?}", I::MachineSoft);
-                    break;
+                unsafe {
+                    mip::clear_msoft();
+                    mip::set_ssoft();
                 }
             }
             T::Exception(E::SupervisorEnvCall) => {
@@ -74,23 +69,24 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
                 ctx.mepc = ctx.mepc.wrapping_add(4);
             }
             T::Exception(E::IllegalInstruction) => {
-                use riscv::register::{mtval, scause};
+                use riscv::register::scause;
 
-                const OPCODE_MASK: usize = (1 << 7) - 1;
-                const REG_MASK: usize = (1 << 5) - 1;
-                const OPCODE_CSR: usize = 0b1110011;
-                const CSR_TIME: usize = 0xc01;
-                let instruction = mtval::read();
+                // const OPCODE_MASK: usize = (1 << 7) - 1;
+                // const REG_MASK: usize = (1 << 5) - 1;
+                // const OPCODE_CSR: usize = 0b1110011;
+                // const CSR_TIME: usize = 0xc01;
+                // let instruction = mtval::read();
                 // 标准 20191213 的表 24.3 列出了一些特殊的 CSR，SBI 软件负责将它们模拟出来
-                if let OPCODE_CSR = instruction & OPCODE_MASK {
-                    if instruction >> 20 == CSR_TIME {
-                        match (instruction >> 7) & REG_MASK {
-                            0 => {}
-                            rd => *ctx.x_mut(rd) = crate::clint::get().get_mtime() as _,
-                        }
-                        continue;
-                    }
-                }
+                // Qemu 似乎不需要模拟 time
+                // if let OPCODE_CSR = instruction & OPCODE_MASK {
+                //     if instruction >> 20 == CSR_TIME {
+                //         match (instruction >> 7) & REG_MASK {
+                //             0 => {}
+                //             rd => *ctx.x_mut(rd) = crate::clint::get().get_mtime() as _,
+                //         }
+                //         continue;
+                //     }
+                // }
                 // 如果不是可修正的指令，且不是 M 态本身发出的，转交给 S 态处理
                 // mpp != machine
                 if transfer_trap::should_transfer_trap(&ctx) {
