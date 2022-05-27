@@ -119,7 +119,7 @@ static SMP: AtomicUsize = AtomicUsize::new(0);
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
-    unsafe { set_mtcev(early_trap as _) };
+    unsafe { set_mtvec(early_trap as _) };
 
     #[link_section = ".bss.uninit"]
     static GENESIS: AtomicBool = AtomicBool::new(false);
@@ -176,8 +176,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
         set_pmp();
-        hsm.record_current_start_finished();
-        execute::execute_supervisor(supervisor);
+        execute::execute_supervisor(hsm, supervisor);
     }
 }
 
@@ -236,7 +235,7 @@ fn hart_id() -> usize {
 }
 
 #[inline(always)]
-unsafe fn set_mtcev(trap_handler: usize) {
+unsafe fn set_mtvec(trap_handler: usize) {
     use riscv::register::mtvec;
     mtvec::write(trap_handler, mtvec::TrapMode::Direct);
 }

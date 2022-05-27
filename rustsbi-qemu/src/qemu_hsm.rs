@@ -1,12 +1,12 @@
 //! Hart state monitor designed for QEMU
 
-use crate::{clint::Clint, entry, hart_id, set_mtcev, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
+use crate::{clint::Clint, entry, hart_id, set_mtvec, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
 use core::{mem::MaybeUninit, sync::atomic::AtomicU8};
 use rustsbi::SbiRet;
 use spin::Mutex;
 
-pub(crate) const SUSPEND_RETENTIVE: u32 = 0x00000000;
-pub(crate) const SUSPEND_NON_RETENTIVE: u32 = 0x80000000;
+pub(crate) const SUSPEND_RETENTIVE: usize = 0x00000000;
+pub(crate) const SUSPEND_NON_RETENTIVE: usize = 0x80000000;
 pub(crate) const EID_HSM: usize = 0x48534D;
 pub(crate) const FID_HART_STOP: usize = 1;
 pub(crate) const FID_HART_SUSPEND: usize = 3;
@@ -94,6 +94,23 @@ impl QemuHsm {
         }
     }
 
+    /// 初始化完成，转移到运行状态。
+    pub fn record_current_start_finished(&self) {
+        use core::sync::atomic::Ordering::Release;
+        self.state[hart_id()].store(STARTED, Release);
+    }
+
+    /// 如果一个核可以接受 ipi，返回 `true`。
+    ///
+    /// 运行状态的核可以接受权限低于 SBI 软件的核间中断，将转交给特权软件。
+    /// 挂起状态的核可以接受核间中断以恢复运行。
+    pub fn is_ipi_allowed(&self, hart_id: usize) -> bool {
+        use core::sync::atomic::Ordering::Acquire;
+        self.state
+            .get(hart_id)
+            .map_or(false, |s| matches!(s.load(Acquire), STARTED | SUSPEND))
+    }
+
     /// 为硬件线程准备休眠或关闭。
     ///
     /// 此时核状态必然是不可干预的 Pending 状态，中断业已关闭。
@@ -120,7 +137,7 @@ impl QemuHsm {
         // 通过软件中断重启
         unsafe {
             mie::set_msoft();
-            set_mtcev(entry as _)
+            set_mtvec(entry as _);
         };
         // 转移状态
         if let Err(unexpected) = state.compare_exchange(current, new, AcqRel, Acquire) {
@@ -128,24 +145,51 @@ impl QemuHsm {
         }
     }
 
-    /// Record that current hart id is marked as `Started` state.
-    /// It is used when hart stop command is received in interrupt handler.
-    /// The target hart (when in interrupt handler) is prepared to start, it marks itself into 'started',
-    /// and should jump to target address right away.
-    pub fn record_current_start_finished(&self) {
-        use core::sync::atomic::Ordering::Release;
-        self.state[hart_id()].store(STARTED, Release);
-    }
+    /// 可恢复挂起。
+    fn retentive_suspend(&self) {
+        use core::{
+            arch::asm,
+            sync::atomic::Ordering::{AcqRel, Acquire},
+        };
+        use riscv::{interrupt, register::mtvec};
 
-    /// 如果一个核可以接受 ipi，返回 `true`。
-    ///
-    /// 运行状态的核可以接受权限低于 SBI 软件的核间中断，将转交给特权软件。
-    /// 挂起状态的核可以接受核间中断以恢复运行。
-    pub fn is_ipi_allowed(&self, hart_id: usize) -> bool {
-        use core::sync::atomic::Ordering::Acquire;
-        self.state
-            .get(hart_id)
-            .map_or(false, |s| matches!(s.load(Acquire), STARTED | SUSPEND))
+        /// 挂起，使用 call 进入以链接 ra
+        #[naked]
+        unsafe extern "C" fn suspend() {
+            asm!("1: wfi", "j 1b", options(noreturn))
+        }
+
+        /// 恢复，利用 ra 回到挂起前位置
+        #[naked]
+        #[link_section = ".text.awaker"]
+        unsafe extern "C" fn resume() {
+            asm!("ret", options(noreturn))
+        }
+
+        let state = &self.state[hart_id()];
+        let mtvec = mtvec::read().address();
+
+        // 转移状态
+        if let Err(unexpected) = state.compare_exchange(SUSPEND_PENDING, SUSPEND, AcqRel, Acquire) {
+            panic!("failed to suspend by wrong state: {unexpected:?}")
+        }
+        // 调整中断，休眠
+        unsafe {
+            // 支持软中断或外部中断唤醒
+            let mut mie: usize = (1 << 11) | (1 << 3);
+
+            set_mtvec(resume as _);
+            asm!("csrrw {0}, mie, {0}", inlateout(reg) mie);
+            interrupt::enable();
+            suspend();
+            interrupt::disable();
+            asm!("csrw mie, {mie}", mie = in(reg) mie);
+            set_mtvec(mtvec);
+        }
+        // 恢复状态
+        if let Err(unexpected) = state.compare_exchange(SUSPEND, STARTED, AcqRel, Acquire) {
+            panic!("failed to resume by wrong state: {unexpected:?}")
+        }
     }
 }
 
@@ -214,8 +258,11 @@ impl rustsbi::Hsm for &'static QemuHsm {
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
         match self.state[hart_id()].compare_exchange(STARTED, SUSPEND_PENDING, AcqRel, Acquire) {
-            Ok(_) => match suspend_type {
-                SUSPEND_RETENTIVE => todo!(),
+            Ok(_) => match suspend_type as usize {
+                SUSPEND_RETENTIVE => {
+                    self.retentive_suspend();
+                    SbiRet::ok(0)
+                }
                 SUSPEND_NON_RETENTIVE => {
                     *self.supervisor[hart_id()].lock() = Some(Supervisor {
                         start_addr: resume_addr,

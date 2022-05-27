@@ -1,11 +1,15 @@
-use crate::{clint, hart_id, Supervisor};
+use crate::{
+    clint, hart_id,
+    qemu_hsm::{QemuHsm, SUSPEND_RETENTIVE},
+    Supervisor,
+};
 
 mod context;
 mod transfer_trap;
 
 use context::Context;
 
-pub(crate) fn execute_supervisor(supervisor: Supervisor) {
+pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
     use core::arch::asm;
     use riscv::register::{medeleg, mie, mstatus};
 
@@ -26,13 +30,14 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
         medeleg::clear_supervisor_env_call();
         medeleg::clear_machine_env_call();
 
-        crate::set_mtcev(s_to_m as usize);
+        crate::set_mtvec(s_to_m as usize);
         mie::set_mext();
         mie::set_msoft();
     }
 
+    hsm.record_current_start_finished();
     loop {
-        use crate::qemu_hsm::{EID_HSM, FID_HART_STOP, FID_HART_SUSPEND, SUSPEND_NON_RETENTIVE};
+        use crate::qemu_hsm::{EID_HSM, FID_HART_STOP, FID_HART_SUSPEND};
         use riscv::register::{
             mcause::{self, Exception as E, Interrupt as I, Trap as T},
             mip,
@@ -57,11 +62,10 @@ pub(crate) fn execute_supervisor(supervisor: Supervisor) {
                 let param = [ctx.a(0), ctx.a(1), ctx.a(2), ctx.a(3), ctx.a(4), ctx.a(5)];
                 let ans = rustsbi::ecall(ctx.a(7), ctx.a(6), param);
                 if ctx.a(7) == EID_HSM && ans.error == 0 {
-                    if ctx.a(6) == FID_HART_STOP {
-                        return;
-                    }
-                    if ctx.a(6) == FID_HART_SUSPEND && ctx.a(0) == SUSPEND_NON_RETENTIVE as usize {
-                        return;
+                    match ctx.a(6) {
+                        FID_HART_STOP => return,
+                        FID_HART_SUSPEND if ctx.a(0) == SUSPEND_RETENTIVE => return,
+                        _ => {}
                     }
                 }
                 *ctx.a_mut(0) = ans.error;
