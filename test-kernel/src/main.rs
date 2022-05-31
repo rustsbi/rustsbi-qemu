@@ -16,7 +16,6 @@ extern crate sbi_rt as sbi;
 
 #[macro_use]
 mod console;
-mod device_tree;
 mod test;
 
 mod constants {
@@ -68,7 +67,7 @@ static mut EXPECTED: [Option<Trap>; 8] = [None; 8];
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
 
-    let smp = device_tree::parse_smp(dtb_pa);
+    let smp = parse_smp(dtb_pa);
     println!(
         r"
  _____         _     _  __                    _
@@ -255,4 +254,27 @@ fn zero_bss() {
         static mut ebss: Word;
     }
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+}
+
+fn parse_smp(dtb_pa: usize) -> usize {
+    use dtb_walker::{Dtb, DtbObj, WalkOperation};
+
+    let mut smp = 0usize;
+    unsafe { Dtb::from_raw_parts(dtb_pa as _) }
+        .unwrap()
+        .walk(|path, obj| match obj {
+            DtbObj::SubNode { name } => {
+                if path.last().is_empty() && name == b"cpus" {
+                    WalkOperation::StepInto
+                } else if path.last() == b"cpus" && name.starts_with(b"cpu@") {
+                    smp += 1;
+                    WalkOperation::StepOver
+                } else {
+                    WalkOperation::StepOver
+                }
+            }
+            DtbObj::Property(_) => WalkOperation::StepOver,
+        });
+
+    smp
 }

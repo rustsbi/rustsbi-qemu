@@ -15,3 +15,4 @@ r0 = "1"
 nb = "1"
 buddy_system_allocator = "0.8"
 uart_16550 = "0.2"
+dtb-walker = { git = "https://github.com/YdrMaster/dtb-walker.git", rev = "0ef2209" }

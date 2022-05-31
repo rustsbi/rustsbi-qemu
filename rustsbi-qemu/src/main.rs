@@ -105,17 +105,11 @@ extern "C" fn early_trap() -> ! {
     }
 }
 
-use core::sync::atomic::{
-    AtomicBool, AtomicUsize,
-    Ordering::{AcqRel, Acquire},
-};
+use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
 use spin::Once;
 
 #[link_section = ".bss.uninit"]
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
-
-#[link_section = ".bss.uninit"]
-static SMP: AtomicUsize = AtomicUsize::new(0);
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
@@ -123,12 +117,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 
     #[link_section = ".bss.uninit"]
     static GENESIS: AtomicBool = AtomicBool::new(false);
-
-    let mut smp = SMP.load(Acquire);
-    let mask = 1 << hart_id();
-    while let Err(val) = SMP.compare_exchange(smp, smp | mask, AcqRel, Acquire) {
-        smp = val;
-    }
 
     // 全局初始化过程
     if !GENESIS.swap(true, AcqRel) {
@@ -157,8 +145,9 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 [rustsbi] Implementation     : RustSBI-QEMU Version {ver_impl}
 [rustsbi] Platform Name      : {model:?}
 [rustsbi] Platform SMP       : {smp}
+[rustsbi] Platform Memory    : {mem:#x?}
 [rustsbi] Boot HART          : {hartid}
-[rustsbi] Device Tree Address: {dtb:#x}
+[rustsbi] Device Tree Region : {dtb:#x?}
 [rustsbi] Firmware Address   : {firmware:#x}
 [rustsbi] Supervisor Address : {SUPERVISOR_ENTRY:#x}
 ",
@@ -166,9 +155,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             logo = rustsbi::LOGO,
             ver_impl = env!("CARGO_PKG_VERSION"),
             model = board_info.model,
-            smp = SMP.load(Acquire),
+            smp = board_info.smp,
+            mem = board_info.mem[0],
             hartid = hart_id(),
-            dtb = opaque,
+            dtb = board_info.dtb,
             firmware = entry as usize,
         );
     }
