@@ -223,7 +223,7 @@ fn set_pmp(board_info: &BoardInfo) {
     let mem = &board_info.mem[0];
     let dtb = &board_info.dtb;
     unsafe {
-        pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, true);
+        pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
         pmpaddr0::write(0);
         // 外设
         pmpcfg0::set_pmp(1, Range::TOR, Permission::RW, false);
@@ -232,13 +232,13 @@ fn set_pmp(board_info: &BoardInfo) {
         pmpcfg0::set_pmp(2, Range::TOR, Permission::NONE, false);
         pmpaddr2::write(SUPERVISOR_ENTRY >> 2);
         // 主存
-        pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, true);
+        pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, false);
         pmpaddr3::write(dtb.start >> 2);
         // 设备树
         pmpcfg0::set_pmp(4, Range::TOR, Permission::R, false);
         pmpaddr4::write(dtb.end >> 2);
         //主存
-        pmpcfg0::set_pmp(5, Range::TOR, Permission::RWX, true);
+        pmpcfg0::set_pmp(5, Range::TOR, Permission::RWX, false);
         pmpaddr5::write(mem.end >> 2);
     }
 }
