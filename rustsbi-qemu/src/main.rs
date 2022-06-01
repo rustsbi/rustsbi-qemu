@@ -12,6 +12,7 @@ extern crate alloc;
 mod clint;
 mod device_tree;
 mod execute;
+mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
 mod test_device;
@@ -106,6 +107,7 @@ extern "C" fn early_trap() -> ! {
 }
 
 use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
+use device_tree::BoardInfo;
 use spin::Once;
 
 #[link_section = ".bss.uninit"]
@@ -117,6 +119,8 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 
     #[link_section = ".bss.uninit"]
     static GENESIS: AtomicBool = AtomicBool::new(false);
+    static CSR_PRINT: AtomicBool = AtomicBool::new(false);
+    static BOARD_INFO: Once<BoardInfo> = Once::new();
 
     // 全局初始化过程
     if !GENESIS.swap(true, AcqRel) {
@@ -125,7 +129,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         // 初始化堆和分配器
         init_heap();
         // 解析设备树，需要堆来保存结果里的字符串等
-        let board_info = device_tree::parse(opaque);
+        let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
         clint::init(board_info.clint.start);
         test_device::init(board_info.test.start);
@@ -165,7 +169,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
-        set_pmp();
+        set_pmp(BOARD_INFO.wait());
+        if !CSR_PRINT.swap(true, AcqRel) {
+            hart_csr_utils::print_pmps();
+        }
         execute::execute_supervisor(hsm, supervisor);
     }
 }
@@ -209,14 +216,31 @@ fn init_heap() {
 }
 
 /// 设置 PMP。
-fn set_pmp() {
-    use riscv::register::{pmpaddr0, pmpaddr1, pmpcfg0, Permission, Range};
+fn set_pmp(board_info: &BoardInfo) {
+    use riscv::register::{
+        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpcfg0, Permission, Range,
+    };
+    let mem = &board_info.mem[0];
+    let dtb = &board_info.dtb;
     unsafe {
-        pmpcfg0::set_pmp(0, Range::NAPOT, Permission::RWX, false);
-        pmpcfg0::set_pmp(1, Range::NAPOT, Permission::NONE, false);
+        pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, true);
+        pmpaddr0::write(0);
+        // 外设
+        pmpcfg0::set_pmp(1, Range::TOR, Permission::RW, false);
+        pmpaddr1::write(mem.start >> 2);
+        // SBI
+        pmpcfg0::set_pmp(2, Range::TOR, Permission::NONE, false);
+        pmpaddr2::write(SUPERVISOR_ENTRY >> 2);
+        // 主存
+        pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, true);
+        pmpaddr3::write(dtb.start >> 2);
+        // 设备树
+        pmpcfg0::set_pmp(4, Range::TOR, Permission::R, false);
+        pmpaddr4::write(dtb.end >> 2);
+        //主存
+        pmpcfg0::set_pmp(5, Range::TOR, Permission::RWX, true);
+        pmpaddr5::write(mem.end >> 2);
     }
-    pmpaddr0::write(usize::MAX);
-    pmpaddr1::write((entry as usize >> 2) | 0x10_0000 >> 2);
 }
 
 #[inline(always)]

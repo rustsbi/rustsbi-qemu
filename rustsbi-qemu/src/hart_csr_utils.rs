@@ -4,11 +4,10 @@ use riscv::register::{
     misa::{self, MXL},
 };
 
-pub fn print_hart_csrs() {
+pub(crate) fn print_hart_csrs() {
     print_misa();
     print_mideleg();
     print_medeleg();
-    print_pmps();
 }
 
 #[inline]
@@ -112,7 +111,7 @@ fn print_medeleg() {
     );
 }
 
-fn print_pmps() {
+pub(crate) fn print_pmps() {
     const ITEM_PER_CFG: usize = core::mem::size_of::<usize>();
     const CFG_STEP: usize = ITEM_PER_CFG / core::mem::size_of::<u32>();
 
