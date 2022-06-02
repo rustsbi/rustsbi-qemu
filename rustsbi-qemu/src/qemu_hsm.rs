@@ -194,7 +194,7 @@ impl QemuHsm {
 }
 
 // Adapt RustSBI interface to RustSBI-QEMU's QemuHsm.
-impl rustsbi::Hsm for &'static QemuHsm {
+impl rustsbi::Hsm for QemuHsm {
     fn hart_start(&self, hart_id: usize, start_addr: usize, opaque: usize) -> SbiRet {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
         use riscv::register::mstatus::{self, MPP};

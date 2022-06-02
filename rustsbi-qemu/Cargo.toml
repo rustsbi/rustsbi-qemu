@@ -7,12 +7,10 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = { git = "https://github.com/rustsbi/rustsbi.git", rev = "40c2985" }
+rustsbi = { git = "https://github.com/YdrMaster/rustsbi.git", rev = "bdd67f8" }
 riscv = "0.8"
-embedded-hal = "0.2.7"
 spin = "0.9"
 r0 = "1"
-nb = "1"
 buddy_system_allocator = "0.8"
 uart_16550 = "0.2"
 dtb-walker = { git = "https://github.com/YdrMaster/dtb-walker.git", rev = "0ef2209" }

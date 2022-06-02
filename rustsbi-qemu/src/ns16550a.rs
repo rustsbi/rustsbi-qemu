@@ -1,5 +1,4 @@
-use core::convert::Infallible;
-use embedded_hal::serial::{Read, Write};
+use rustsbi::legacy_stdio::LegacyStdio;
 use uart_16550::MmioSerialPort;
 
 pub(crate) struct Ns16550a(MmioSerialPort);
@@ -10,23 +9,12 @@ impl Ns16550a {
     }
 }
 
-impl Read<u8> for Ns16550a {
-    type Error = Infallible;
-
-    fn read(&mut self) -> nb::Result<u8, Self::Error> {
-        Ok(self.0.receive())
-    }
-}
-
-impl Write<u8> for Ns16550a {
-    type Error = Infallible;
-
-    fn write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
-        self.0.send(word);
-        Ok(())
+impl LegacyStdio for Ns16550a {
+    fn getchar(&mut self) -> u8 {
+        self.0.receive()
     }
 
-    fn flush(&mut self) -> nb::Result<(), Self::Error> {
-        Ok(())
+    fn putchar(&mut self, ch: u8) {
+        self.0.send(ch);
     }
 }

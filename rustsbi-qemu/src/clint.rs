@@ -38,7 +38,7 @@ impl Clint {
     }
 }
 
-impl Ipi for &'static Clint {
+impl Ipi for Clint {
     #[inline]
     fn send_ipi_many(&self, hart_mask: HartMask) -> SbiRet {
         let hsm = crate::HSM.wait();
@@ -51,7 +51,7 @@ impl Ipi for &'static Clint {
     }
 }
 
-impl Timer for &'static Clint {
+impl Timer for Clint {
     #[inline]
     fn set_timer(&self, time_value: u64) {
         unsafe {

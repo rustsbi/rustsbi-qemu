@@ -111,6 +111,9 @@ use device_tree::BoardInfo;
 use spin::Once;
 
 #[link_section = ".bss.uninit"]
+static mut SERIAL: Option<ns16550a::Ns16550a> = None;
+
+#[link_section = ".bss.uninit"]
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
@@ -133,13 +136,13 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         // 初始化外设
         clint::init(board_info.clint.start);
         test_device::init(board_info.test.start);
-        let uart = unsafe { ns16550a::Ns16550a::new(board_info.uart.start) };
+        unsafe { SERIAL = Some(ns16550a::Ns16550a::new(board_info.uart.start)) };
         let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), NUM_HART_MAX, opaque));
         // 初始化 SBI 服务
-        rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(uart);
+        rustsbi::legacy_stdio::init_legacy_stdio(unsafe { SERIAL.as_mut() }.unwrap());
         rustsbi::init_ipi(clint::get());
         rustsbi::init_timer(clint::get());
-        rustsbi::init_reset(test_device::get().clone());
+        rustsbi::init_reset(test_device::get());
         rustsbi::init_hsm(hsm);
         // 打印启动信息
         print!(
@@ -156,7 +159,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 [rustsbi] Supervisor Address : {SUPERVISOR_ENTRY:#x}
 ",
             ver_sbi = rustsbi::VERSION,
-            logo = rustsbi::LOGO,
+            logo = rustsbi::logo(),
             ver_impl = env!("CARGO_PKG_VERSION"),
             model = board_info.model,
             smp = board_info.smp,
