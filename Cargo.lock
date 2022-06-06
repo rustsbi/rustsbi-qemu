@@ -181,7 +181,7 @@ dependencies = [
 [[package]]
 name = "rustsbi"
 version = "0.2.2"
-source = "git+https://github.com/YdrMaster/rustsbi.git?rev=bdd67f8#bdd67f8e52e52c180ed213f5b738638cb377000e"
+source = "git+https://github.com/YdrMaster/rustsbi.git?rev=e17920b#e17920b70951d4a36930993965266d1f5cf02c97"
 dependencies = [
  "riscv",
 ]
@@ -252,6 +252,7 @@ dependencies = [
  "riscv",
  "sbi-rt",
  "spin 0.9.3",
+ "uart_16550",
 ]
 
 [[package]]

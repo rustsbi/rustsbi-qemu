@@ -14,3 +14,4 @@ spin = "0.9"
 r0 = "1"
 lazy_static = { version = "1", features = ["spin_no_std"] }
 dtb-walker = { git = "https://github.com/YdrMaster/dtb-walker.git", rev = "0ef2209" }
+uart_16550 = "0.2"

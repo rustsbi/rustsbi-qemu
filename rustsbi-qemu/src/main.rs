@@ -111,7 +111,7 @@ use device_tree::BoardInfo;
 use spin::Once;
 
 #[link_section = ".bss.uninit"]
-static mut SERIAL: Option<ns16550a::Ns16550a> = None;
+static SERIAL: Once<ns16550a::Ns16550a> = Once::new();
 
 #[link_section = ".bss.uninit"]
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
@@ -136,10 +136,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         // 初始化外设
         clint::init(board_info.clint.start);
         test_device::init(board_info.test.start);
-        unsafe { SERIAL = Some(ns16550a::Ns16550a::new(board_info.uart.start)) };
+        let serial = SERIAL.call_once(|| unsafe { ns16550a::Ns16550a::new(board_info.uart.start) });
         let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), NUM_HART_MAX, opaque));
         // 初始化 SBI 服务
-        rustsbi::legacy_stdio::init_legacy_stdio(unsafe { SERIAL.as_mut() }.unwrap());
+        rustsbi::legacy_stdio::init_legacy_stdio(serial);
         rustsbi::init_ipi(clint::get());
         rustsbi::init_timer(clint::get());
         rustsbi::init_reset(test_device::get());
@@ -238,7 +238,7 @@ fn set_pmp(board_info: &BoardInfo) {
         pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, false);
         pmpaddr3::write(dtb.start >> 2);
         // 设备树
-        pmpcfg0::set_pmp(4, Range::TOR, Permission::R, false);
+        pmpcfg0::set_pmp(4, Range::TOR, Permission::RW, false);
         pmpaddr4::write(dtb.end >> 2);
         //主存
         pmpcfg0::set_pmp(5, Range::TOR, Permission::RWX, false);

@@ -67,7 +67,8 @@ static mut EXPECTED: [Option<Trap>; 8] = [None; 8];
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
 
-    let smp = parse_smp(dtb_pa);
+    let BoardInfo { smp, uart } = parse_smp(dtb_pa);
+    console::init(uart);
     println!(
         r"
  _____         _     _  __                    _
@@ -256,25 +257,37 @@ fn zero_bss() {
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
-fn parse_smp(dtb_pa: usize) -> usize {
-    use dtb_walker::{Dtb, DtbObj, WalkOperation};
+struct BoardInfo {
+    smp: usize,
+    uart: usize,
+}
 
-    let mut smp = 0usize;
+fn parse_smp(dtb_pa: usize) -> BoardInfo {
+    use dtb_walker::{Dtb, DtbObj, Property, WalkOperation::*};
+
+    let mut ans = BoardInfo { smp: 0, uart: 0 };
     unsafe { Dtb::from_raw_parts(dtb_pa as _) }
         .unwrap()
         .walk(|path, obj| match obj {
             DtbObj::SubNode { name } => {
-                if path.last().is_empty() && name == b"cpus" {
-                    WalkOperation::StepInto
+                if path.last().is_empty() && (name == b"cpus" || name == b"soc") {
+                    StepInto
                 } else if path.last() == b"cpus" && name.starts_with(b"cpu@") {
-                    smp += 1;
-                    WalkOperation::StepOver
+                    ans.smp += 1;
+                    StepOver
+                } else if path.last() == b"soc" && name.starts_with(b"uart") {
+                    StepInto
                 } else {
-                    WalkOperation::StepOver
+                    StepOver
                 }
             }
-            DtbObj::Property(_) => WalkOperation::StepOver,
+            DtbObj::Property(Property::Reg(mut reg)) => {
+                if path.last().starts_with(b"uart") {
+                    ans.uart = reg.next().unwrap().start;
+                }
+                StepOut
+            }
+            DtbObj::Property(_) => StepOver,
         });
-
-    smp
+    ans
 }
