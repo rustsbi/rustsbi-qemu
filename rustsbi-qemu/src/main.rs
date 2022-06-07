@@ -223,11 +223,8 @@ fn init_heap() {
 
 /// 设置 PMP。
 fn set_pmp(board_info: &BoardInfo) {
-    use riscv::register::{
-        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpaddr5, pmpcfg0, Permission, Range,
-    };
+    use riscv::register::{pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpcfg0, Permission, Range};
     let mem = &board_info.mem[0];
-    let dtb = &board_info.dtb;
     unsafe {
         pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
         pmpaddr0::write(0);
@@ -237,15 +234,9 @@ fn set_pmp(board_info: &BoardInfo) {
         // SBI
         pmpcfg0::set_pmp(2, Range::TOR, Permission::NONE, false);
         pmpaddr2::write(SUPERVISOR_ENTRY >> 2);
-        // 主存
-        pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, false);
-        pmpaddr3::write(dtb.start >> 2);
-        // 设备树
-        pmpcfg0::set_pmp(4, Range::TOR, Permission::RW, false);
-        pmpaddr4::write(dtb.end >> 2);
         //主存
-        pmpcfg0::set_pmp(5, Range::TOR, Permission::RWX, false);
-        pmpaddr5::write(mem.end >> 2);
+        pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, false);
+        pmpaddr3::write(mem.end >> 2);
     }
 }
 
