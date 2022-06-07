@@ -118,7 +118,7 @@ pub(crate) fn start_stop_harts(hartid: usize, smp: usize) {
         if id != hartid {
             println!("[test-kernel] Hart{id} is booting...");
             let ret = sbi::hart_start(id, test_start_entry as usize, 0);
-            if ret.error != sbi::SBI_SUCCESS {
+            if ret.error != sbi::RET_SUCCESS {
                 panic!("[test-kernel] Start hart{id} failed: {ret:?}");
             }
         } else {
@@ -130,14 +130,17 @@ pub(crate) fn start_stop_harts(hartid: usize, smp: usize) {
     print!("[test-kernel] All harts boot successfully!\n");
     // 等待副核关闭
     for id in 0..smp {
-        const STOPPED: sbi::SbiRet = sbi::SbiRet { error: 0, value: 1 };
+        const STOPPED: sbi::SbiRet = sbi::SbiRet {
+            error: sbi::RET_SUCCESS,
+            value: sbi::HART_STATE_STOPPED,
+        };
         if id != hartid {
-            let status = sbi::hart_get_status(id);
-            if status != STOPPED {
-                println!("[test-kernel] Hart{id} waiting: {:?}.", status);
-            } else {
-                println!("[test-kernel] Hart{id} stopped.");
+            while sbi::hart_get_status(id) != STOPPED {
+                core::hint::spin_loop();
             }
+            println!("[test-kernel] Hart{id} stopped.");
+        } else {
+            println!("[test-kernel] Hart{id} is the primary hart.");
         }
     }
     println!("[test-kernel] All harts stop successfully!");

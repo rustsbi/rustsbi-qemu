@@ -9,6 +9,14 @@ const FID_HART_STOP: usize = 1;
 const FID_HART_GET_STATUS: usize = 2;
 const FID_HART_SUSPEND: usize = 3;
 
+pub const HART_STATE_STARTED: usize = 0;
+pub const HART_STATE_STOPPED: usize = 1;
+pub const HART_STATE_START_PENDING: usize = 2;
+pub const HART_STATE_STOP_PENDING: usize = 3;
+pub const HART_STATE_SUSPENDED: usize = 4;
+pub const HART_STATE_SUSPEND_PENDING: usize = 5;
+pub const HART_STATE_RESUME_PENDING: usize = 6;
+
 #[inline]
 pub fn hart_start(hartid: usize, start_addr: usize, opaque: usize) -> SbiRet {
     sbi_call_3(EID_HSM, FID_HART_START, hartid, start_addr, opaque)
