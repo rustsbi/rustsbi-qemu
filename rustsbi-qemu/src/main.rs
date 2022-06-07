@@ -70,6 +70,7 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
 
     core::arch::asm!("
            csrw     mie,  zero
+           csrr      a0,  mhartid
            la        sp, {stack}
            li        t0, {per_hart_stack_size}
            addi      t1,  a0, 1
@@ -134,12 +135,14 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         // 解析设备树，需要堆来保存结果里的字符串等
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
+        rustsbi::legacy_stdio::init_legacy_stdio(
+            SERIAL.call_once(|| unsafe { ns16550a::Ns16550a::new(board_info.uart.start) }),
+        );
+
         clint::init(board_info.clint.start);
         test_device::init(board_info.test.start);
-        let serial = SERIAL.call_once(|| unsafe { ns16550a::Ns16550a::new(board_info.uart.start) });
         let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), NUM_HART_MAX, opaque));
         // 初始化 SBI 服务
-        rustsbi::legacy_stdio::init_legacy_stdio(serial);
         rustsbi::init_ipi(clint::get());
         rustsbi::init_timer(clint::get());
         rustsbi::init_reset(test_device::get());

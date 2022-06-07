@@ -103,8 +103,8 @@ pub(crate) fn start_stop_harts(hartid: usize, smp: usize) {
 
     extern "C" fn secondary_rust_main(hart_id: usize) -> ! {
         BARRIER.wait().wait();
-        println!("stop [{hart_id}] but {:?}", sbi::hart_stop());
-        unreachable!()
+        let ret = sbi::hart_stop();
+        unreachable!("stop [{hart_id}] but {ret:?}");
     }
 
     println!(
