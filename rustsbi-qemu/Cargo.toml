@@ -7,7 +7,7 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = { path = "../../rustsbi" }
+rustsbi = { git = "https://github.com/YdrMaster/rustsbi.git", rev = "118ca4c" }
 riscv = "0.8"
 spin = "0.9"
 r0 = "1"

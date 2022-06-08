@@ -22,6 +22,7 @@ pub(crate) fn get() -> &'static Clint {
 }
 
 impl Clint {
+    #[allow(unused)]
     #[inline]
     pub fn get_mtime(&self) -> u64 {
         unsafe { ((self.base as *mut u8).add(0xbff8) as *mut u64).read_volatile() }

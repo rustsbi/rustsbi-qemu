@@ -163,6 +163,7 @@ dependencies = [
 [[package]]
 name = "rustsbi"
 version = "0.2.2"
+source = "git+https://github.com/YdrMaster/rustsbi.git?rev=118ca4c#118ca4cb8d4a5722dcf0f8b84639ea2334b88d92"
 dependencies = [
  "riscv",
 ]
