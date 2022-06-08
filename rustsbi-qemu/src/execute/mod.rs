@@ -1,6 +1,6 @@
 use crate::{
     clint, hart_id,
-    qemu_hsm::{QemuHsm, SUSPEND_RETENTIVE},
+    qemu_hsm::{QemuHsm, SUSPEND_NON_RETENTIVE},
     Supervisor,
 };
 
@@ -64,7 +64,7 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
                 if ctx.a(7) == EID_HSM && ans.error == 0 {
                     match ctx.a(6) {
                         FID_HART_STOP => return,
-                        FID_HART_SUSPEND if ctx.a(0) == SUSPEND_RETENTIVE => return,
+                        FID_HART_SUSPEND if ctx.a(0) == SUSPEND_NON_RETENTIVE => return,
                         _ => {}
                     }
                 }
