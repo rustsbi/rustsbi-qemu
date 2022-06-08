@@ -1,17 +1,31 @@
-﻿use alloc::{string::String, vec, vec::Vec};
-use core::ops::Range;
+﻿use core::{
+    fmt::{Display, Formatter, Result},
+    ops::Range,
+};
 
-#[derive(Debug)]
+/// 从设备树采集的板信息。
 pub(crate) struct BoardInfo {
     pub dtb: Range<usize>,
-    pub model: String,
+    pub model: StringInline<128>,
     pub smp: usize,
-    pub mem: Vec<Range<usize>>,
+    pub mem: Range<usize>,
     pub uart: Range<usize>,
     pub test: Range<usize>,
     pub clint: Range<usize>,
 }
 
+/// 在栈上存储有限长度字符串。
+pub(crate) struct StringInline<const N: usize>(usize, [u8; N]);
+
+impl<const N: usize> Display for StringInline<N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", unsafe {
+            core::str::from_utf8_unchecked(&self.1[..self.0])
+        })
+    }
+}
+
+/// 解析设备树。
 pub(crate) fn parse(opaque: usize) -> BoardInfo {
     use dtb_walker::{Dtb, DtbObj, Property, WalkOperation::*};
     const CPUS: &[u8] = b"cpus";
@@ -23,9 +37,9 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
 
     let mut ans = BoardInfo {
         dtb: opaque..opaque,
-        model: String::new(),
+        model: StringInline(0, [0u8; 128]),
         smp: 0,
-        mem: vec![],
+        mem: 0..0,
         uart: 0..0,
         test: 0..0,
         clint: 0..0,
@@ -55,9 +69,8 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
             }
         }
         DtbObj::Property(Property::Model(model)) if path.last().is_empty() => {
-            if let Ok(model) = model.as_str() {
-                ans.model = model.into();
-            }
+            ans.model.0 = model.as_bytes().len();
+            ans.model.1[..ans.model.0].copy_from_slice(model.as_bytes());
             StepOver
         }
         DtbObj::Property(Property::Reg(mut reg)) => {
@@ -72,7 +85,7 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
                 ans.clint = reg.next().unwrap();
                 StepOut
             } else if node.starts_with(MEMORY) {
-                ans.mem = reg.into_iter().collect();
+                ans.mem = reg.next().unwrap();
                 StepOut
             } else {
                 StepOver

@@ -1,13 +1,9 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions)]
-#![feature(asm_sym, asm_const)]
-#![feature(generator_trait)]
-#![feature(default_alloc_error_handler)]
+#![feature(naked_functions, asm_sym, asm_const)]
 
-#[macro_use]
+#[macro_use] // for print
 extern crate rustsbi;
-extern crate alloc;
 
 mod clint;
 mod device_tree;
@@ -16,12 +12,6 @@ mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
 mod test_device;
-
-/// 特权软件信息。
-struct Supervisor {
-    start_addr: usize,
-    opaque: usize,
-}
 
 mod constants {
     /// 特权软件入口。
@@ -32,11 +22,15 @@ mod constants {
     pub(crate) const NUM_HART_MAX: usize = 8;
     /// SBI 软件全部栈空间容量。
     pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
-    /// SBI 软件堆空间容量。
-    pub(crate) const LEN_HEAP_SBI: usize = LEN_STACK_SBI;
 }
 
 use constants::*;
+
+/// 特权软件信息。
+struct Supervisor {
+    start_addr: usize,
+    opaque: usize,
+}
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -69,18 +63,18 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
 
     core::arch::asm!("
-           csrw     mie,  zero
-           csrr      a0,  mhartid
-           la        sp, {stack}
-           li        t0, {per_hart_stack_size}
-           addi      t1,  a0, 1
-        1: add       sp,  sp, t0
-           addi      t1,  t1, -1
-           bnez      t1,  1b
-           call     {rust_main}
-           call     {finalize}
+           csrw mie,  zero
+           csrr  a0,  mhartid
+           la    sp, {stack}
+           li    t0, {per_hart_stack_size}
+           addi  t1,  a0,  1
+        1: add   sp,  sp, t0
+           addi  t1,  t1, -1
+           bnez  t1,  1b
+           call {rust_main}
+           call {finalize}
         1: wfi
-           j         1b
+           j     1b
         ",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym SBI_STACK,
@@ -90,6 +84,7 @@ unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
     )
 }
 
+/// 真正的异常处理函数设置好之前，使用这个处理异常。
 #[link_section = ".text.early_trap"]
 extern "C" fn early_trap() -> ! {
     print!(
@@ -103,7 +98,7 @@ extern "C" fn early_trap() -> ! {
         riscv::register::mstatus::read(),
     );
     loop {
-        unsafe { riscv::asm::wfi() };
+        core::hint::spin_loop();
     }
 }
 
@@ -111,27 +106,23 @@ use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
 use device_tree::BoardInfo;
 use spin::Once;
 
-#[link_section = ".bss.uninit"]
-static SERIAL: Once<ns16550a::Ns16550a> = Once::new();
-
-#[link_section = ".bss.uninit"]
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     unsafe { set_mtvec(early_trap as _) };
 
-    #[link_section = ".bss.uninit"]
+    #[link_section = ".bss.uninit"] // 以免清零
     static GENESIS: AtomicBool = AtomicBool::new(false);
-    static CSR_PRINT: AtomicBool = AtomicBool::new(false);
+
+    static SERIAL: Once<ns16550a::Ns16550a> = Once::new();
     static BOARD_INFO: Once<BoardInfo> = Once::new();
+    static CSR_PRINT: AtomicBool = AtomicBool::new(false);
 
     // 全局初始化过程
     if !GENESIS.swap(true, AcqRel) {
         // 清零 bss 段
         zero_bss();
-        // 初始化堆和分配器
-        init_heap();
         // 解析设备树，需要堆来保存结果里的字符串等
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
@@ -153,7 +144,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 [rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v1.0.0
 {logo}
 [rustsbi] Implementation     : RustSBI-QEMU Version {ver_impl}
-[rustsbi] Platform Name      : {model:?}
+[rustsbi] Platform Name      : {model}
 [rustsbi] Platform SMP       : {smp}
 [rustsbi] Platform Memory    : {mem:#x?}
 [rustsbi] Boot HART          : {hartid}
@@ -166,7 +157,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             ver_impl = env!("CARGO_PKG_VERSION"),
             model = board_info.model,
             smp = board_info.smp,
-            mem = board_info.mem[0],
+            mem = board_info.mem,
             hartid = hart_id(),
             dtb = board_info.dtb,
             firmware = entry as usize,
@@ -175,6 +166,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
+        // 设置并打印 pmp
         set_pmp(BOARD_INFO.wait());
         if !CSR_PRINT.swap(true, AcqRel) {
             hart_csr_utils::print_pmps();
@@ -197,8 +189,6 @@ fn zero_bss() {
     type Word = u32;
     #[cfg(target_pointer_width = "64")]
     type Word = u64;
-    #[cfg(target_pointer_width = "128")]
-    type Word = u128;
     extern "C" {
         static mut sbss: Word;
         static mut ebss: Word;
@@ -206,25 +196,10 @@ fn zero_bss() {
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
-/// 初始化堆和分配器。
-fn init_heap() {
-    use buddy_system_allocator::LockedHeap;
-
-    static mut HEAP_SPACE: [u8; LEN_HEAP_SBI] = [0; LEN_HEAP_SBI];
-    #[global_allocator]
-    static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
-
-    unsafe {
-        SBI_HEAP
-            .lock()
-            .init(HEAP_SPACE.as_ptr() as usize, HEAP_SPACE.len())
-    }
-}
-
 /// 设置 PMP。
 fn set_pmp(board_info: &BoardInfo) {
     use riscv::register::{pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpcfg0, Permission, Range};
-    let mem = &board_info.mem[0];
+    let mem = &board_info.mem;
     unsafe {
         pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
         pmpaddr0::write(0);
