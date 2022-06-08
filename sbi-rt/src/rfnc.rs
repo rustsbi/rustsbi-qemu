@@ -1,22 +1,17 @@
 ﻿//! Chapter 8. RFENCE Extension (EID #0x52464E43 "RFNC")
 
 use crate::binary::{eid_from_str, sbi_call_2, sbi_call_4, sbi_call_5, SbiRet};
+use fid::*;
 
 pub const EID_RFNC: usize = eid_from_str("RFNC") as _;
 
-const FID_REMOTE_FENCE_I: usize = 0;
-const FID_REMOTE_SFENCE_VMA: usize = 1;
-const FID_REMOTE_SFENCE_VMA_ASID: usize = 2;
-const FID_REMOTE_HFENCE_GVMA_VMID: usize = 3;
-const FID_REMOTE_HFENCE_GVMA: usize = 4;
-const FID_REMOTE_HFENCE_VVMA_ASID: usize = 5;
-const FID_REMOTE_HFENCE_VVMA: usize = 6;
-
+/// §8.1
 #[inline]
 pub fn remote_fence_i(hart_mask: usize, hart_mask_base: usize) -> SbiRet {
-    sbi_call_2(EID_RFNC, FID_REMOTE_FENCE_I, hart_mask, hart_mask_base)
+    sbi_call_2(EID_RFNC, REMOTE_FENCE_I, hart_mask, hart_mask_base)
 }
 
+/// §8.2
 #[inline]
 pub fn remote_sfence_vma(
     hart_mask: usize,
@@ -26,7 +21,7 @@ pub fn remote_sfence_vma(
 ) -> SbiRet {
     sbi_call_4(
         EID_RFNC,
-        FID_REMOTE_SFENCE_VMA,
+        REMOTE_SFENCE_VMA,
         hart_mask,
         hart_mask_base,
         start_addr,
@@ -34,6 +29,7 @@ pub fn remote_sfence_vma(
     )
 }
 
+/// §8.3
 #[inline]
 pub fn remote_sfence_vma_asid(
     hart_mask: usize,
@@ -44,7 +40,7 @@ pub fn remote_sfence_vma_asid(
 ) -> SbiRet {
     sbi_call_5(
         EID_RFNC,
-        FID_REMOTE_SFENCE_VMA_ASID,
+        REMOTE_SFENCE_VMA_ASID,
         hart_mask,
         hart_mask_base,
         start_addr,
@@ -53,6 +49,7 @@ pub fn remote_sfence_vma_asid(
     )
 }
 
+/// §8.4
 #[inline]
 pub fn remote_hfence_gvma_vmid(
     hart_mask: usize,
@@ -63,7 +60,7 @@ pub fn remote_hfence_gvma_vmid(
 ) -> SbiRet {
     sbi_call_5(
         EID_RFNC,
-        FID_REMOTE_HFENCE_GVMA_VMID,
+        REMOTE_HFENCE_GVMA_VMID,
         hart_mask,
         hart_mask_base,
         start_addr,
@@ -72,6 +69,7 @@ pub fn remote_hfence_gvma_vmid(
     )
 }
 
+/// §8.5
 #[inline]
 pub fn remote_hfence_gvma(
     hart_mask: usize,
@@ -81,7 +79,7 @@ pub fn remote_hfence_gvma(
 ) -> SbiRet {
     sbi_call_4(
         EID_RFNC,
-        FID_REMOTE_HFENCE_GVMA,
+        REMOTE_HFENCE_GVMA,
         hart_mask,
         hart_mask_base,
         start_addr,
@@ -89,6 +87,7 @@ pub fn remote_hfence_gvma(
     )
 }
 
+/// §8.6
 #[inline]
 pub fn remote_hfence_vvma_asid(
     hart_mask: usize,
@@ -99,7 +98,7 @@ pub fn remote_hfence_vvma_asid(
 ) -> SbiRet {
     sbi_call_5(
         EID_RFNC,
-        FID_REMOTE_HFENCE_VVMA_ASID,
+        REMOTE_HFENCE_VVMA_ASID,
         hart_mask,
         hart_mask_base,
         start_addr,
@@ -108,6 +107,7 @@ pub fn remote_hfence_vvma_asid(
     )
 }
 
+/// §8.7
 #[inline]
 pub fn remote_hfence_vvma(
     hart_mask: usize,
@@ -117,10 +117,21 @@ pub fn remote_hfence_vvma(
 ) -> SbiRet {
     sbi_call_4(
         EID_RFNC,
-        FID_REMOTE_HFENCE_VVMA,
+        REMOTE_HFENCE_VVMA,
         hart_mask,
         hart_mask_base,
         start_addr,
         size,
     )
+}
+
+/// §8.8
+mod fid {
+    pub(super) const REMOTE_FENCE_I: usize = 0;
+    pub(super) const REMOTE_SFENCE_VMA: usize = 1;
+    pub(super) const REMOTE_SFENCE_VMA_ASID: usize = 2;
+    pub(super) const REMOTE_HFENCE_GVMA_VMID: usize = 3;
+    pub(super) const REMOTE_HFENCE_GVMA: usize = 4;
+    pub(super) const REMOTE_HFENCE_VVMA_ASID: usize = 5;
+    pub(super) const REMOTE_HFENCE_VVMA: usize = 6;
 }

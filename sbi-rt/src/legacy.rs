@@ -1,73 +1,103 @@
 ﻿//! Chapter 5. Legacy Extensions (EIDs #0x00 - #0x0F)
 
-const SBI_SET_TIMER: usize = 0;
-const SBI_CONSOLE_PUTCHAR: usize = 1;
-const SBI_CONSOLE_GETCHAR: usize = 2;
-const SBI_CLEAR_IPI: usize = 3;
-const SBI_SEND_IPI: usize = 4;
-const SBI_REMOTE_FENCE_I: usize = 5;
-const SBI_REMOTE_SFENCE_VMA: usize = 6;
-const SBI_REMOTE_SFENCE_VMA_ASID: usize = 7;
-const SBI_SHUTDOWN: usize = 8;
+pub use id::*;
 
+/// §5.1
+///
+/// No replacement.
 #[deprecated = "replaced by `set_timer` from Timer extension"]
 #[inline]
 pub fn set_timer(stime_value: u64) -> usize {
     match () {
         #[cfg(target_pointer_width = "32")]
-        () => sbi_call_legacy_2(SBI_SET_TIMER, stime_value as _, (stime_value >> 32) as _),
+        () => sbi_call_legacy_2(LEGACY_SET_TIMER, stime_value as _, (stime_value >> 32) as _),
         #[cfg(target_pointer_width = "64")]
-        () => sbi_call_legacy_1(SBI_SET_TIMER, stime_value as _),
+        () => sbi_call_legacy_1(LEGACY_SET_TIMER, stime_value as _),
     }
 }
 
+/// §5.2
+///
+/// No replacement.
 #[deprecated = "no replacement"]
 #[inline]
 pub fn console_putchar(c: usize) -> usize {
-    sbi_call_legacy_1(SBI_CONSOLE_PUTCHAR, c)
+    sbi_call_legacy_1(LEGACY_CONSOLE_PUTCHAR, c)
 }
 
+/// §5.3
 #[deprecated = "no replacement"]
 #[inline]
 pub fn console_getchar() -> usize {
-    sbi_call_legacy_0(SBI_CONSOLE_GETCHAR)
+    sbi_call_legacy_0(LEGACY_CONSOLE_GETCHAR)
 }
 
+/// §5.4
+///
+/// No replacement. Just clear `sip.SSIP` directly.
 #[deprecated = "you can clear `sip.SSIP` CSR bit directly"]
 #[inline]
 pub fn clear_ipi() -> usize {
-    sbi_call_legacy_0(SBI_CLEAR_IPI)
+    sbi_call_legacy_0(LEGACY_CLEAR_IPI)
 }
 
-#[deprecated = "replaced by `send_ipi` from IPI extension"]
+/// §5.5
+///
+/// Replaced by [`send_ipi`](super::send_ipi) from [`sPI`](super::EID_SPI) extension.
+#[deprecated = "replaced by `send_ipi` from `sPI` extension"]
 #[inline]
 pub fn send_ipi(hart_mask: usize) -> usize {
-    sbi_call_legacy_1(SBI_SEND_IPI, hart_mask)
+    sbi_call_legacy_1(LEGACY_SEND_IPI, hart_mask)
 }
 
-#[deprecated = "replaced by `remote_fence_i` from RFENCE extension"]
+/// §5.6
+///
+/// Replaced by [`remote_fence_i`](super::remote_fence_i) from [`RFNC`](super::EID_RFNC) extension.
+#[deprecated = "replaced by `remote_fence_i` from `RFNC` extension"]
 #[inline]
 pub fn remote_fence_i(hart_mask: usize) -> usize {
-    sbi_call_legacy_1(SBI_REMOTE_FENCE_I, hart_mask)
+    sbi_call_legacy_1(LEGACY_REMOTE_FENCE_I, hart_mask)
 }
 
-#[deprecated = "replaced by `remote_fence_vma` from RFENCE extension"]
+/// §5.7
+///
+/// Replaced by [`remote_sfence_vma`](super::remote_sfence_vma) from [`RFNC`](super::EID_RFNC) extension.
+#[deprecated = "replaced by `remote_sfence_vma` from `RFNC` extension"]
 #[inline]
 pub fn remote_fence_vma(hart_mask: usize, start: usize, size: usize) -> usize {
-    sbi_call_legacy_3(SBI_REMOTE_SFENCE_VMA, hart_mask, start, size)
+    sbi_call_legacy_3(LEGACY_REMOTE_SFENCE_VMA, hart_mask, start, size)
 }
 
-#[deprecated = "replaced by `remote_fence_vma_asid` from RFENCE extension"]
+/// §5.8
+///
+/// Replaced by [`remote_sfence_vma_asid`](super::remote_sfence_vma_asid) from [`RFNC`](super::EID_RFNC) extension.
+#[deprecated = "replaced by `remote_sfence_vma_asid` from `RFNC` extension"]
 #[inline]
 pub fn remote_fence_vma_asid(hart_mask: usize, start: usize, size: usize, asid: usize) -> usize {
-    sbi_call_legacy_4(SBI_REMOTE_SFENCE_VMA_ASID, hart_mask, start, size, asid)
+    sbi_call_legacy_4(LEGACY_REMOTE_SFENCE_VMA_ASID, hart_mask, start, size, asid)
 }
 
-#[deprecated = "replaced by `system_reset` from System Reset extension"]
+/// §5.9
+///
+/// Replaced by [`system_reset`](super::system_reset) from [`SRST`](super::EID_SRST) extension.
+#[deprecated = "replaced by `system_reset` from System `SRST` extension"]
 #[inline]
 pub fn shutdown() -> ! {
-    sbi_call_legacy_0(SBI_SHUTDOWN);
+    sbi_call_legacy_0(LEGACY_SHUTDOWN);
     core::unreachable!()
+}
+
+/// §5.10
+mod id {
+    pub const LEGACY_SET_TIMER: usize = 0;
+    pub const LEGACY_CONSOLE_PUTCHAR: usize = 1;
+    pub const LEGACY_CONSOLE_GETCHAR: usize = 2;
+    pub const LEGACY_CLEAR_IPI: usize = 3;
+    pub const LEGACY_SEND_IPI: usize = 4;
+    pub const LEGACY_REMOTE_FENCE_I: usize = 5;
+    pub const LEGACY_REMOTE_SFENCE_VMA: usize = 6;
+    pub const LEGACY_REMOTE_SFENCE_VMA_ASID: usize = 7;
+    pub const LEGACY_SHUTDOWN: usize = 8;
 }
 
 #[inline(always)]

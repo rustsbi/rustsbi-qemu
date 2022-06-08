@@ -54,7 +54,8 @@ pub enum Error {
 }
 
 impl SbiRet {
-    pub const fn result(&self) -> Result<usize, Error> {
+    /// Converts to a [`Result`].
+    pub const fn into_result(self) -> Result<usize, Error> {
         match self.error {
             RET_SUCCESS => Ok(self.value),
             RET_ERR_FAILED => Err(Error::Failed),
