@@ -3,15 +3,11 @@ use crate::{
     qemu_hsm::{QemuHsm, SUSPEND_NON_RETENTIVE},
     Supervisor,
 };
-
-mod context;
-mod transfer_trap;
-
-use context::Context;
+use riscv::register::{mstatus, mtval, scause, sepc, stval, stvec};
 
 pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
     use core::arch::asm;
-    use riscv::register::{medeleg, mie, mstatus};
+    use riscv::register::{medeleg, mie};
 
     unsafe {
         mstatus::set_mpp(mstatus::MPP::Supervisor);
@@ -73,15 +69,16 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
                 ctx.mepc = ctx.mepc.wrapping_add(4);
             }
             T::Exception(E::IllegalInstruction) => {
-                use riscv::register::scause;
+                use riscv::register::scause::{Exception as E, Trap as T};
 
+                // let instruction = mtval::read();
+                // 尝试修正或代理指令
+                // TODO 需要排查 qemu 哪些版本需要代理哪些指令？
+                // TODO 标准 20191213 的表 24.3 列出了一些特殊的 CSR，SBI 软件负责将它们模拟出来，但 Qemu6.0+ 似乎不需要模拟 time
                 // const OPCODE_MASK: usize = (1 << 7) - 1;
                 // const REG_MASK: usize = (1 << 5) - 1;
                 // const OPCODE_CSR: usize = 0b1110011;
                 // const CSR_TIME: usize = 0xc01;
-                // let instruction = mtval::read();
-                // 标准 20191213 的表 24.3 列出了一些特殊的 CSR，SBI 软件负责将它们模拟出来
-                // Qemu 似乎不需要模拟 time
                 // if let OPCODE_CSR = instruction & OPCODE_MASK {
                 //     if instruction >> 20 == CSR_TIME {
                 //         match (instruction >> 7) & REG_MASK {
@@ -91,26 +88,90 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
                 //         continue;
                 //     }
                 // }
-                // 如果不是可修正的指令，且不是 M 态本身发出的，转交给 S 态处理
-                // mpp != machine
-                if transfer_trap::should_transfer_trap(&ctx) {
-                    transfer_trap::do_transfer_trap(
-                        &mut ctx,
-                        scause::Trap::Exception(scause::Exception::IllegalInstruction),
-                    );
-                } else {
-                    println!("{:?}", I::MachineSoft);
-                    break;
-                }
+
+                ctx.do_transfer_trap(T::Exception(E::IllegalInstruction));
             }
-            t => {
-                println!("{t:?}");
-                break;
-            }
+            // TODO 可以修复非原子的非对称访存
+            t => panic!("unsupported trap: {t:?}"),
         }
     }
-    loop {
-        core::hint::spin_loop();
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct Context {
+    msp: usize,
+    x: [usize; 31],
+    mstatus: usize,
+    mepc: usize,
+}
+
+impl Context {
+    fn new(supervisor: Supervisor) -> Self {
+        let mut ctx = Self {
+            msp: 0,
+            x: [0; 31],
+            mstatus: 0,
+            mepc: supervisor.start_addr,
+        };
+
+        unsafe { core::arch::asm!("csrr {}, mstatus", out(reg) ctx.mstatus) };
+        *ctx.a_mut(0) = hart_id();
+        *ctx.a_mut(1) = supervisor.opaque;
+
+        ctx
+    }
+
+    #[inline]
+    fn x(&self, n: usize) -> usize {
+        self.x[n - 1]
+    }
+
+    #[inline]
+    fn x_mut(&mut self, n: usize) -> &mut usize {
+        &mut self.x[n - 1]
+    }
+
+    #[inline]
+    fn a(&self, n: usize) -> usize {
+        self.x(n + 10)
+    }
+
+    #[inline]
+    fn a_mut(&mut self, n: usize) -> &mut usize {
+        self.x_mut(n + 10)
+    }
+
+    pub(super) fn do_transfer_trap(&mut self, cause: scause::Trap) {
+        unsafe {
+            // 向 S 转发陷入
+            mstatus::set_mpp(mstatus::MPP::Supervisor);
+            // 转发陷入源状态
+            let spp = match (self.mstatus >> 11) & 0b11 {
+                // U
+                0b00 => mstatus::SPP::User,
+                // S
+                0b01 => mstatus::SPP::Supervisor,
+                // H/M
+                mpp => unreachable!("invalid mpp: {mpp:#x} to delegate"),
+            };
+            mstatus::set_spp(spp);
+            // 转发陷入原因
+            scause::set(cause);
+            // 转发陷入附加信息
+            stval::write(mtval::read());
+            // 转发陷入地址
+            sepc::write(self.mepc);
+            // 设置 S 中断状态
+            if mstatus::read().sie() {
+                mstatus::set_spie();
+                mstatus::clear_sie();
+            }
+            core::arch::asm!("csrr {}, mstatus", out(reg) self.mstatus);
+            // 设置返回地址，返回到 S
+            // TODO Vectored stvec?
+            self.mepc = stvec::read().address();
+        }
     }
 }
 
