@@ -79,7 +79,7 @@ pub(crate) fn trap_delegate(hartid: usize) {
 }
 
 /// 所有副核：启动 -> 不可恢复休眠 -> 唤醒 -> 可恢复休眠 -> 唤醒 -> 关闭。
-pub(crate) fn start_stop_harts(hartid: usize, smp: usize) {
+pub(crate) fn hsm(hartid: usize, smp: usize) {
     const SUSPENDED: sbi::SbiRet = sbi::SbiRet {
         error: sbi::RET_SUCCESS,
         value: sbi::HART_STATE_SUSPENDED,
@@ -124,7 +124,7 @@ pub(crate) fn start_stop_harts(hartid: usize, smp: usize) {
 
     println!(
         "
-[test-kernel] Testing start harts"
+[test-kernel] Testing hsm: start, stop, suspend and resume"
     );
 
     // 启动副核

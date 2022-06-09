@@ -89,7 +89,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
     test::trap_delegate(hartid);
 
-    test::start_stop_harts(hartid, smp);
+    test::hsm(hartid, smp);
 
     sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
     unreachable!()
