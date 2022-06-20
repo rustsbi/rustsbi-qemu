@@ -79,8 +79,9 @@ dependencies = [
 
 [[package]]
 name = "dtb-walker"
-version = "0.1.0"
-source = "git+https://github.com/YdrMaster/dtb-walker.git?rev=43cfda9#43cfda91935eb70d11937b429075dbf5b75a8876"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2d3436390f4c683088dcc20a45eddf3e1e3dbde62e9d2d09348876a6170e04d"
 
 [[package]]
 name = "embedded-hal"
@@ -182,9 +183,9 @@ dependencies = [
 
 [[package]]
 name = "rustversion"
-version = "1.0.6"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2cc38e8fa666e2de3c4aba7edeb5ffc5246c1c2ed0e3d17e560aeeba736b23f"
+checksum = "a0a5f7c728f5d284929a1cccb5bc19884422bfe6ef4d6c409da2c41838983fcf"
 
 [[package]]
 name = "sbi-rt"

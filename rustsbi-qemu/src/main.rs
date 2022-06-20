@@ -1,6 +1,6 @@
+#![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_sym, asm_const)]
 #![deny(warnings)]
 
 #[macro_use] // for print
