@@ -1,6 +1,0 @@
-[package]
-name = "sbi-rt"
-version = "0.1.0"
-authors = ["YdrMaster <ydrml@hotmail.com>"]
-edition = "2021"
-publish = false
