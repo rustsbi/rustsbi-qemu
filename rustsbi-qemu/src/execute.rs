@@ -1,8 +1,4 @@
-use crate::{
-    clint, hart_id,
-    qemu_hsm::{QemuHsm, SUSPEND_NON_RETENTIVE},
-    Supervisor,
-};
+use crate::{clint, hart_id, qemu_hsm::QemuHsm, Supervisor};
 use riscv::register::{mstatus, mtval, scause, sepc, stval, stvec};
 
 pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
@@ -33,7 +29,6 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
 
     hsm.record_current_start_finished();
     loop {
-        use crate::qemu_hsm::{EID_HSM, FID_HART_STOP, FID_HART_SUSPEND};
         use riscv::register::{
             mcause::{self, Exception as E, Interrupt as I, Trap as T},
             mip,
@@ -55,12 +50,24 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
                 }
             }
             T::Exception(E::SupervisorEnvCall) => {
+                use rustsbi::spec::{binary::*, hsm::*, srst::*};
                 let param = [ctx.a(0), ctx.a(1), ctx.a(2), ctx.a(3), ctx.a(4), ctx.a(5)];
                 let ans = rustsbi::ecall(ctx.a(7), ctx.a(6), param);
-                if ctx.a(7) == EID_HSM && ans.error == 0 {
-                    match ctx.a(6) {
-                        FID_HART_STOP => return,
-                        FID_HART_SUSPEND if ctx.a(0) == SUSPEND_NON_RETENTIVE => return,
+                if ans.error == RET_SUCCESS {
+                    match ctx.a(7) {
+                        EID_HSM => match ctx.a(6) {
+                            HART_STOP => return,
+                            HART_SUSPEND
+                                if ctx.a(0) == HART_SUSPEND_TYPE_NON_RETENTIVE as usize =>
+                            {
+                                return
+                            }
+                            _ => {}
+                        },
+                        EID_SRST => match ctx.a(0) as u32 {
+                            RESET_TYPE_COLD_REBOOT | RESET_TYPE_WARM_REBOOT => todo!(),
+                            _ => {}
+                        },
                         _ => {}
                     }
                 }

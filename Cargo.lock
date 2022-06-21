@@ -145,6 +145,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qemu-exit"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ff023245bfcc73fb890e1f8d5383825b3131cc920020a5c487d6f113dfc428a"
+
+[[package]]
 name = "r0"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -164,9 +170,10 @@ dependencies = [
 [[package]]
 name = "rustsbi"
 version = "0.2.2"
-source = "git+https://github.com/YdrMaster/rustsbi.git?rev=118ca4c#118ca4cb8d4a5722dcf0f8b84639ea2334b88d92"
+source = "git+https://github.com/YdrMaster/rustsbi.git?rev=0bcbd5b#0bcbd5be875c4fff51b30d27d57696cf0b68642c"
 dependencies = [
  "riscv",
+ "sbi-spec",
 ]
 
 [[package]]
@@ -174,6 +181,7 @@ name = "rustsbi-qemu"
 version = "0.1.1"
 dependencies = [
  "dtb-walker",
+ "qemu-exit",
  "r0",
  "riscv",
  "rustsbi",
@@ -190,7 +198,15 @@ checksum = "a0a5f7c728f5d284929a1cccb5bc19884422bfe6ef4d6c409da2c41838983fcf"
 [[package]]
 name = "sbi-rt"
 version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-rt.git?rev=6047ed5#6047ed5bbc2223417a83a539f5ae3d99e47b3f6c"
+source = "git+https://github.com/rustsbi/sbi-rt.git?rev=72b607c#72b607ce7536ce6f3181e230955aeb0bc6a22564"
+dependencies = [
+ "sbi-spec",
+]
+
+[[package]]
+name = "sbi-spec"
+version = "0.1.0"
+source = "git+https://github.com/rustsbi/sbi-spec.git?rev=a0fd76b#a0fd76bc5e74ad978d1d07d8f064ca45fa14dd9c"
 
 [[package]]
 name = "scopeguard"

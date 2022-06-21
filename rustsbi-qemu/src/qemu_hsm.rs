@@ -2,22 +2,16 @@
 
 use crate::{clint::Clint, entry, hart_id, set_mtvec, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
 use core::{mem::MaybeUninit, sync::atomic::AtomicU8};
-use rustsbi::SbiRet;
+use rustsbi::{spec::hsm as spec, SbiRet};
 use spin::Mutex;
 
-pub(crate) const SUSPEND_RETENTIVE: usize = 0x00000000;
-pub(crate) const SUSPEND_NON_RETENTIVE: usize = 0x80000000;
-pub(crate) const EID_HSM: usize = 0x48534D;
-pub(crate) const FID_HART_STOP: usize = 1;
-pub(crate) const FID_HART_SUSPEND: usize = 3;
-
-const STARTED: u8 = 0;
-const STOPPED: u8 = 1;
-const START_PENDING: u8 = 2;
-const STOP_PENDING: u8 = 3;
-const SUSPEND: u8 = 4;
-const SUSPEND_PENDING: u8 = 5;
-const RESUME_PENDING: u8 = 6;
+const STARTED: u8 = spec::HART_STATE_STARTED as _;
+const STOPPED: u8 = spec::HART_STATE_STOPPED as _;
+const START_PENDING: u8 = spec::HART_STATE_START_PENDING as _;
+const STOP_PENDING: u8 = spec::HART_STATE_STOP_PENDING as _;
+const SUSPENDED: u8 = spec::HART_STATE_SUSPENDED as _;
+const SUSPEND_PENDING: u8 = spec::HART_STATE_SUSPEND_PENDING as _;
+const RESUME_PENDING: u8 = spec::HART_STATE_RESUME_PENDING as _;
 
 pub(crate) struct QemuHsm {
     clint: &'static Clint,
@@ -76,7 +70,7 @@ impl QemuHsm {
                     return supervisor;
                 }
             }
-            SUSPEND => {
+            SUSPENDED => {
                 if supervisor.is_none() {
                     // 在挂起状态但未设置特权态入口，无法恢复
                     panic!("cannot resume without supervisor!")
@@ -108,7 +102,7 @@ impl QemuHsm {
         use core::sync::atomic::Ordering::Acquire;
         self.state
             .get(hart_id)
-            .map_or(false, |s| matches!(s.load(Acquire), STARTED | SUSPEND))
+            .map_or(false, |s| matches!(s.load(Acquire), STARTED | SUSPENDED))
     }
 
     /// 为硬件线程准备休眠或关闭。
@@ -130,7 +124,7 @@ impl QemuHsm {
             SUSPEND_PENDING => {
                 // 休眠也可以通过外部中断唤醒
                 unsafe { mie::set_mext() };
-                SUSPEND
+                SUSPENDED
             }
             s => panic!("wrong state {s:?}!"),
         };
@@ -170,7 +164,8 @@ impl QemuHsm {
         let mtvec = mtvec::read().address();
 
         // 转移状态
-        if let Err(unexpected) = state.compare_exchange(SUSPEND_PENDING, SUSPEND, AcqRel, Acquire) {
+        if let Err(unexpected) = state.compare_exchange(SUSPEND_PENDING, SUSPENDED, AcqRel, Acquire)
+        {
             panic!("failed to suspend by wrong state: {unexpected:?}")
         }
         // 调整中断，休眠
@@ -187,7 +182,7 @@ impl QemuHsm {
             set_mtvec(mtvec);
         }
         // 恢复状态
-        if let Err(unexpected) = state.compare_exchange(SUSPEND, STARTED, AcqRel, Acquire) {
+        if let Err(unexpected) = state.compare_exchange(SUSPENDED, STARTED, AcqRel, Acquire) {
             panic!("failed to resume by wrong state: {unexpected:?}")
         }
     }
@@ -258,12 +253,12 @@ impl rustsbi::Hsm for QemuHsm {
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
         match self.state[hart_id()].compare_exchange(STARTED, SUSPEND_PENDING, AcqRel, Acquire) {
-            Ok(_) => match suspend_type as usize {
-                SUSPEND_RETENTIVE => {
+            Ok(_) => match suspend_type {
+                spec::HART_SUSPEND_TYPE_RETENTIVE => {
                     self.retentive_suspend();
                     SbiRet::ok(0)
                 }
-                SUSPEND_NON_RETENTIVE => {
+                spec::HART_SUSPEND_TYPE_NON_RETENTIVE => {
                     *self.supervisor[hart_id()].lock() = Some(Supervisor {
                         start_addr: resume_addr,
                         opaque,

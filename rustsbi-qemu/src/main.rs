@@ -12,7 +12,7 @@ mod execute;
 mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
-mod test_device;
+mod qemu_test;
 
 mod constants {
     /// 特权软件入口。
@@ -36,15 +36,16 @@ struct Supervisor {
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use rustsbi::{
-        reset::{RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN},
+        spec::srst::{RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN},
         Reset,
     };
-
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
     println!("[rustsbi-panic] hart {} {info}", hart_id());
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
-    test_device::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
-    loop {}
+    qemu_test::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 /// 入口。
@@ -132,12 +133,12 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         );
 
         clint::init(board_info.clint.start);
-        test_device::init(board_info.test.start);
+        qemu_test::init(board_info.test.start);
         let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), NUM_HART_MAX, opaque));
         // 初始化 SBI 服务
         rustsbi::init_ipi(clint::get());
         rustsbi::init_timer(clint::get());
-        rustsbi::init_reset(test_device::get());
+        rustsbi::init_reset(qemu_test::get());
         rustsbi::init_hsm(hsm);
         // 打印启动信息
         print!(
