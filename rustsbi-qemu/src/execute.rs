@@ -91,7 +91,7 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
 
                 ctx.do_transfer_trap(T::Exception(E::IllegalInstruction));
             }
-            // TODO 可以修复非原子的非对称访存
+            // TODO 可以修复非原子的非对齐访存
             t => panic!("unsupported trap: {t:?}"),
         }
     }
@@ -211,7 +211,7 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
         sd sp, 0(a0)
         mv sp, a0
         ",
-        // 利用 tx 恢复 csr
+        // 利用 ctx 恢复 csr
         // S ctx.x[2](sp) => mscratch
         // S ctx.mstatus  => mstatus
         // S ctx.mepc     => mepc
@@ -277,7 +277,7 @@ unsafe extern "C" fn s_to_m() {
             .set n, n+1
         .endr
         ",
-        // 利用 tx 保存 csr
+        // 利用 ctx 保存 csr
         // mscratch => S ctx.x[2](sp)
         // mstatus  => S ctx.mstatus
         // mepc     => S ctx.mepc
@@ -293,7 +293,7 @@ unsafe extern "C" fn s_to_m() {
         "
         ld sp, 0(sp)
         ",
-        // 恢复 s[0..12]
+        // 恢复 x[1..31]
         "
         .set n, 1
         .rept 31
