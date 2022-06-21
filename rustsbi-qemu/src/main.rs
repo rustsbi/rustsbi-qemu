@@ -124,7 +124,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     if !GENESIS.swap(true, AcqRel) {
         // 清零 bss 段
         zero_bss();
-        // 解析设备树，需要堆来保存结果里的字符串等
+        // 解析设备树
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
         rustsbi::legacy_stdio::init_legacy_stdio(
@@ -177,8 +177,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 }
 
 /// 准备好不可恢复休眠或关闭
+///
+/// 在隔离的环境（汇编）调用，以确保 main 中使用的堆资源完全释放。
+/// （只是作为示例，因为这个版本完全不使用堆）
 extern "C" fn finalize() {
-    //! 在隔离的环境调用，以确保 main 中使用的堆资源完全释放
     HSM.wait().finallize_before_stop();
     unsafe { riscv::interrupt::enable() };
 }
