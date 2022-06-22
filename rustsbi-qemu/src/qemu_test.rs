@@ -1,10 +1,13 @@
 use qemu_exit::{QEMUExit, RISCV64};
 use rustsbi::{
-    spec::srst::{
-        RESET_REASON_NO_REASON, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_COLD_REBOOT,
-        RESET_TYPE_SHUTDOWN, RESET_TYPE_WARM_REBOOT,
+    spec::{
+        binary::SbiRet,
+        srst::{
+            RESET_REASON_NO_REASON, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_COLD_REBOOT,
+            RESET_TYPE_SHUTDOWN, RESET_TYPE_WARM_REBOOT,
+        },
     },
-    Reset, SbiRet,
+    Reset,
 };
 use spin::Once;
 

@@ -170,10 +170,10 @@ dependencies = [
 [[package]]
 name = "rustsbi"
 version = "0.2.2"
-source = "git+https://github.com/YdrMaster/rustsbi.git?rev=0bcbd5b#0bcbd5be875c4fff51b30d27d57696cf0b68642c"
+source = "git+https://github.com/YdrMaster/rustsbi.git?rev=2aeecdf#2aeecdf6cfc13313720c3d7f6551e2796b3842b0"
 dependencies = [
  "riscv",
- "sbi-spec",
+ "sbi-spec 0.1.0 (git+https://github.com/rustsbi/sbi-spec.git?rev=9d728bb)",
 ]
 
 [[package]]
@@ -200,8 +200,13 @@ name = "sbi-rt"
 version = "0.1.0"
 source = "git+https://github.com/rustsbi/sbi-rt.git?rev=72b607c#72b607ce7536ce6f3181e230955aeb0bc6a22564"
 dependencies = [
- "sbi-spec",
+ "sbi-spec 0.1.0 (git+https://github.com/rustsbi/sbi-spec.git?rev=a0fd76b)",
 ]
+
+[[package]]
+name = "sbi-spec"
+version = "0.1.0"
+source = "git+https://github.com/rustsbi/sbi-spec.git?rev=9d728bb#9d728bbbb3aed4bad3f65413ca666a77ecbfda1b"
 
 [[package]]
 name = "sbi-spec"

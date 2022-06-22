@@ -2,7 +2,7 @@
 
 use crate::{clint::Clint, entry, hart_id, set_mtvec, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
 use core::{mem::MaybeUninit, sync::atomic::AtomicU8};
-use rustsbi::{spec::hsm as spec, SbiRet};
+use rustsbi::spec::{binary::SbiRet, hsm as spec};
 use spin::Mutex;
 
 const STARTED: u8 = spec::HART_STATE_STARTED as _;

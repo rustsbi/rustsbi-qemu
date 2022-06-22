@@ -3,8 +3,7 @@
 //! CLINT 却消失不见了。
 
 use crate::hart_id;
-use rustsbi::SbiRet;
-use rustsbi::{HartMask, Ipi, Timer};
+use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
 use spin::Once;
 
 pub(crate) struct Clint {
