@@ -1,7 +1,13 @@
 use crate::{clint, hart_id, qemu_hsm::QemuHsm, Supervisor};
 use riscv::register::{mstatus, mtval, scause, sepc, stval, stvec};
 
-pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
+#[repr(usize)]
+pub(crate) enum Operation {
+    Stop = 0,
+    SystemReset = usize::MAX,
+}
+
+pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Operation {
     use core::arch::asm;
     use riscv::register::{medeleg, mie};
 
@@ -50,30 +56,9 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) {
                 }
             }
             T::Exception(E::SupervisorEnvCall) => {
-                use rustsbi::spec::{binary::*, hsm::*, srst::*};
-                let param = [ctx.a(0), ctx.a(1), ctx.a(2), ctx.a(3), ctx.a(4), ctx.a(5)];
-                let ans = rustsbi::ecall(ctx.a(7), ctx.a(6), param);
-                if ans.error == RET_SUCCESS {
-                    match ctx.a(7) {
-                        EID_HSM => match ctx.a(6) {
-                            HART_STOP => return,
-                            HART_SUSPEND
-                                if ctx.a(0) == HART_SUSPEND_TYPE_NON_RETENTIVE as usize =>
-                            {
-                                return
-                            }
-                            _ => {}
-                        },
-                        EID_SRST => match ctx.a(0) as u32 {
-                            RESET_TYPE_COLD_REBOOT | RESET_TYPE_WARM_REBOOT => todo!(),
-                            _ => {}
-                        },
-                        _ => {}
-                    }
+                if let Some(op) = ctx.handle_ecall() {
+                    return op;
                 }
-                *ctx.a_mut(0) = ans.error;
-                *ctx.a_mut(1) = ans.value;
-                ctx.mepc = ctx.mepc.wrapping_add(4);
             }
             T::Exception(E::IllegalInstruction) => {
                 use riscv::register::scause::{Exception as E, Trap as T};
@@ -149,7 +134,61 @@ impl Context {
         self.x_mut(n + 10)
     }
 
-    pub(super) fn do_transfer_trap(&mut self, cause: scause::Trap) {
+    fn handle_ecall(&mut self) -> Option<Operation> {
+        use rustsbi::spec::{binary::*, hsm::*, srst::*};
+        let extension = self.a(7);
+        let function = self.a(6);
+        let ans = rustsbi::ecall(
+            extension,
+            function,
+            [
+                self.a(0),
+                self.a(1),
+                self.a(2),
+                self.a(3),
+                self.a(4),
+                self.a(5),
+            ],
+        );
+        // 判断导致退出执行流程的调用
+        if ans.error == RET_SUCCESS {
+            match extension {
+                // 核状态
+                EID_HSM => match function {
+                    HART_STOP => return Some(Operation::Stop),
+                    HART_SUSPEND
+                        if matches!(
+                            u32::try_from(self.a(0)),
+                            Ok(HART_SUSPEND_TYPE_NON_RETENTIVE)
+                        ) =>
+                    {
+                        return Some(Operation::Stop);
+                    }
+                    _ => {}
+                },
+                // 系统重置
+                EID_SRST => match function {
+                    SYSTEM_RESET
+                        if matches!(
+                            u32::try_from(self.a(0)),
+                            Ok(RESET_TYPE_COLD_REBOOT) | Ok(RESET_TYPE_WARM_REBOOT)
+                        ) =>
+                    {
+                        return Some(Operation::SystemReset)
+                    }
+                    _ => {}
+                },
+
+                _ => {}
+            }
+        }
+        *self.a_mut(0) = ans.error;
+        *self.a_mut(1) = ans.value;
+        self.mepc = self.mepc.wrapping_add(4);
+        None
+    }
+
+    fn do_transfer_trap(&mut self, cause: scause::Trap) {
         unsafe {
             // 向 S 转发陷入
             mstatus::set_mpp(mstatus::MPP::Supervisor);

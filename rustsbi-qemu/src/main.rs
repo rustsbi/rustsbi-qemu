@@ -3,9 +3,6 @@
 #![no_main]
 #![deny(warnings)]
 
-#[macro_use] // for print
-extern crate rustsbi;
-
 mod clint;
 mod device_tree;
 mod execute;
@@ -13,6 +10,15 @@ mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
 mod qemu_test;
+
+#[macro_use] // for print
+extern crate rustsbi;
+
+use constants::*;
+use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
+use device_tree::BoardInfo;
+use execute::Operation;
+use spin::Once;
 
 mod constants {
     /// 特权软件入口。
@@ -24,8 +30,6 @@ mod constants {
     /// SBI 软件全部栈空间容量。
     pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
 }
-
-use constants::*;
 
 /// 特权软件信息。
 struct Supervisor {
@@ -60,24 +64,27 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[naked]
 #[link_section = ".text.entry"]
 #[export_name = "_start"]
-unsafe extern "C" fn entry(hartid: usize, opaque: usize) -> ! {
+unsafe extern "C" fn entry() -> ! {
     #[link_section = ".bss.uninit"]
     static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
 
-    core::arch::asm!("
-           csrw mie,  zero
-           csrr  a0,  mhartid
-           la    sp, {stack}
+    core::arch::asm!(
+        // 关中断
+        "  csrw mie,  zero",
+        // 设置栈
+        "  la    sp, {stack}
            li    t0, {per_hart_stack_size}
-           addi  t1,  a0,  1
+           csrr  t1,  mhartid
+           addi  t1,  t1,  1
         1: add   sp,  sp, t0
            addi  t1,  t1, -1
-           bnez  t1,  1b
-           call {rust_main}
-           call {finalize}
+           bnez  t1,  1b",
+        "  call {rust_main}",
+        // 清理，然后重启或等待
+        "  call {finalize}
+           bnez  a0,  _start
         1: wfi
-           j     1b
-        ",
+           j     1b",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym SBI_STACK,
         rust_main           =   sym rust_main,
@@ -104,14 +111,10 @@ extern "C" fn early_trap() -> ! {
     }
 }
 
-use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
-use device_tree::BoardInfo;
-use spin::Once;
-
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
-extern "C" fn rust_main(_hartid: usize, opaque: usize) {
+extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
     unsafe { set_mtvec(early_trap as _) };
 
     #[link_section = ".bss.uninit"] // 以免清零
@@ -168,12 +171,15 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
+        use execute::*;
         // 设置并打印 pmp
         set_pmp(BOARD_INFO.wait());
         if !CSR_PRINT.swap(true, AcqRel) {
             hart_csr_utils::print_pmps();
         }
-        execute::execute_supervisor(hsm, supervisor);
+        execute_supervisor(hsm, supervisor)
+    } else {
+        Operation::Stop
     }
 }
 
@@ -181,9 +187,22 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
 ///
 /// 在隔离的环境（汇编）调用，以确保 main 中使用的堆资源完全释放。
 /// （只是作为示例，因为这个版本完全不使用堆）
-extern "C" fn finalize() {
-    HSM.wait().finallize_before_stop();
-    unsafe { riscv::interrupt::enable() };
+unsafe extern "C" fn finalize(op: Operation) -> ! {
+    match op {
+        Operation::Stop => {
+            HSM.wait().finallize_before_stop();
+            riscv::interrupt::enable();
+            // 从中断响应直接回 entry
+            loop {
+                riscv::asm::wfi();
+            }
+        }
+        Operation::SystemReset => {
+            // TODO 等待其他核关闭
+            // 直接回 entry
+            entry()
+        }
+    }
 }
 
 /// 清零 bss 段。
