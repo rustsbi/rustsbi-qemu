@@ -11,8 +11,6 @@ use riscv::register::{
     stvec::{self, TrapMode},
 };
 
-extern crate sbi_rt as sbi;
-
 #[macro_use]
 mod console;
 mod test;
@@ -28,7 +26,7 @@ use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
+    use sbi_rt::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
 
     let (hard_id, pc): (usize, usize);
     unsafe { asm!("mv    {}, tp", out(reg) hard_id) };
@@ -90,7 +88,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 
     test::hsm(hartid, smp);
 
-    sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
+    sbi_rt::system_reset(sbi_rt::RESET_TYPE_SHUTDOWN, sbi_rt::RESET_REASON_NO_REASON);
     unreachable!()
 }
 

@@ -3,7 +3,7 @@
         "
 [test-kernel] Testing base extension"
     );
-    let base_version = sbi::probe_extension(sbi::EID_BASE);
+    let base_version = sbi_rt::probe_extension(sbi_rt::EID_BASE);
     if base_version == 0 {
         panic!(
             "\
@@ -12,7 +12,7 @@
         );
     }
 
-    let spec_version = sbi::get_spec_version();
+    let spec_version = sbi_rt::get_spec_version();
     println!(
         "\
 [test-kernel] Base extension version: {base_version:x}
@@ -24,11 +24,11 @@
 [test-kernel] Device mimpid: {mimpid:x}",
         major = (spec_version >> 24) & 0x7F,
         minor = spec_version & 0xFFFFFF,
-        impl_id = sbi::get_sbi_impl_id(),
-        impl_version = sbi::get_sbi_impl_version(),
-        mvendorid = sbi::get_mvendorid(),
-        marchid = sbi::get_marchid(),
-        mimpid = sbi::get_mimpid(),
+        impl_id = sbi_rt::get_sbi_impl_id(),
+        impl_version = sbi_rt::get_sbi_impl_version(),
+        mvendorid = sbi_rt::get_mvendorid(),
+        marchid = sbi_rt::get_marchid(),
+        mimpid = sbi_rt::get_mimpid(),
     );
 }
 
@@ -80,13 +80,14 @@ pub(crate) fn trap_delegate(hartid: usize) {
 
 /// 所有副核：启动 -> 不可恢复休眠 -> 唤醒 -> 可恢复休眠 -> 唤醒 -> 关闭。
 pub(crate) fn hsm(hartid: usize, smp: usize) {
-    const SUSPENDED: sbi::SbiRet = sbi::SbiRet {
-        error: sbi::RET_SUCCESS,
-        value: sbi::HART_STATE_SUSPENDED,
+    use sbi_rt::SbiRet;
+    const SUSPENDED: SbiRet = SbiRet {
+        error: sbi_rt::RET_SUCCESS,
+        value: sbi_rt::HART_STATE_SUSPENDED,
     };
-    const STOPPED: sbi::SbiRet = sbi::SbiRet {
-        error: sbi::RET_SUCCESS,
-        value: sbi::HART_STATE_STOPPED,
+    const STOPPED: SbiRet = SbiRet {
+        error: sbi_rt::RET_SUCCESS,
+        value: sbi_rt::HART_STATE_STOPPED,
     };
 
     use spin::{Barrier, Once};
@@ -106,8 +107,8 @@ pub(crate) fn hsm(hartid: usize, smp: usize) {
 
     extern "C" fn start_rust_main(hart_id: usize) -> ! {
         STARTED.wait().wait();
-        let ret = sbi::hart_suspend(
-            sbi::HART_SUSPEND_TYPE_NON_RETENTIVE,
+        let ret = sbi_rt::hart_suspend(
+            sbi_rt::HART_SUSPEND_TYPE_NON_RETENTIVE,
             test_entry as _,
             resume_rust_main as _,
         );
@@ -116,9 +117,9 @@ pub(crate) fn hsm(hartid: usize, smp: usize) {
 
     extern "C" fn resume_rust_main(hart_id: usize) -> ! {
         RESUMED.wait().wait();
-        let ret = sbi::hart_suspend(sbi::HART_SUSPEND_TYPE_RETENTIVE, 0, 0);
-        assert_eq!(sbi::RET_SUCCESS, ret.error);
-        let ret = sbi::hart_stop();
+        let ret = sbi_rt::hart_suspend(sbi_rt::HART_SUSPEND_TYPE_RETENTIVE, 0, 0);
+        assert_eq!(sbi_rt::RET_SUCCESS, ret.error);
+        let ret = sbi_rt::hart_stop();
         unreachable!("stop [{hart_id}] but {ret:?}");
     }
 
@@ -133,8 +134,8 @@ pub(crate) fn hsm(hartid: usize, smp: usize) {
     for id in 0..smp {
         if id != hartid {
             println!("[test-kernel] Hart{id} is booting...");
-            let ret = sbi::hart_start(id, test_entry as _, start_rust_main as _);
-            if ret.error != sbi::RET_SUCCESS {
+            let ret = sbi_rt::hart_start(id, test_entry as _, start_rust_main as _);
+            if ret.error != sbi_rt::RET_SUCCESS {
                 panic!("[test-kernel] Start hart{id} failed: {ret:?}");
             }
         } else {
@@ -147,7 +148,7 @@ pub(crate) fn hsm(hartid: usize, smp: usize) {
     // 等待副核休眠（不可恢复）
     for id in 0..smp {
         if id != hartid {
-            while sbi::hart_get_status(id) != SUSPENDED {
+            while sbi_rt::hart_get_status(id) != SUSPENDED {
                 core::hint::spin_loop();
             }
             println!("[test-kernel] Hart{id} suspended.");
@@ -156,21 +157,21 @@ pub(crate) fn hsm(hartid: usize, smp: usize) {
         }
     }
     // 全部唤醒
-    sbi::send_ipi(0, -1isize as usize);
+    sbi_rt::send_ipi(0, -1isize as usize);
     // 等待副核恢复完成
     resumed.wait();
     print!("[test-kernel] All harts resume successfully!\n");
     for id in 0..smp {
         if id != hartid {
             // 等待副核休眠
-            while sbi::hart_get_status(id) != SUSPENDED {
+            while sbi_rt::hart_get_status(id) != SUSPENDED {
                 core::hint::spin_loop();
             }
             print!("[test-kernel] Hart{id} suspended, ");
             // 单独唤醒
-            sbi::send_ipi(1usize << id, 0);
+            sbi_rt::send_ipi(1usize << id, 0);
             // 等待副核关闭
-            while sbi::hart_get_status(id) != STOPPED {
+            while sbi_rt::hart_get_status(id) != STOPPED {
                 core::hint::spin_loop();
             }
             println!("then stopped.");
