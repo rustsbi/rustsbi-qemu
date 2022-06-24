@@ -143,7 +143,7 @@ impl AsmArgs {
         } else {
             self.build.dir().join("rustsbi-qemu")
         };
-        let out = PROJECT_DIR.join(self.output.clone().unwrap_or(format!(
+        let out = PROJECT_DIR.join(self.output.unwrap_or(format!(
             "{}.asm",
             bin.file_stem().unwrap().to_string_lossy()
         )));
