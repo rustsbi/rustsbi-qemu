@@ -1,1 +1,7 @@
+**/.*/*
+!/.github/*
+!/.cargo/*
+!/.vscode/settings.json
+
 /target
+/*.asm

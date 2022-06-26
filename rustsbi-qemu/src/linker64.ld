@@ -10,6 +10,12 @@ SECTIONS
     stext = .;
     .text : {
         *(.text.entry)
+        . = ALIGN(4);
+        *(.text.early_trap)
+        . = ALIGN(4);
+        *(.text.trap_handler)
+        . = ALIGN(4);
+        *(.text.awaker)
         *(.text .text.*)
     }
 

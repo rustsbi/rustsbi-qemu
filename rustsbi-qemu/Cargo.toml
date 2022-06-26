@@ -1,19 +1,15 @@
 [package]
 name = "rustsbi-qemu"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = "0.2.2"
-buddy_system_allocator = "0.8"
-lazy_static = { version = "1", features = ["spin_no_std"] }
-spin = "0.9"
+rustsbi = { git = "https://github.com/YdrMaster/rustsbi.git", rev = "bd3c092" }
 riscv = "0.8"
-device_tree = { git = "https://github.com/rcore-os/device_tree-rs/" }
-embedded-hal = "0.2.7"
-nb = "1"
-bitflags = "1"
-bit_field = "0.10"
-hashbrown = "0.12"
+spin = "0.9"
+r0 = "1"
+uart_16550 = "0.2"
+dtb-walker = "0.1.1"
+qemu-exit = "3.0"

@@ -1,8 +1,5 @@
 [alias]
-xtask = "run --package xtask --"
+xtask = "run --package xtask --release --"
 make = "xtask make"
-qemu = "xtask qemu"
 asm = "xtask asm"
-size = "xtask size"
-debug = "xtask debug"
-gdb = "xtask gdb"
+qemu = "xtask qemu"

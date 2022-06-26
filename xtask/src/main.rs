@@ -1,355 +1,215 @@
 #[macro_use]
 extern crate clap;
 
+use clap::Parser;
+use command_ext::{BinUtil, Cargo, CommandExt, Ext};
 use std::{
-    env,
+    ffi::OsString,
+    fs,
     path::{Path, PathBuf},
-    process::{self, Command, Stdio},
 };
 
-// 不要修改DEFAULT_TARGET；如果你需要编译到别的目标，请使用--target编译选项！
-const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
-
-#[derive(Debug)]
-struct XtaskEnv {
-    compile_mode: CompileMode,
+lazy_static::lazy_static! {
+    static ref PROJECT_DIR: &'static Path = Path::new(std::env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    static ref TARGET: PathBuf = PROJECT_DIR.join("target");
 }
 
-#[derive(Debug)]
-enum CompileMode {
-    Debug,
-    Release,
+#[derive(Parser)]
+#[clap(name = "RustSBI-Qemu")]
+#[clap(version, about, long_about = None)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Make(BuildArgs),
+    Asm(AsmArgs),
+    Qemu(QemuArgs),
 }
 
 fn main() {
-    let matches = clap_app!(xtask =>
-        (version: crate_version!())
-        (author: crate_authors!())
-        (about: crate_description!())
-        (@subcommand make =>
-            (about: "Build project")
-            (@arg release: --release "Build artifacts in release mode, with optimizations")
-        )
-        (@subcommand asm =>
-            (about: "View asm code for project")
-            (@arg release: --release "Build artifacts in release mode, with optimizations")
-        )
-        (@subcommand size =>
-            (about: "View size for project")
-            (@arg release: --release "Build artifacts in release mode, with optimizations")
-        )
-        (@subcommand qemu =>
-            (about: "Run QEMU")
-            (@arg release: --release "Build artifacts in release mode, with optimizations")
-        )
-        (@subcommand debug =>
-            (about: "Debug with QEMU and GDB stub")
-        )
-        (@subcommand gdb =>
-            (about: "Run GDB debugger")
-        )
-    )
-    .get_matches();
-    let mut xtask_env = XtaskEnv {
-        compile_mode: CompileMode::Debug,
-    };
-    eprintln!("xtask: mode: {:?}", xtask_env.compile_mode);
-    if let Some(matches) = matches.subcommand_matches("make") {
-        if matches.is_present("release") {
-            xtask_env.compile_mode = CompileMode::Release;
-        }
-        xtask_build_sbi(&xtask_env);
-        xtask_binary_sbi(&xtask_env);
-        xtask_build_test_kernel(&xtask_env);
-        xtask_binary_test_kernel(&xtask_env);
-    } else if let Some(matches) = matches.subcommand_matches("qemu") {
-        if matches.is_present("release") {
-            xtask_env.compile_mode = CompileMode::Release;
-        }
-        xtask_build_sbi(&xtask_env);
-        xtask_binary_sbi(&xtask_env);
-        xtask_build_test_kernel(&xtask_env);
-        xtask_binary_test_kernel(&xtask_env);
-        xtask_qemu_run(&xtask_env);
-    } else if let Some(_matches) = matches.subcommand_matches("debug") {
-        xtask_build_sbi(&xtask_env);
-        xtask_binary_sbi(&xtask_env);
-        xtask_build_test_kernel(&xtask_env);
-        xtask_binary_test_kernel(&xtask_env);
-        xtask_qemu_debug(&xtask_env);
-    } else if let Some(matches) = matches.subcommand_matches("asm") {
-        if matches.is_present("release") {
-            xtask_env.compile_mode = CompileMode::Release;
-        }
-        xtask_build_sbi(&xtask_env);
-        xtask_asm_sbi(&xtask_env);
-    } else if let Some(matches) = matches.subcommand_matches("size") {
-        if matches.is_present("release") {
-            xtask_env.compile_mode = CompileMode::Release;
-        }
-        xtask_build_sbi(&xtask_env);
-        xtask_size_sbi(&xtask_env);
-    } else if let Some(_matches) = matches.subcommand_matches("gdb") {
-        xtask_gdb(&xtask_env);
-    } else {
-        eprintln!("Use `cargo qemu` to run, `cargo xtask --help` for help")
+    use Commands::*;
+    match Cli::parse().command {
+        Make(args) => args.make(),
+        Asm(args) => args.dump(),
+        Qemu(args) => args.run(),
     }
 }
 
-fn xtask_build_sbi(xtask_env: &XtaskEnv) {
-    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let mut command = Command::new(cargo);
-    command.current_dir(project_root().join("rustsbi-qemu"));
-    command.arg("build");
-    match xtask_env.compile_mode {
-        CompileMode::Debug => {}
-        CompileMode::Release => {
-            command.arg("--release");
+#[derive(Args, Default)]
+struct BuildArgs {
+    /// With supervisor.
+    #[clap(short, long)]
+    kernel: Option<String>,
+    /// Target arch.
+    #[clap(long)]
+    target: Option<String>,
+    /// Build in debug mode.
+    #[clap(long)]
+    debug: bool,
+}
+
+impl BuildArgs {
+    /// Returns the build target name.
+    fn target(&self) -> &str {
+        self.target
+            .as_ref()
+            .map_or("riscv64imac-unknown-none-elf", |s| s.as_str())
+    }
+
+    fn arch(&self) -> &str {
+        if self
+            .target
+            .as_ref()
+            .map_or(false, |t| t.contains("riscv32"))
+        {
+            "riscv32"
+        } else {
+            "riscv64"
         }
     }
-    command.args(&["--package", "rustsbi-qemu"]);
-    command.args(&["--target", DEFAULT_TARGET]);
-    let status = command.status().unwrap();
-    if !status.success() {
-        println!("cargo build failed");
-        process::exit(1);
-    }
-}
 
-fn xtask_build_test_kernel(xtask_env: &XtaskEnv) {
-    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let mut command = Command::new(cargo);
-    command.current_dir(project_root().join("test-kernel"));
-    command.arg("build");
-    match xtask_env.compile_mode {
-        CompileMode::Debug => {}
-        CompileMode::Release => {
-            command.arg("--release");
+    /// Returns the dir of target files.
+    fn dir(&self) -> PathBuf {
+        PROJECT_DIR
+            .join("target")
+            .join(self.target())
+            .join(if self.debug { "debug" } else { "release" })
+    }
+
+    /// 编译 `rustsbi-qemu`。
+    ///
+    /// 如果设置了 `kernel` 是 'test' 或 'test-kernel'，同时编译 `test-kernel`。
+    ///
+    /// 如果设置了 `kernel` 但不是 'test' 或 'test-kernel'，则检查 `kernel` 是一个编译好的二进制文件。
+    fn make(&self) {
+        self.make_package("rustsbi-qemu");
+        if let Some(ref kernel) = self.kernel {
+            if kernel == "test" || kernel == "test-kernel" {
+                self.make_package("test-kernel");
+            } else {
+                todo!("检查内核是一个二进制文件");
+            }
         }
     }
-    command.args(&["--package", "test-kernel"]);
-    command.args(&["--target", DEFAULT_TARGET]);
-    let status = command.status().unwrap();
-    if !status.success() {
-        println!("cargo build failed");
-        process::exit(1);
+
+    fn make_package(&self, package: &str) {
+        // 生成
+        Cargo::build()
+            .package(package)
+            .conditional(!self.debug, |sbi| {
+                sbi.release();
+            })
+            .target(self.target())
+            .invoke();
+        // 裁剪
+        let target = self.dir().join(package);
+        BinUtil::objcopy()
+            .arg(format!("--binary-architecture={}", self.arch()))
+            .arg(&target)
+            .arg("--strip-all")
+            .arg("-O")
+            .arg("binary")
+            .arg(target.with_extension("bin"))
+            .invoke();
     }
 }
 
-fn xtask_asm_sbi(xtask_env: &XtaskEnv) {
-    // @{{objdump}} -D {{test-kernel-elf}} | less
-    let objdump = check_tool("objdump").expect("Objdump tool not found");
-    Command::new(objdump)
-        .current_dir(dist_dir(xtask_env))
-        .arg("-d")
-        .arg("rustsbi-qemu")
-        .status()
-        .unwrap();
+#[derive(Args)]
+struct AsmArgs {
+    #[clap(flatten)]
+    build: BuildArgs,
+    /// Output file.
+    #[clap(short, long)]
+    output: Option<String>,
 }
 
-fn xtask_size_sbi(xtask_env: &XtaskEnv) {
-    // @{{size}} -A -x {{test-kernel-elf}}
-    let size = check_tool("size").expect("Size tool not found");
-    Command::new(size)
-        .current_dir(dist_dir(xtask_env))
-        .arg("-A")
-        .arg("-x")
-        .arg("rustsbi-qemu")
-        .status()
-        .unwrap();
-}
-
-fn xtask_binary_sbi(xtask_env: &XtaskEnv) {
-    /*
-        objdump := "riscv64-unknown-elf-objdump"
-    objcopy := "rust-objcopy --binary-architecture=riscv64"
-
-    build: firmware
-        @{{objcopy}} {{test-kernel-elf}} --strip-all -O binary {{test-kernel-bin}}
-     */
-    let objcopy = check_tool("objcopy").expect("Objcopy tool not found");
-    let status = Command::new(objcopy)
-        .current_dir(dist_dir(xtask_env))
-        .arg("rustsbi-qemu")
-        .arg("--binary-architecture=riscv64")
-        .arg("--strip-all")
-        .args(&["-O", "binary", "rustsbi-qemu.bin"])
-        .status()
-        .unwrap();
-
-    if !status.success() {
-        println!("objcopy binary failed");
-        process::exit(1);
+impl AsmArgs {
+    /// 如果没有设置 `kernel`，将 `rustsbi-qemu` 反汇编，并保存到指定位置。
+    ///
+    /// 如果设置了 `kernel` 是 'test' 或 'test-kernel'，将 `test-kernel` 反汇编，并保存到指定位置。
+    ///
+    /// 如果设置了 `kernel` 但不是 'test' 或 'test-kernel'，将 `kernel` 指定的二进制文件反汇编，并保存到指定位置。
+    fn dump(self) {
+        self.build.make();
+        let bin = if let Some(kernel) = &self.build.kernel {
+            if kernel == "test" || kernel == "test-kernel" {
+                self.build.dir().join("test-kernel")
+            } else {
+                PathBuf::from(kernel)
+            }
+        } else {
+            self.build.dir().join("rustsbi-qemu")
+        };
+        let out = PROJECT_DIR.join(self.output.unwrap_or(format!(
+            "{}.asm",
+            bin.file_stem().unwrap().to_string_lossy()
+        )));
+        println!("Asm file dumps to '{}'.", out.display());
+        fs::write(out, BinUtil::objdump().arg(bin).arg("-d").output().stdout).unwrap();
     }
 }
 
-fn xtask_binary_test_kernel(xtask_env: &XtaskEnv) {
-    let objcopy = check_tool("objcopy").expect("Objcopy tool not found");
-    let status = Command::new(objcopy)
-        .current_dir(dist_dir(xtask_env))
-        .arg("test-kernel")
-        .arg("--binary-architecture=riscv64")
-        .arg("--strip-all")
-        .args(&["-O", "binary", "test-kernel.bin"])
-        .status()
-        .unwrap();
-
-    if !status.success() {
-        println!("objcopy binary failed");
-        process::exit(1);
-    }
+#[derive(Args, Default)]
+struct QemuArgs {
+    #[clap(flatten)]
+    build: BuildArgs,
+    /// Path of executable qemu-system-x.
+    #[clap(long)]
+    qemu_dir: Option<String>,
+    /// Number of hart (SMP for Symmetrical Multiple Processor).
+    #[clap(long)]
+    smp: Option<u8>,
+    /// Port for gdb to connect. If set, qemu will block and wait gdb to connect.
+    #[clap(long)]
+    gdb: Option<u16>,
 }
 
-fn xtask_qemu_run(xtask_env: &XtaskEnv) {
-    /*
-    qemu: build
-    @qemu-system-riscv64 \
-            -machine virt \
-            -nographic \
-            -bios none \
-            -device loader,file={{rustsbi-bin}},addr=0x80000000 \
-            -device loader,file={{test-kernel-bin}},addr=0x80200000 \
-            -smp threads={{threads}}
-    */
-    let status = Command::new("qemu-system-riscv64")
-        .current_dir(dist_dir(xtask_env))
-        .args(&["-machine", "virt"])
-        .args(&["-bios", "rustsbi-qemu.bin"])
-        .args(&["-kernel", "test-kernel.bin"])
-        .args(&["-smp", "8"]) // 8 cores
-        .arg("-nographic")
-        .status()
-        .unwrap();
-
-    if !status.success() {
-        println!("qemu failed");
-        process::exit(1);
-    }
-}
-
-fn xtask_qemu_debug(xtask_env: &XtaskEnv) {
-    let status = Command::new("qemu-system-riscv64")
-        .current_dir(dist_dir(xtask_env))
-        .args(&["-machine", "virt"])
-        .args(&["-bios", "rustsbi-qemu.bin"])
-        .args(&["-kernel", "test-kernel.bin"])
-        .args(&["-smp", "8"]) // 8 cores
-        .arg("-nographic")
-        .args(&["-gdb", "tcp::1234", "-S"])
-        .status()
-        .unwrap();
-
-    if !status.success() {
-        println!("qemu failed");
-        process::exit(1);
-    }
-}
-
-fn xtask_gdb(xtask_env: &XtaskEnv) {
-    let mut command = Command::new("riscv64-unknown-elf-gdb");
-    command.current_dir(dist_dir(xtask_env));
-    command.args(&["--eval-command", "file rustsbi-qemu"]);
-    command.args(&["--eval-command", "target remote localhost:1234"]);
-    command.arg("-q");
-
-    ctrlc::set_handler(move || {
-        // when ctrl-c, don't exit gdb
-    })
-    .expect("disable Ctrl-C exit");
-
-    let status = command.status().expect("run program");
-    if !status.success() {
-        println!("debug failed");
-        process::exit(1);
-    }
-}
-
-fn project_root() -> PathBuf {
-    Path::new(&env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(1)
-        .unwrap()
-        .to_path_buf()
-}
-
-fn dist_dir(xtask_env: &XtaskEnv) -> PathBuf {
-    let mut path_buf = project_root().join("target").join(DEFAULT_TARGET);
-    path_buf = match xtask_env.compile_mode {
-        CompileMode::Debug => path_buf.join("debug"),
-        CompileMode::Release => path_buf.join("release"),
-    };
-    path_buf
-}
-
-fn check_tool<S: AsRef<str>>(tool: S) -> Option<String> {
-    // check the `rust-x` tool
-    if let Ok(status) = Command::new(format!("rust-{}", tool.as_ref()))
-        .arg("--version")
-        .stdout(Stdio::null())
-        .status()
-    {
-        if status.success() {
-            return Some(format!("rust-{}", tool.as_ref()));
+impl QemuArgs {
+    fn find_qemu(&self) -> OsString {
+        let name = if cfg!(target_os = "windows") {
+            format!("qemu-system-{}.exe", self.build.arch())
+        } else {
+            format!("qemu-system-{}", self.build.arch())
+        };
+        if let Some(path) = &self.qemu_dir {
+            let target = PathBuf::from(path).join(&name);
+            if target.is_file() {
+                return target.into_os_string();
+            }
         }
-    }
-    // check the `riscv64-linux-gnu-x` tool
-    if let Ok(status) = Command::new(format!("riscv64-linux-gnu-{}", tool.as_ref()))
-        .arg("--version")
-        .stdout(Stdio::null())
-        .status()
-    {
-        if status.success() {
-            return Some(format!("riscv64-linux-gnu-{}", tool.as_ref()));
+        #[cfg(target_os = "windows")]
+        {
+            let target = PathBuf::from(r"C:\Program Files\qemu").join(&name);
+            if target.is_file() {
+                return target.into_os_string();
+            }
         }
+        OsString::from(name)
     }
-    // check `riscv64-unknown-elf-x` tool
-    if let Ok(status) = Command::new(format!("riscv64-unknown-elf-{}", tool.as_ref()))
-        .arg("--version")
-        .stdout(Stdio::null())
-        .status()
-    {
-        if status.success() {
-            return Some(format!("riscv64-unknown-elf-{}", tool.as_ref()));
-        }
-    }
-    println!(
-        "
-No binutils found, try install using:
 
-    rustup component add llvm-tools-preview
-    cargo install cargo-binutils"
-    );
-    return None;
+    fn run(mut self) {
+        self.build.kernel.get_or_insert_with(|| "test".into());
+        self.build.make();
+        Ext::new(self.find_qemu())
+            .args(&["-machine", "virt"])
+            .arg("-bios")
+            .arg(self.build.dir().join("rustsbi-qemu.bin"))
+            .arg("-kernel")
+            .arg(self.build.dir().join("test-kernel.bin"))
+            .args(&["-smp", &self.smp.unwrap_or(8).to_string()])
+            .args(&["-serial", "mon:stdio"])
+            .arg("-nographic")
+            .optional(&self.gdb, |qemu, gdb| {
+                qemu.args(&["-gdb", &format!("tcp::{gdb}")]);
+            })
+            .invoke();
+    }
 }
 
 #[test]
-fn run_test_kernel() {
-    let xtask_env = XtaskEnv {
-        compile_mode: CompileMode::Debug,
-    };
-    xtask_build_sbi(&xtask_env);
-    xtask_binary_sbi(&xtask_env);
-    xtask_build_test_kernel(&xtask_env);
-    xtask_binary_test_kernel(&xtask_env);
-    let child = Command::new("qemu-system-riscv64")
-        .current_dir(dist_dir(&xtask_env))
-        .args(&["-machine", "virt"])
-        .args(&["-bios", "rustsbi-qemu.bin"])
-        .args(&["-kernel", "test-kernel.bin"])
-        .args(&["-smp", "8"]) // 8 cores
-        .arg("-nographic")
-        .stdout(process::Stdio::piped())
-        .spawn()
-        .expect("spawn child process");
-    let output = child.wait_with_output().expect("wait on child");
-    let string = String::from_utf8(output.stdout).expect("utf-8 output");
-    println!("{}", string);
-    let last_line = string.lines().last();
-    assert!(last_line.is_some(), "some outuput");
-    assert_eq!(
-        last_line.unwrap(),
-        "<< Test-kernel: All hart SBI test SUCCESS, shutdown",
-        "success output"
-    );
-    assert!(output.status.success(), "success exit code");
+fn test() {
+    QemuArgs::default().run();
 }
