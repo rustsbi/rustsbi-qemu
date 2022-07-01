@@ -69,9 +69,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87eba3c8c7f42ef17f6c659fc7416d0f4758cd3e58861ee63c5fa4a4dde649e4"
+checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
 dependencies = [
  "os_str_bytes",
 ]
@@ -83,9 +83,9 @@ source = "git+https://github.com/YdrMaster/command-ext.git?rev=a8a48c0#a8a48c09b
 
 [[package]]
 name = "dtb-walker"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2d3436390f4c683088dcc20a45eddf3e1e3dbde62e9d2d09348876a6170e04d"
+checksum = "bc3a45c340447805972e5f53bf10e7118d8333bfb779f9c0ba7ec6ea30d40cd8"
 
 [[package]]
 name = "embedded-hal"

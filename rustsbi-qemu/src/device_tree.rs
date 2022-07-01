@@ -27,7 +27,7 @@ impl<const N: usize> Display for StringInline<N> {
 
 /// 解析设备树。
 pub(crate) fn parse(opaque: usize) -> BoardInfo {
-    use dtb_walker::{Dtb, DtbObj, Property, WalkOperation::*};
+    use dtb_walker::{Dtb, DtbObj, HeaderError as E, Property, WalkOperation::*};
     const CPUS: &[u8] = b"cpus";
     const MEMORY: &[u8] = b"memory";
     const SOC: &[u8] = b"soc";
@@ -44,7 +44,12 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
         test: 0..0,
         clint: 0..0,
     };
-    let dtb = unsafe { Dtb::from_raw_parts(opaque as _) }.unwrap();
+    let dtb = unsafe {
+        Dtb::from_raw_parts_filtered(opaque as _, |e| {
+            matches!(e, E::Misaligned(4) | E::LastCompVersion(16))
+        })
+    }
+    .unwrap();
     ans.dtb.end += dtb.total_size();
     dtb.walk(|path, obj| match obj {
         DtbObj::SubNode { name } => {
