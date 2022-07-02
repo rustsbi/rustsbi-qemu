@@ -2,9 +2,8 @@
 extern crate clap;
 
 use clap::Parser;
-use command_ext::{BinUtil, Cargo, CommandExt, Ext};
+use command_ext::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
-    ffi::OsString,
     fs,
     path::{Path, PathBuf},
 };
@@ -168,32 +167,13 @@ struct QemuArgs {
 }
 
 impl QemuArgs {
-    fn find_qemu(&self) -> OsString {
-        let name = if cfg!(target_os = "windows") {
-            format!("qemu-system-{}.exe", self.build.arch())
-        } else {
-            format!("qemu-system-{}", self.build.arch())
-        };
-        if let Some(path) = &self.qemu_dir {
-            let target = PathBuf::from(path).join(&name);
-            if target.is_file() {
-                return target.into_os_string();
-            }
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let target = PathBuf::from(r"C:\Program Files\qemu").join(&name);
-            if target.is_file() {
-                return target.into_os_string();
-            }
-        }
-        OsString::from(name)
-    }
-
     fn run(mut self) {
         self.build.kernel.get_or_insert_with(|| "test".into());
         self.build.make();
-        Ext::new(self.find_qemu())
+        if let Some(p) = &self.qemu_dir {
+            Qemu::search_at(p);
+        }
+        Qemu::system(self.build.arch())
             .args(&["-machine", "virt"])
             .arg("-bios")
             .arg(self.build.dir().join("rustsbi-qemu.bin"))
