@@ -102,9 +102,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
+checksum = "607c8a29735385251a339424dd462993c0fed8fa09d378f259377df08c126022"
 
 [[package]]
 name = "heck"
@@ -241,11 +241,11 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.2.2"
-source = "git+https://github.com/YdrMaster/rustsbi.git?rev=bd3c092#bd3c0924874acd21a92099a00ae6983abefe0d8d"
+version = "0.3.0-alpha.1"
+source = "git+https://github.com/rustsbi/rustsbi?rev=af60b02#af60b0211ff0354f618ed437beca471ef49a0f61"
 dependencies = [
  "riscv",
- "sbi-spec 0.1.0 (git+https://github.com/rustsbi/sbi-spec.git?rev=9d728bb)",
+ "sbi-spec 0.0.1",
 ]
 
 [[package]]
@@ -272,13 +272,14 @@ name = "sbi-rt"
 version = "0.1.0"
 source = "git+https://github.com/rustsbi/sbi-rt.git?rev=72b607c#72b607ce7536ce6f3181e230955aeb0bc6a22564"
 dependencies = [
- "sbi-spec 0.1.0 (git+https://github.com/rustsbi/sbi-spec.git?rev=a0fd76b)",
+ "sbi-spec 0.1.0",
 ]
 
 [[package]]
 name = "sbi-spec"
-version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-spec.git?rev=9d728bb#9d728bbbb3aed4bad3f65413ca666a77ecbfda1b"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9052abf4e5360c78094e445e2c8f7975481c45094e068230b7a1860709289cee"
 
 [[package]]
 name = "sbi-spec"
