@@ -260,7 +260,7 @@ struct BoardInfo {
 }
 
 fn parse_smp(dtb_pa: usize) -> BoardInfo {
-    use dtb_walker::{Dtb, DtbObj, HeaderError as E, Property, WalkOperation::*};
+    use dtb_walker::{Dtb, DtbObj, HeaderError as E, Property, Str, WalkOperation::*};
 
     let mut ans = BoardInfo { smp: 0, uart: 0 };
     unsafe {
@@ -269,21 +269,21 @@ fn parse_smp(dtb_pa: usize) -> BoardInfo {
         })
     }
     .unwrap()
-    .walk(|path, obj| match obj {
+    .walk(|ctx, obj| match obj {
         DtbObj::SubNode { name } => {
-            if path.last().is_empty() && (name == b"cpus" || name == b"soc") {
+            if ctx.is_root() && (name == Str::from("cpus") || name == Str::from("soc")) {
                 StepInto
-            } else if path.last() == b"cpus" && name.starts_with(b"cpu@") {
+            } else if ctx.name() == Str::from("cpus") && name.starts_with("cpu@") {
                 ans.smp += 1;
                 StepOver
-            } else if path.last() == b"soc" && name.starts_with(b"uart") {
+            } else if ctx.name() == Str::from("soc") && name.starts_with("uart") {
                 StepInto
             } else {
                 StepOver
             }
         }
         DtbObj::Property(Property::Reg(mut reg)) => {
-            if path.last().starts_with(b"uart") {
+            if ctx.name().starts_with("uart") {
                 ans.uart = reg.next().unwrap().start;
             }
             StepOut
