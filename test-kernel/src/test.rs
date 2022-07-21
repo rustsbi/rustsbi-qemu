@@ -1,4 +1,6 @@
-﻿pub(crate) fn base_extension() {
+﻿use crate::EXPECTED;
+
+pub(crate) fn base_extension() {
     println!(
         "
 [test-kernel] Testing base extension"
@@ -55,8 +57,7 @@ pub(crate) fn sbi_ins_emulation() {
     }
 }
 
-pub(crate) fn trap_delegate(hartid: usize) {
-    use crate::EXPECTED;
+pub(crate) fn trap_execption_delegate(hartid: usize) {
     use core::arch::asm;
     use riscv::register::scause::{Exception, Trap};
 
@@ -75,6 +76,30 @@ pub(crate) fn trap_delegate(hartid: usize) {
     println!(
         "\
 [test-kernel] Illegal exception delegate success"
+    );
+}
+
+pub(crate) fn trap_interrupt_delegate(hartid: usize) {
+    use riscv::register::{
+        scause::{Interrupt, Trap},
+        sie, time,
+    };
+
+    println!(
+        "
+[test-kernel] Testing trap delegate
+[test-kernel] Set timer +1s"
+    );
+    unsafe {
+        sie::set_stimer();
+        EXPECTED[hartid] = Some(Trap::Interrupt(Interrupt::SupervisorTimer));
+    }
+    sbi_rt::set_timer(time::read64() + (10 << 20));
+
+    unsafe { riscv::asm::wfi() };
+    println!(
+        "\
+[test-kernel] Timer interrupt delegate success"
     );
 }
 

@@ -69,9 +69,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87eba3c8c7f42ef17f6c659fc7416d0f4758cd3e58861ee63c5fa4a4dde649e4"
+checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
 dependencies = [
  "os_str_bytes",
 ]
@@ -79,13 +79,16 @@ dependencies = [
 [[package]]
 name = "command-ext"
 version = "0.1.0"
-source = "git+https://github.com/YdrMaster/command-ext.git?rev=a8a48c0#a8a48c09bd9c1a08f39cb63e5e5963020bdbc20f"
+source = "git+https://github.com/YdrMaster/command-ext.git?rev=f25befb#f25befb0b5a58e3e75fb3a891d6cc5969a13d93c"
+dependencies = [
+ "lazy_static",
+]
 
 [[package]]
 name = "dtb-walker"
-version = "0.1.1"
+version = "0.2.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2d3436390f4c683088dcc20a45eddf3e1e3dbde62e9d2d09348876a6170e04d"
+checksum = "9404d41caa1aa659f7be44d5a902e318c0672900822fe9ca41d9e38c14b52332"
 
 [[package]]
 name = "embedded-hal"
@@ -99,9 +102,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.12.1"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "heck"
@@ -167,9 +170,9 @@ checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
 name = "os_str_bytes"
-version = "6.1.0"
+version = "6.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21326818e99cfe6ce1e524c2a805c189a99b5ae555a35d19f9a284b427d86afa"
+checksum = "648001efe5d5c0102d8cea768e348da85d90af8ba91f0bea908f157951493cd4"
 
 [[package]]
 name = "proc-macro-error"
@@ -238,11 +241,11 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.2.2"
-source = "git+https://github.com/YdrMaster/rustsbi.git?rev=bd3c092#bd3c0924874acd21a92099a00ae6983abefe0d8d"
+version = "0.3.0-alpha.1"
+source = "git+https://github.com/rustsbi/rustsbi?rev=af60b02#af60b0211ff0354f618ed437beca471ef49a0f61"
 dependencies = [
  "riscv",
- "sbi-spec 0.1.0 (git+https://github.com/rustsbi/sbi-spec.git?rev=9d728bb)",
+ "sbi-spec 0.0.1",
 ]
 
 [[package]]
@@ -260,22 +263,23 @@ dependencies = [
 
 [[package]]
 name = "rustversion"
-version = "1.0.7"
+version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0a5f7c728f5d284929a1cccb5bc19884422bfe6ef4d6c409da2c41838983fcf"
+checksum = "24c8ad4f0c00e1eb5bc7614d236a7f1300e3dbd76b68cac8e06fb00b015ad8d8"
 
 [[package]]
 name = "sbi-rt"
 version = "0.1.0"
 source = "git+https://github.com/rustsbi/sbi-rt.git?rev=72b607c#72b607ce7536ce6f3181e230955aeb0bc6a22564"
 dependencies = [
- "sbi-spec 0.1.0 (git+https://github.com/rustsbi/sbi-spec.git?rev=a0fd76b)",
+ "sbi-spec 0.1.0",
 ]
 
 [[package]]
 name = "sbi-spec"
-version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-spec.git?rev=9d728bb#9d728bbbb3aed4bad3f65413ca666a77ecbfda1b"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9052abf4e5360c78094e445e2c8f7975481c45094e068230b7a1860709289cee"
 
 [[package]]
 name = "sbi-spec"
@@ -290,9 +294,9 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "spin"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c530c2b0d0bf8b69304b39fe2001993e267461948b890cd037d8ad4293fa1a0d"
+checksum = "7f6002a767bff9e83f8eeecf883ecb8011875a21ae8da43bffb817a57e78cc09"
 dependencies = [
  "lock_api",
 ]
@@ -354,9 +358,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bd2fe26506023ed7b5e1e315add59d6f584c621d037f9368fea9cfb988f368c"
+checksum = "15c61ba63f9235225a22310255a29b806b907c9b8c964bcbd0a2c70f3f2deea7"
 
 [[package]]
 name = "version_check"
@@ -409,9 +413,9 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "x86_64"
-version = "0.14.9"
+version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "958cd5cb28e720db2f59ee9dc4235b5f82a183d079fb0e6caf43ad074cfdc66a"
+checksum = "100555a863c0092238c2e0e814c1096c1e5cf066a309c696a87e907b5f8c5d69"
 dependencies = [
  "bit_field",
  "bitflags",

@@ -1,5 +1,6 @@
 use crate::{clint, hart_id, qemu_hsm::QemuHsm, Supervisor};
-use riscv::register::{mstatus, mtval, scause, sepc, stval, stvec};
+use core::arch::asm;
+use riscv::register::*;
 
 #[repr(usize)]
 pub(crate) enum Operation {
@@ -8,9 +9,6 @@ pub(crate) enum Operation {
 }
 
 pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Operation {
-    use core::arch::asm;
-    use riscv::register::{medeleg, mie};
-
     unsafe {
         mstatus::set_mpp(mstatus::MPP::Supervisor);
         mstatus::set_mie();
@@ -24,7 +22,6 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
         asm!("csrw mideleg, {}", in(reg) usize::MAX);
         asm!("csrw medeleg, {}", in(reg) usize::MAX);
         mstatus::clear_mie();
-        medeleg::clear_illegal_instruction();
         medeleg::clear_supervisor_env_call();
         medeleg::clear_machine_env_call();
 
@@ -35,56 +32,32 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
     hsm.record_current_start_finished();
     loop {
-        use riscv::register::{
-            mcause::{self, Exception as E, Interrupt as I, Trap as T},
-            mip,
-        };
+        use mcause::{Exception as E, Interrupt as I, Trap as T};
 
         unsafe { m_to_s(&mut ctx) };
 
         match mcause::read().cause() {
             T::Interrupt(I::MachineTimer) => unsafe {
+                // set timer 同时打开中断，响应后即可关闭
                 mie::clear_mtimer();
+                // 转发给 supervisor
                 mip::clear_mtimer();
                 mip::set_stimer();
             },
-            T::Interrupt(I::MachineSoft) => {
+            T::Interrupt(I::MachineSoft) => unsafe {
+                // 响应中断，清除中断标记
                 crate::clint::get().clear_soft(hart_id());
-                unsafe {
-                    mip::clear_msoft();
-                    mip::set_ssoft();
-                }
-            }
+                // 转发给 supervisor
+                mip::clear_msoft();
+                mip::set_ssoft();
+            },
             T::Exception(E::SupervisorEnvCall) => {
                 if let Some(op) = ctx.handle_ecall() {
                     return op;
                 }
             }
-            T::Exception(E::IllegalInstruction) => {
-                use riscv::register::scause::{Exception as E, Trap as T};
-
-                // let instruction = mtval::read();
-                // 尝试修正或代理指令
-                // TODO 需要排查 qemu 哪些版本需要代理哪些指令？
-                // TODO 标准 20191213 的表 24.3 列出了一些特殊的 CSR，SBI 软件负责将它们模拟出来，但 Qemu6.0+ 似乎不需要模拟 time
-                // const OPCODE_MASK: usize = (1 << 7) - 1;
-                // const REG_MASK: usize = (1 << 5) - 1;
-                // const OPCODE_CSR: usize = 0b1110011;
-                // const CSR_TIME: usize = 0xc01;
-                // if let OPCODE_CSR = instruction & OPCODE_MASK {
-                //     if instruction >> 20 == CSR_TIME {
-                //         match (instruction >> 7) & REG_MASK {
-                //             0 => {}
-                //             rd => *ctx.x_mut(rd) = crate::clint::get().get_mtime() as _,
-                //         }
-                //         continue;
-                //     }
-                // }
-
-                ctx.do_transfer_trap(T::Exception(E::IllegalInstruction));
-            }
-            // TODO 可以修复非原子的非对齐访存
-            t => panic!("unsupported trap: {t:?}"),
+            // TODO 可以修复非原子的非对齐访存？
+            t => ctx.trap_stop(t),
         }
     }
 }
@@ -107,7 +80,7 @@ impl Context {
             mepc: supervisor.start_addr,
         };
 
-        unsafe { core::arch::asm!("csrr {}, mstatus", out(reg) ctx.mstatus) };
+        unsafe { asm!("csrr {}, mstatus", out(reg) ctx.mstatus) };
         *ctx.a_mut(0) = hart_id();
         *ctx.a_mut(1) = supervisor.opaque;
 
@@ -188,6 +161,7 @@ impl Context {
         None
     }
 
+    #[allow(unused)]
     fn do_transfer_trap(&mut self, cause: scause::Trap) {
         unsafe {
             // 向 S 转发陷入
@@ -213,11 +187,28 @@ impl Context {
                 mstatus::set_spie();
                 mstatus::clear_sie();
             }
-            core::arch::asm!("csrr {}, mstatus", out(reg) self.mstatus);
+            asm!("csrr {}, mstatus", out(reg) self.mstatus);
             // 设置返回地址，返回到 S
             // TODO Vectored stvec?
             self.mepc = stvec::read().address();
         }
+    }
+
+    fn trap_stop(&self, trap: mcause::Trap) -> ! {
+        println!(
+            "
+-----------------------------
+> trap:    {trap:?}
+> mstatus: {:#018x}
+> mepc:    {:#018x}
+> mtval:   {:#018x}
+-----------------------------
+",
+            self.mstatus,
+            self.mepc,
+            mtval::read()
+        );
+        panic!("stopped with unsupported trap")
     }
 }
 
@@ -230,7 +221,7 @@ impl Context {
 /// 实际 x0(zero) 和 x2(sp) 不需要保存在这里。
 #[naked]
 unsafe extern "C" fn m_to_s(ctx: &mut Context) {
-    core::arch::asm!(
+    asm!(
         r"
         .altmacro
         .macro SAVE_M n
@@ -298,7 +289,7 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
 #[naked]
 #[link_section = ".text.trap_handler"]
 unsafe extern "C" fn s_to_m() {
-    core::arch::asm!(
+    asm!(
         r"
         .altmacro
         .macro SAVE_S n

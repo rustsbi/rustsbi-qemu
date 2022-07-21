@@ -11,4 +11,4 @@ publish = false
 [dependencies]
 clap = { version = "~3.1", features = ["derive"] }
 lazy_static = "1.4"
-command-ext = { git = "https://github.com/YdrMaster/command-ext.git", rev = "a8a48c0" }
+command-ext = { git = "https://github.com/YdrMaster/command-ext.git", rev = "f25befb" }

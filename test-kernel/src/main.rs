@@ -6,7 +6,7 @@
 
 use core::arch::asm;
 use riscv::register::{
-    scause::Trap,
+    scause::{Interrupt, Trap},
     sepc,
     stvec::{self, TrapMode},
 };
@@ -84,7 +84,10 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     test::sbi_ins_emulation();
 
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
-    test::trap_delegate(hartid);
+    test::trap_execption_delegate(hartid);
+
+    unsafe { riscv::register::sstatus::set_sie() };
+    test::trap_interrupt_delegate(hartid);
 
     test::hsm(hartid, smp);
 
@@ -97,9 +100,16 @@ extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
 
     let cause = scause::read().cause();
     let expected = unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) };
-
     if Some(cause) == expected {
-        sepc::write(sepc::read().wrapping_add(4));
+        match cause {
+            Trap::Exception(_) => {
+                sepc::write(sepc::read().wrapping_add(4));
+            }
+            Trap::Interrupt(Interrupt::SupervisorTimer) => {
+                sbi_rt::set_timer(u64::MAX);
+            }
+            _ => {}
+        }
     } else {
         panic!("[test-kernel] SBI test FAILED due to unexpected trap {cause:?}");
     }
@@ -260,31 +270,35 @@ struct BoardInfo {
 }
 
 fn parse_smp(dtb_pa: usize) -> BoardInfo {
-    use dtb_walker::{Dtb, DtbObj, Property, WalkOperation::*};
+    use dtb_walker::{Dtb, DtbObj, HeaderError as E, Property, Str, WalkOperation::*};
 
     let mut ans = BoardInfo { smp: 0, uart: 0 };
-    unsafe { Dtb::from_raw_parts(dtb_pa as _) }
-        .unwrap()
-        .walk(|path, obj| match obj {
-            DtbObj::SubNode { name } => {
-                if path.last().is_empty() && (name == b"cpus" || name == b"soc") {
-                    StepInto
-                } else if path.last() == b"cpus" && name.starts_with(b"cpu@") {
-                    ans.smp += 1;
-                    StepOver
-                } else if path.last() == b"soc" && name.starts_with(b"uart") {
-                    StepInto
-                } else {
-                    StepOver
-                }
+    unsafe {
+        Dtb::from_raw_parts_filtered(dtb_pa as _, |e| {
+            matches!(e, E::Misaligned(4) | E::LastCompVersion(16))
+        })
+    }
+    .unwrap()
+    .walk(|ctx, obj| match obj {
+        DtbObj::SubNode { name } => {
+            if ctx.is_root() && (name == Str::from("cpus") || name == Str::from("soc")) {
+                StepInto
+            } else if ctx.name() == Str::from("cpus") && name.starts_with("cpu@") {
+                ans.smp += 1;
+                StepOver
+            } else if ctx.name() == Str::from("soc") && name.starts_with("uart") {
+                StepInto
+            } else {
+                StepOver
             }
-            DtbObj::Property(Property::Reg(mut reg)) => {
-                if path.last().starts_with(b"uart") {
-                    ans.uart = reg.next().unwrap().start;
-                }
-                StepOut
+        }
+        DtbObj::Property(Property::Reg(mut reg)) => {
+            if ctx.name().starts_with("uart") {
+                ans.uart = reg.next().unwrap().start;
             }
-            DtbObj::Property(_) => StepOver,
-        });
+            StepOut
+        }
+        DtbObj::Property(_) => StepOver,
+    });
     ans
 }

@@ -55,6 +55,8 @@ impl Timer for Clint {
     #[inline]
     fn set_timer(&self, time_value: u64) {
         unsafe {
+            riscv::register::mip::clear_stimer();
+            riscv::register::mie::set_mtimer();
             ((self.base as *mut u8).offset(0x4000) as *mut u64)
                 .add(hart_id())
                 .write_volatile(time_value);
