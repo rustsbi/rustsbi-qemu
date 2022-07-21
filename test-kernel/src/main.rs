@@ -6,7 +6,7 @@
 
 use core::arch::asm;
 use riscv::register::{
-    scause::Trap,
+    scause::{Interrupt, Trap},
     sepc,
     stvec::{self, TrapMode},
 };
@@ -84,7 +84,10 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     test::sbi_ins_emulation();
 
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
-    test::trap_delegate(hartid);
+    test::trap_execption_delegate(hartid);
+
+    unsafe { riscv::register::sstatus::set_sie() };
+    test::trap_interrupt_delegate(hartid);
 
     test::hsm(hartid, smp);
 
@@ -97,9 +100,16 @@ extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
 
     let cause = scause::read().cause();
     let expected = unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) };
-
     if Some(cause) == expected {
-        sepc::write(sepc::read().wrapping_add(4));
+        match cause {
+            Trap::Exception(_) => {
+                sepc::write(sepc::read().wrapping_add(4));
+            }
+            Trap::Interrupt(Interrupt::SupervisorTimer) => {
+                sbi_rt::set_timer(u64::MAX);
+            }
+            _ => {}
+        }
     } else {
         panic!("[test-kernel] SBI test FAILED due to unexpected trap {cause:?}");
     }
