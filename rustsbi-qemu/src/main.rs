@@ -40,16 +40,14 @@ struct Supervisor {
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use rustsbi::{
-        spec::srst::{RESET_REASON_NO_REASON, RESET_TYPE_SHUTDOWN},
+        spec::srst::{RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN},
         Reset,
     };
     // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
     println!("[rustsbi-panic] hart {} {info}", hart_id());
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
-    qemu_test::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_NO_REASON);
-    loop {
-        core::hint::spin_loop();
-    }
+    qemu_test::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
+    unreachable!()
 }
 
 /// 入口。

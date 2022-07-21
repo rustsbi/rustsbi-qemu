@@ -80,7 +80,6 @@ pub(crate) fn trap_execption_delegate(hartid: usize) {
 }
 
 pub(crate) fn trap_interrupt_delegate(hartid: usize) {
-    use core::arch::asm;
     use riscv::register::{
         scause::{Interrupt, Trap},
         sie, time,
