@@ -241,11 +241,12 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.3.0-alpha.1"
-source = "git+https://github.com/rustsbi/rustsbi?rev=af60b02#af60b0211ff0354f618ed437beca471ef49a0f61"
+version = "0.3.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5697645411c21e33776cddebf26f19f98a2405ff82e88d11b2bc35dc8a8b6d59"
 dependencies = [
  "riscv",
- "sbi-spec 0.0.1",
+ "sbi-spec 0.0.2",
 ]
 
 [[package]]
@@ -270,16 +271,16 @@ checksum = "24c8ad4f0c00e1eb5bc7614d236a7f1300e3dbd76b68cac8e06fb00b015ad8d8"
 [[package]]
 name = "sbi-rt"
 version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-rt.git?rev=72b607c#72b607ce7536ce6f3181e230955aeb0bc6a22564"
+source = "git+https://github.com/rustsbi/sbi-rt.git?rev=2933f8d5#2933f8d5542058a8d6435e59a90b0ad74e0c42f6"
 dependencies = [
  "sbi-spec 0.1.0",
 ]
 
 [[package]]
 name = "sbi-spec"
-version = "0.0.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9052abf4e5360c78094e445e2c8f7975481c45094e068230b7a1860709289cee"
+checksum = "7b617d3b07d7bcdeb0590d4fea9460b004fbc5ecfc975993b9cbcc3a2f67fcce"
 
 [[package]]
 name = "sbi-spec"
