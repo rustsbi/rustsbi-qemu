@@ -271,7 +271,7 @@ checksum = "24c8ad4f0c00e1eb5bc7614d236a7f1300e3dbd76b68cac8e06fb00b015ad8d8"
 [[package]]
 name = "sbi-rt"
 version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-rt.git?rev=2933f8d5#2933f8d5542058a8d6435e59a90b0ad74e0c42f6"
+source = "git+https://github.com/rustsbi/sbi-rt.git?rev=2933f8d#2933f8d5542058a8d6435e59a90b0ad74e0c42f6"
 dependencies = [
  "sbi-spec 0.1.0",
 ]
@@ -286,6 +286,15 @@ checksum = "7b617d3b07d7bcdeb0590d4fea9460b004fbc5ecfc975993b9cbcc3a2f67fcce"
 name = "sbi-spec"
 version = "0.1.0"
 source = "git+https://github.com/rustsbi/sbi-spec.git?rev=a0fd76b#a0fd76bc5e74ad978d1d07d8f064ca45fa14dd9c"
+
+[[package]]
+name = "sbi-testing"
+version = "0.1.0"
+source = "git+https://github.com/rustsbi/sbi-testing?rev=fb260eb#fb260eb58bbfe7b6d6745e19dc3d9e995ea0a4bb"
+dependencies = [
+ "riscv",
+ "sbi-rt",
+]
 
 [[package]]
 name = "scopeguard"
@@ -335,7 +344,7 @@ dependencies = [
  "dtb-walker",
  "r0",
  "riscv",
- "sbi-rt",
+ "sbi-testing",
  "spin",
  "uart_16550",
 ]

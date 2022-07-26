@@ -10,6 +10,7 @@ use riscv::register::{
     sepc,
     stvec::{self, TrapMode},
 };
+use sbi_testing::sbi;
 
 #[macro_use]
 mod console;
@@ -26,7 +27,7 @@ use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use sbi_rt::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
+    use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
 
     let (hard_id, pc): (usize, usize);
     unsafe { asm!("mv    {}, tp", out(reg) hard_id) };
@@ -80,18 +81,91 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 ------------------------------------------------"
     );
 
-    test::base_extension();
-    test::sbi_ins_emulation();
+    use sbi_testing::{base::NotExist, spi::SendIpi, Case, Extension as Ext};
+    let _ = sbi_testing::test(hartid, 10_000_000, |case| match case {
+        Case::Begin(ext) => {
+            match ext {
+                Ext::Base => println!("[test-kernel] Testing Base"),
+                Ext::Time => println!("[test-kernel] Testing TIME"),
+                Ext::Spi => println!("[test-kernel] Testing sPI"),
+            }
+            true
+        }
+        Case::End(_) => true,
+        Case::Base(case) => {
+            use sbi_testing::base::Case::*;
+            match case {
+                GetSbiSpecVersion(version) => {
+                    println!("[test-kernel] sbi spec version = {version:#x}");
+                }
+                GetSbiImplId(Ok(name)) => {
+                    println!("[test-kernel] sbi impl = {name}");
+                }
+                GetSbiImplId(Err(unknown)) => {
+                    println!("[test-kernel] unknown sbi impl = {unknown:#x}");
+                }
+                GetSbiImplVersion(version) => {
+                    println!("[test-kernel] sbi impl version = {version:#x}");
+                }
+                ProbeExtensions(exts) => {
+                    println!("[test-kernel] sbi extensions = {exts}");
+                }
+                GetMVendorId(id) => {
+                    println!("[test-kernel] mvendor id = {id:#x}");
+                }
+                GetMArchId(id) => {
+                    println!("[test-kernel] march id = {id:#x}");
+                }
+                GetMimpId(id) => {
+                    println!("[test-kernel] mimp id = {id:#x}");
+                }
+            }
+            true
+        }
+        Case::BaseFatel(NotExist) => panic!("sbi base not exist"),
+        Case::Time(case) => {
+            use sbi_testing::time::Case::*;
+            match case {
+                Interval { begin: _, end: _ } => {
+                    println!("[test-kernel] read time register successfuly, set timer +1s");
+                }
+                SetTimer => {
+                    println!("[test-kernel] timer interrupt delegate successfuly");
+                }
+            }
+            true
+        }
+        Case::TimeFatel(fatel) => {
+            use sbi_testing::time::Fatel::*;
+            match fatel {
+                NotExist => panic!("sbi time not exist"),
+                TimeDecreased { a, b } => panic!("time decreased: {a} -> {b}"),
+                UnexpectedTrap(trap) => {
+                    panic!("expect trap at supervisor timer, but {trap:?} was caught");
+                }
+            }
+        }
+        Case::Spi(SendIpi) => {
+            println!("[test-kernel] send ipi successfuly");
+            true
+        }
+        Case::SpiFatel(fatel) => {
+            use sbi_testing::spi::Fatel::*;
+            match fatel {
+                NotExist => panic!("sbi spi not exist"),
+                UnexpectedTrap(trap) => {
+                    panic!("expect trap at supervisor soft, but {trap:?} was caught");
+                }
+            }
+        }
+    });
 
     unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
     test::trap_execption_delegate(hartid);
 
-    unsafe { riscv::register::sstatus::set_sie() };
-    test::trap_interrupt_delegate(hartid);
-
     test::hsm(hartid, smp);
 
-    sbi_rt::system_reset(sbi_rt::RESET_TYPE_SHUTDOWN, sbi_rt::RESET_REASON_NO_REASON);
+    sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
     unreachable!()
 }
 
@@ -99,19 +173,24 @@ extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
     use riscv::register::scause;
 
     let cause = scause::read().cause();
-    let expected = unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) };
-    if Some(cause) == expected {
+    if Some(cause) == unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) } {
         match cause {
             Trap::Exception(_) => {
                 sepc::write(sepc::read().wrapping_add(4));
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                sbi_rt::set_timer(u64::MAX);
+                sbi::set_timer(u64::MAX);
+            }
+            Trap::Interrupt(Interrupt::SupervisorSoft) => {
+                unsafe { core::arch::asm!("csrw sip, zero") };
             }
             _ => {}
         }
     } else {
-        panic!("[test-kernel] SBI test FAILED due to unexpected trap {cause:?}");
+        panic!(
+            "[test-kernel] SBI test FAILED due to unexpected trap {cause:?} on {}",
+            trap_frame.tp,
+        );
     }
 }
 

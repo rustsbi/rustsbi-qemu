@@ -28,6 +28,7 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
         crate::set_mtvec(s_to_m as usize);
         mie::set_mext();
         mie::set_msoft();
+        mie::set_mtimer();
     }
 
     hsm.record_current_start_finished();
@@ -38,17 +39,11 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
         match mcause::read().cause() {
             T::Interrupt(I::MachineTimer) => unsafe {
-                // set timer 同时打开中断，响应后即可关闭
-                mie::clear_mtimer();
-                // 转发给 supervisor
-                mip::clear_mtimer();
+                crate::clint::get().set_mtimercomp(u64::MAX);
                 mip::set_stimer();
             },
             T::Interrupt(I::MachineSoft) => unsafe {
-                // 响应中断，清除中断标记
                 crate::clint::get().clear_soft(hart_id());
-                // 转发给 supervisor
-                mip::clear_msoft();
                 mip::set_ssoft();
             },
             T::Exception(E::SupervisorEnvCall) => {
