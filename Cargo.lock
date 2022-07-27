@@ -200,9 +200,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.40"
+version = "1.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd96a1e8ed2596c337f8eae5f24924ec83f5ad5ab21ea8e455d3566c69fbcaf7"
+checksum = "c278e965f1d8cf32d6e0e96de3d3e79712178ae67986d9cf9151f51e95aac89b"
 dependencies = [
  "unicode-ident",
 ]
@@ -246,7 +246,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5697645411c21e33776cddebf26f19f98a2405ff82e88d11b2bc35dc8a8b6d59"
 dependencies = [
  "riscv",
- "sbi-spec 0.0.2",
+ "sbi-spec 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -270,10 +270,10 @@ checksum = "24c8ad4f0c00e1eb5bc7614d236a7f1300e3dbd76b68cac8e06fb00b015ad8d8"
 
 [[package]]
 name = "sbi-rt"
-version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-rt.git?rev=2933f8d#2933f8d5542058a8d6435e59a90b0ad74e0c42f6"
+version = "0.0.1"
+source = "git+https://github.com/rustsbi/sbi-rt.git?branch=dev#bbabc67b7a613ce1f75cde8610b31335457f15a4"
 dependencies = [
- "sbi-spec 0.1.0",
+ "sbi-spec 0.0.2 (git+https://github.com/rustsbi/sbi-spec.git?branch=dev)",
 ]
 
 [[package]]
@@ -284,13 +284,16 @@ checksum = "7b617d3b07d7bcdeb0590d4fea9460b004fbc5ecfc975993b9cbcc3a2f67fcce"
 
 [[package]]
 name = "sbi-spec"
-version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-spec.git?rev=a0fd76b#a0fd76bc5e74ad978d1d07d8f064ca45fa14dd9c"
+version = "0.0.2"
+source = "git+https://github.com/rustsbi/sbi-spec.git?branch=dev#54a6bad86582b275f0ef0d49c771067cb7518bdd"
+dependencies = [
+ "static_assertions",
+]
 
 [[package]]
 name = "sbi-testing"
-version = "0.1.0"
-source = "git+https://github.com/rustsbi/sbi-testing?rev=fb260eb#fb260eb58bbfe7b6d6745e19dc3d9e995ea0a4bb"
+version = "0.0.1"
+source = "git+https://github.com/rustsbi/sbi-testing?rev=b64abbe#b64abbe87d165c8aedec993cfc450505c1d6a8d9"
 dependencies = [
  "riscv",
  "sbi-rt",
@@ -310,6 +313,12 @@ checksum = "7f6002a767bff9e83f8eeecf883ecb8011875a21ae8da43bffb817a57e78cc09"
 dependencies = [
  "lock_api",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"
