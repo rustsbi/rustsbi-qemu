@@ -5,10 +5,6 @@
 #![no_main]
 
 use core::arch::asm;
-use riscv::register::{
-    scause::{Interrupt, Trap},
-    stvec::{self, TrapMode},
-};
 use sbi_testing::sbi;
 
 #[macro_use]
@@ -75,13 +71,22 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 ------------------------------------------------"
     );
 
-    use sbi_testing::{base::NotExist, spi::SendIpi, Case, Extension as Ext};
-    let _ = sbi_testing::test(hartid, 30_000_000, |case| match case {
+    use sbi_testing::{
+        base::NotExist, hsm::Case as Hsm, spi::SendIpi, Case, Extension as Ext, Testing,
+    };
+    Testing {
+        hart_id: hartid,
+        hart_mask: 0xff,
+        hart_mask_base: 0,
+        delay: 30_000_000,
+    }
+    .test(|case| match case {
         Case::Begin(ext) => {
             match ext {
                 Ext::Base => println!("[test-kernel] Testing Base"),
                 Ext::Time => println!("[test-kernel] Testing TIME"),
                 Ext::Spi => println!("[test-kernel] Testing sPI"),
+                Ext::Hsm => println!("[test-kernel] Testing HSM"),
             }
             true
         }
@@ -152,119 +157,25 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
                 }
             }
         }
+        Case::Hsm(Hsm::HartStarted(id)) => {
+            println!("[test-kernel] hart{id} already started");
+            true
+        }
+        Case::HsmFatel(fatel) => {
+            use sbi_testing::hsm::Fatel::*;
+            match fatel {
+                NotExist => {
+                    println!("[test-kernel] sbi hsm not exist");
+                    true
+                }
+                NoSecondaryHart => panic!("no secondary hart"),
+                HartStartFailed { hartid, ret } => panic!("hart {hartid} start failed: {ret:?}"),
+            }
+        }
     });
-
-    unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
-    test_hsm(hartid, smp);
 
     sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
     unreachable!()
-}
-
-extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
-    match riscv::register::scause::read().cause() {
-        Trap::Interrupt(Interrupt::SupervisorSoft) => unsafe { core::arch::asm!("csrw sip, zero") },
-        cause => panic!(
-            "[test-kernel] SBI test FAILED due to unexpected trap {cause:?} on {}",
-            trap_frame.tp
-        ),
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-macro_rules! define_store_load {
-    () => {
-        ".altmacro
-        .macro STORE reg, offset
-            sd  \\reg, \\offset* {REGBYTES} (sp)
-        .endm
-        .macro LOAD reg, offset
-            ld  \\reg, \\offset* {REGBYTES} (sp)
-        .endm"
-    };
-}
-
-#[cfg(target_pointer_width = "32")]
-macro_rules! define_store_load {
-    () => {
-        ".altmacro
-        .macro STORE reg, offset
-            sw  \\reg, \\offset* {REGBYTES} (sp)
-        .endm
-        .macro LOAD reg, offset
-            lw  \\reg, \\offset* {REGBYTES} (sp)
-        .endm"
-    };
-}
-
-#[naked]
-#[link_section = ".text.trap_handler"]
-unsafe extern "C" fn start_trap() {
-    asm!(define_store_load!(), "
-    addi    sp, sp, -17 * {REGBYTES}
-    STORE   ra, 0
-    STORE   t0, 1
-    STORE   t1, 2
-    STORE   t2, 3
-    STORE   t3, 4
-    STORE   t4, 5
-    STORE   t5, 6
-    STORE   t6, 7
-    STORE   a0, 8
-    STORE   a1, 9
-    STORE   a2, 10
-    STORE   a3, 11
-    STORE   a4, 12
-    STORE   a5, 13
-    STORE   a6, 14
-    STORE   a7, 15
-    STORE   tp, 16
-    mv      a0, sp
-    call    {rust_trap_exception}
-    LOAD    ra, 0
-    LOAD    t0, 1
-    LOAD    t1, 2
-    LOAD    t2, 3
-    LOAD    t3, 4
-    LOAD    t4, 5
-    LOAD    t5, 6
-    LOAD    t6, 7
-    LOAD    a0, 8
-    LOAD    a1, 9
-    LOAD    a2, 10
-    LOAD    a3, 11
-    LOAD    a4, 12
-    LOAD    a5, 13
-    LOAD    a6, 14
-    LOAD    a7, 15
-    LOAD    tp, 16
-    addi    sp, sp, 17 * {REGBYTES}
-    sret
-    ",
-    REGBYTES = const core::mem::size_of::<usize>(),
-    rust_trap_exception = sym rust_trap_exception,
-    options(noreturn))
-}
-
-#[repr(C)]
-struct TrapFrame {
-    ra: usize,
-    t0: usize,
-    t1: usize,
-    t2: usize,
-    t3: usize,
-    t4: usize,
-    t5: usize,
-    t6: usize,
-    a0: usize,
-    a1: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-    a7: usize,
-    tp: usize,
 }
 
 /// 根据硬件线程号设置启动栈。
@@ -344,109 +255,4 @@ fn parse_smp(dtb_pa: usize) -> BoardInfo {
         DtbObj::Property(_) => StepOver,
     });
     ans
-}
-
-/// 所有副核：启动 -> 不可恢复休眠 -> 唤醒 -> 可恢复休眠 -> 唤醒 -> 关闭。
-pub(crate) fn test_hsm(hartid: usize, smp: usize) {
-    use sbi::SbiRet;
-    use spin::{Barrier, Once};
-
-    const SUSPENDED: SbiRet = SbiRet {
-        error: sbi::RET_SUCCESS,
-        value: sbi::HART_STATE_SUSPENDED,
-    };
-    const STOPPED: SbiRet = SbiRet {
-        error: sbi::RET_SUCCESS,
-        value: sbi::HART_STATE_STOPPED,
-    };
-
-    static STARTED: Once<Barrier> = Once::new();
-    static RESUMED: Once<Barrier> = Once::new();
-
-    #[naked]
-    unsafe extern "C" fn test_entry(hartid: usize, main: usize) -> ! {
-        core::arch:: asm!(
-            "csrw sie, zero",      // 关中断
-            "call {select_stack}", // 设置启动栈
-            "jr   a1",             // 进入 rust
-            select_stack = sym crate::select_stack,
-            options(noreturn)
-        )
-    }
-
-    extern "C" fn start_rust_main(hart_id: usize) -> ! {
-        STARTED.wait().wait();
-        let ret = sbi::hart_suspend(
-            sbi::HART_SUSPEND_TYPE_NON_RETENTIVE,
-            test_entry as _,
-            resume_rust_main as _,
-        );
-        unreachable!("suspend [{hart_id}] but {ret:?}");
-    }
-
-    extern "C" fn resume_rust_main(hart_id: usize) -> ! {
-        RESUMED.wait().wait();
-        let ret = sbi::hart_suspend(sbi::HART_SUSPEND_TYPE_RETENTIVE, 0, 0);
-        assert_eq!(sbi::RET_SUCCESS, ret.error);
-        let ret = sbi::hart_stop();
-        unreachable!("stop [{hart_id}] but {ret:?}");
-    }
-
-    println!(
-        "
-[test-kernel] Testing hsm: start, stop, suspend and resume"
-    );
-
-    // 启动副核
-    let started = STARTED.call_once(|| Barrier::new(smp));
-    let resumed = RESUMED.call_once(|| Barrier::new(smp));
-    for id in 0..smp {
-        if id != hartid {
-            println!("[test-kernel] Hart{id} is booting...");
-            let ret = sbi::hart_start(id, test_entry as _, start_rust_main as _);
-            if ret.error != sbi::RET_SUCCESS {
-                panic!("[test-kernel] Start hart{id} failed: {ret:?}");
-            }
-        } else {
-            println!("[test-kernel] Hart{id} is the primary hart.");
-        }
-    }
-    // 等待副核启动完成
-    started.wait();
-    print!("[test-kernel] All harts boot successfully!\n");
-    // 等待副核休眠（不可恢复）
-    for id in 0..smp {
-        if id != hartid {
-            while sbi::hart_get_status(id) != SUSPENDED {
-                core::hint::spin_loop();
-            }
-            println!("[test-kernel] Hart{id} suspended.");
-        } else {
-            println!("[test-kernel] Hart{id} is the primary hart.");
-        }
-    }
-    // 全部唤醒
-    sbi::send_ipi(0, -1isize as usize);
-    // 等待副核恢复完成
-    resumed.wait();
-    print!("[test-kernel] All harts resume successfully!\n");
-    for id in 0..smp {
-        if id != hartid {
-            // 等待副核休眠
-            while sbi::hart_get_status(id) != SUSPENDED {
-                core::hint::spin_loop();
-            }
-            print!("[test-kernel] Hart{id} suspended, ");
-            // 单独唤醒
-            sbi::send_ipi(1usize << id, 0);
-            // 等待副核关闭
-            while sbi::hart_get_status(id) != STOPPED {
-                core::hint::spin_loop();
-            }
-            println!("then stopped.");
-        } else {
-            println!("[test-kernel] Hart{id} is the primary hart.");
-        }
-    }
-    println!("[test-kernel] All harts stop successfully!");
 }
