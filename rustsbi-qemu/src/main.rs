@@ -1,7 +1,6 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
-#![deny(warnings)]
 
 mod clint;
 mod device_tree;
