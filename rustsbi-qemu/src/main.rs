@@ -1,7 +1,6 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
-#![deny(warnings)]
 
 mod clint;
 mod device_tree;
@@ -10,6 +9,9 @@ mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
 mod qemu_test;
+
+// penglai enclave. todo: move to separate crate?
+mod penglai;
 
 #[macro_use] // for print
 extern crate rustsbi;
