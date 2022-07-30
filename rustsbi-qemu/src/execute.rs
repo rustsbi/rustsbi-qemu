@@ -1,4 +1,4 @@
-use crate::{clint, hart_id, qemu_hsm::QemuHsm, Supervisor};
+use crate::{clint, hart_id, penglai, qemu_hsm::QemuHsm, Supervisor};
 use core::arch::asm;
 use riscv::register::*;
 
@@ -111,18 +111,18 @@ impl Context {
         use rustsbi::spec::{binary::*, hsm::*, srst::*};
         let extension = self.a(7);
         let function = self.a(6);
-        let ans = rustsbi::ecall(
-            extension,
-            function,
-            [
-                self.a(0),
-                self.a(1),
-                self.a(2),
-                self.a(3),
-                self.a(4),
-                self.a(5),
-            ],
-        );
+        let param = [
+            self.a(0),
+            self.a(1),
+            self.a(2),
+            self.a(3),
+            self.a(4),
+            self.a(5),
+        ];
+        let ans = match extension {
+            penglai::EID_PENGLAI_HOST => penglai::ecall(extension, function, param),
+            _ => rustsbi::ecall(extension, function, param),
+        };
         // 判断导致退出执行流程的调用
         if ans.error == RET_SUCCESS {
             match extension {

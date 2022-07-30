@@ -11,6 +11,9 @@ mod ns16550a;
 mod qemu_hsm;
 mod qemu_test;
 
+// penglai enclave. todo: move to separate crate?
+mod penglai;
+
 #[macro_use] // for print
 extern crate rustsbi;
 
