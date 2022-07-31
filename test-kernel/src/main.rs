@@ -71,106 +71,79 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 ------------------------------------------------"
     );
 
-    use sbi_testing::{
-        base::NotExist, hsm::Case as Hsm, spi::SendIpi, Case, Extension as Ext, Testing,
-    };
-    Testing {
-        hart_id: hartid,
-        hart_mask: 0xff,
-        hart_mask_base: 0,
-        delay: 30_000_000,
-    }
-    .test(|case| match case {
-        Case::Begin(ext) => {
-            match ext {
-                Ext::Base => println!("[test-kernel] Testing Base"),
-                Ext::Time => println!("[test-kernel] Testing TIME"),
-                Ext::Spi => println!("[test-kernel] Testing sPI"),
-                Ext::Hsm => println!("[test-kernel] Testing HSM"),
+    sbi_testing::base::test(|case| {
+        use sbi_testing::base::Case::*;
+        match case {
+            NotExist => panic!("Sbi Base Not Exist"),
+            Begin => println!("[test-kernel] Testing Base"),
+            Pass => println!("[test-kernel] Sbi Base Test Pass"),
+            GetSbiSpecVersion(version) => {
+                println!("[test-kernel] sbi spec version = {version}");
             }
-            true
-        }
-        Case::End(_) => true,
-        Case::Base(case) => {
-            use sbi_testing::base::Case::*;
-            match case {
-                GetSbiSpecVersion(version) => {
-                    println!("[test-kernel] sbi spec version = {version}");
-                }
-                GetSbiImplId(Ok(name)) => {
-                    println!("[test-kernel] sbi impl = {name}");
-                }
-                GetSbiImplId(Err(unknown)) => {
-                    println!("[test-kernel] unknown sbi impl = {unknown:#x}");
-                }
-                GetSbiImplVersion(version) => {
-                    println!("[test-kernel] sbi impl version = {version:#x}");
-                }
-                ProbeExtensions(exts) => {
-                    println!("[test-kernel] sbi extensions = {exts}");
-                }
-                GetMVendorId(id) => {
-                    println!("[test-kernel] mvendor id = {id:#x}");
-                }
-                GetMArchId(id) => {
-                    println!("[test-kernel] march id = {id:#x}");
-                }
-                GetMimpId(id) => {
-                    println!("[test-kernel] mimp id = {id:#x}");
-                }
+            GetSbiImplId(Ok(name)) => {
+                println!("[test-kernel] sbi impl = {name}");
             }
-            true
-        }
-        Case::BaseFatel(NotExist) => panic!("sbi base not exist"),
-        Case::Time(case) => {
-            use sbi_testing::time::Case::*;
-            match case {
-                Interval { begin: _, end: _ } => {
-                    println!("[test-kernel] read time register successfuly, set timer +3s");
-                }
-                SetTimer => {
-                    println!("[test-kernel] timer interrupt delegate successfuly");
-                }
+            GetSbiImplId(Err(unknown)) => {
+                println!("[test-kernel] unknown sbi impl = {unknown:#x}");
             }
-            true
-        }
-        Case::TimeFatel(fatel) => {
-            use sbi_testing::time::Fatel::*;
-            match fatel {
-                NotExist => panic!("sbi time not exist"),
-                TimeDecreased { a, b } => panic!("time decreased: {a} -> {b}"),
-                UnexpectedTrap(trap) => {
-                    panic!("expect trap at supervisor timer, but {trap:?} was caught");
-                }
+            GetSbiImplVersion(version) => {
+                println!("[test-kernel] sbi impl version = {version:#x}");
+            }
+            ProbeExtensions(exts) => {
+                println!("[test-kernel] sbi extensions = {exts}");
+            }
+            GetMVendorId(id) => {
+                println!("[test-kernel] mvendor id = {id:#x}");
+            }
+            GetMArchId(id) => {
+                println!("[test-kernel] march id = {id:#x}");
+            }
+            GetMimpId(id) => {
+                println!("[test-kernel] mimp id = {id:#x}");
             }
         }
-        Case::Spi(SendIpi) => {
-            println!("[test-kernel] send ipi successfuly");
-            true
-        }
-        Case::SpiFatel(fatel) => {
-            use sbi_testing::spi::Fatel::*;
-            match fatel {
-                NotExist => panic!("sbi spi not exist"),
-                UnexpectedTrap(trap) => {
-                    panic!("expect trap at supervisor soft, but {trap:?} was caught");
-                }
+    });
+    println!();
+    sbi_testing::time::test(10_000_000, |case| {
+        use sbi_testing::time::Case::*;
+        match case {
+            NotExist => panic!("Sbi TIME Not Exist"),
+            Begin => println!("[test-kernel] Testing TIME"),
+            Pass => println!("[test-kernel] Sbi TIME Test Pass"),
+            Interval { begin: _, end: _ } => {
+                println!("[test-kernel] read time register successfuly, set timer +1s");
+            }
+            TimeDecreased { a, b } => panic!("time decreased: {a} -> {b}"),
+            SetTimer => {
+                println!("[test-kernel] timer interrupt delegate successfuly");
+            }
+            UnexpectedTrap(trap) => {
+                panic!("expect trap at supervisor timer, but {trap:?} was caught");
             }
         }
-        Case::Hsm(Hsm::HartStarted(id)) => {
-            println!("[test-kernel] hart{id} already started");
-            true
-        }
-        Case::HsmFatel(fatel) => {
-            use sbi_testing::hsm::Fatel::*;
-            match fatel {
-                NotExist => {
-                    println!("[test-kernel] sbi hsm not exist");
-                    true
-                }
-                NoSecondaryHart => panic!("no secondary hart"),
-                HartStartFailed { hartid, ret } => panic!("hart {hartid} start failed: {ret:?}"),
+    });
+    println!();
+    sbi_testing::spi::test(hartid, |case| {
+        use sbi_testing::spi::Case::*;
+        match case {
+            NotExist => panic!("Sbi sPI Not Exist"),
+            Begin => println!("[test-kernel] Testing sPI"),
+            Pass => println!("[test-kernel] Sbi sPI Test Pass"),
+            SendIpi => println!("[test-kernel] send ipi successfuly"),
+            UnexpectedTrap(trap) => {
+                panic!("expect trap at supervisor soft, but {trap:?} was caught")
             }
+        }
+    });
+    sbi_testing::hsm::test(hartid, 0xff, 0, |case| {
+        use sbi_testing::hsm::Case::*;
+        match case {
+            NotExist => panic!("Sbi HSM Not Exist"),
+            Begin => println!("[test-kernel] Testing HSM"),
+            Pass => println!("[test-kernel] Sbi HSM Test Pass"),
+            NoSecondaryHart => println!("no secondary hart"),
+            HartStarted(id) => println!("[test-kernel] hart{id} already started"),
+            HartStartFailed { hartid, ret } => panic!("hart {hartid} start failed: {ret:?}"),
         }
     });
 

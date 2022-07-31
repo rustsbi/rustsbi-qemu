@@ -293,7 +293,7 @@ dependencies = [
 [[package]]
 name = "sbi-testing"
 version = "0.0.1"
-source = "git+https://github.com/rustsbi/sbi-testing?rev=4cedc36#4cedc369e95570df0bed5e99c77456c72144dc0f"
+source = "git+https://github.com/rustsbi/sbi-testing?rev=796d6c1#796d6c16840fa463461d558629780d3b3dff0943"
 dependencies = [
  "riscv",
  "sbi-rt",
