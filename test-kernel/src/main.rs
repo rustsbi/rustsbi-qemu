@@ -5,15 +5,10 @@
 #![no_main]
 
 use core::arch::asm;
-use riscv::register::{
-    scause::{Interrupt, Trap},
-    sepc,
-    stvec::{self, TrapMode},
-};
+use sbi_testing::sbi;
 
 #[macro_use]
 mod console;
-mod test;
 
 mod constants {
     pub(crate) const LEN_PAGE: usize = 4096; // 4KiB
@@ -26,7 +21,7 @@ use constants::*;
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use sbi_rt::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
+    use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
 
     let (hard_id, pc): (usize, usize);
     unsafe { asm!("mv    {}, tp", out(reg) hard_id) };
@@ -57,10 +52,6 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     )
 }
 
-/// 为每个核记录一个预期的陷入原因，实现陷入代理测试。
-/// 总是可以安全地使用，因为这是（硬件）线程独立变量。
-static mut EXPECTED: [Option<Trap>; 8] = [None; 8];
-
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
 
@@ -80,148 +71,84 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 ------------------------------------------------"
     );
 
-    test::base_extension();
-    test::sbi_ins_emulation();
-
-    unsafe { stvec::write(start_trap as usize, TrapMode::Direct) };
-    test::trap_execption_delegate(hartid);
-
-    unsafe { riscv::register::sstatus::set_sie() };
-    test::trap_interrupt_delegate(hartid);
-
-    test::hsm(hartid, smp);
-
-    sbi_rt::system_reset(sbi_rt::RESET_TYPE_SHUTDOWN, sbi_rt::RESET_REASON_NO_REASON);
-    unreachable!()
-}
-
-extern "C" fn rust_trap_exception(trap_frame: &mut TrapFrame) {
-    use riscv::register::scause;
-
-    let cause = scause::read().cause();
-    let expected = unsafe { core::mem::take(&mut EXPECTED[trap_frame.tp]) };
-    if Some(cause) == expected {
-        match cause {
-            Trap::Exception(_) => {
-                sepc::write(sepc::read().wrapping_add(4));
+    sbi_testing::base::test(|case| {
+        use sbi_testing::base::Case::*;
+        match case {
+            NotExist => panic!("Sbi Base Not Exist"),
+            Begin => println!("[test-kernel] Testing Base"),
+            Pass => println!("[test-kernel] Sbi Base Test Pass"),
+            GetSbiSpecVersion(version) => {
+                println!("[test-kernel] sbi spec version = {version}");
             }
-            Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                sbi_rt::set_timer(u64::MAX);
+            GetSbiImplId(Ok(name)) => {
+                println!("[test-kernel] sbi impl = {name}");
             }
-            _ => {}
+            GetSbiImplId(Err(unknown)) => {
+                println!("[test-kernel] unknown sbi impl = {unknown:#x}");
+            }
+            GetSbiImplVersion(version) => {
+                println!("[test-kernel] sbi impl version = {version:#x}");
+            }
+            ProbeExtensions(exts) => {
+                println!("[test-kernel] sbi extensions = {exts}");
+            }
+            GetMVendorId(id) => {
+                println!("[test-kernel] mvendor id = {id:#x}");
+            }
+            GetMArchId(id) => {
+                println!("[test-kernel] march id = {id:#x}");
+            }
+            GetMimpId(id) => {
+                println!("[test-kernel] mimp id = {id:#x}");
+            }
         }
-    } else {
-        panic!("[test-kernel] SBI test FAILED due to unexpected trap {cause:?}");
-    }
-}
+    });
+    println!();
+    sbi_testing::time::test(10_000_000, |case| {
+        use sbi_testing::time::Case::*;
+        match case {
+            NotExist => panic!("Sbi TIME Not Exist"),
+            Begin => println!("[test-kernel] Testing TIME"),
+            Pass => println!("[test-kernel] Sbi TIME Test Pass"),
+            Interval { begin: _, end: _ } => {
+                println!("[test-kernel] read time register successfuly, set timer +1s");
+            }
+            TimeDecreased { a, b } => panic!("time decreased: {a} -> {b}"),
+            SetTimer => {
+                println!("[test-kernel] timer interrupt delegate successfuly");
+            }
+            UnexpectedTrap(trap) => {
+                panic!("expect trap at supervisor timer, but {trap:?} was caught");
+            }
+        }
+    });
+    println!();
+    sbi_testing::spi::test(hartid, |case| {
+        use sbi_testing::spi::Case::*;
+        match case {
+            NotExist => panic!("Sbi sPI Not Exist"),
+            Begin => println!("[test-kernel] Testing sPI"),
+            Pass => println!("[test-kernel] Sbi sPI Test Pass"),
+            SendIpi => println!("[test-kernel] send ipi successfuly"),
+            UnexpectedTrap(trap) => {
+                panic!("expect trap at supervisor soft, but {trap:?} was caught")
+            }
+        }
+    });
+    sbi_testing::hsm::test(hartid, 0xff, 0, |case| {
+        use sbi_testing::hsm::Case::*;
+        match case {
+            NotExist => panic!("Sbi HSM Not Exist"),
+            Begin => println!("[test-kernel] Testing HSM"),
+            Pass => println!("[test-kernel] Sbi HSM Test Pass"),
+            NoSecondaryHart => println!("no secondary hart"),
+            HartStarted(id) => println!("[test-kernel] hart{id} already started"),
+            HartStartFailed { hartid, ret } => panic!("hart {hartid} start failed: {ret:?}"),
+        }
+    });
 
-#[cfg(target_pointer_width = "128")]
-macro_rules! define_store_load {
-    () => {
-        ".altmacro
-        .macro STORE reg, offset
-            sq  \\reg, \\offset* {REGBYTES} (sp)
-        .endm
-        .macro LOAD reg, offset
-            lq  \\reg, \\offset* {REGBYTES} (sp)
-        .endm"
-    };
-}
-
-#[cfg(target_pointer_width = "64")]
-macro_rules! define_store_load {
-    () => {
-        ".altmacro
-        .macro STORE reg, offset
-            sd  \\reg, \\offset* {REGBYTES} (sp)
-        .endm
-        .macro LOAD reg, offset
-            ld  \\reg, \\offset* {REGBYTES} (sp)
-        .endm"
-    };
-}
-
-#[cfg(target_pointer_width = "32")]
-macro_rules! define_store_load {
-    () => {
-        ".altmacro
-        .macro STORE reg, offset
-            sw  \\reg, \\offset* {REGBYTES} (sp)
-        .endm
-        .macro LOAD reg, offset
-            lw  \\reg, \\offset* {REGBYTES} (sp)
-        .endm"
-    };
-}
-
-#[naked]
-#[link_section = ".text.trap_handler"]
-unsafe extern "C" fn start_trap() {
-    asm!(define_store_load!(), "
-    addi    sp, sp, -17 * {REGBYTES}
-    STORE   ra, 0
-    STORE   t0, 1
-    STORE   t1, 2
-    STORE   t2, 3
-    STORE   t3, 4
-    STORE   t4, 5
-    STORE   t5, 6
-    STORE   t6, 7
-    STORE   a0, 8
-    STORE   a1, 9
-    STORE   a2, 10
-    STORE   a3, 11
-    STORE   a4, 12
-    STORE   a5, 13
-    STORE   a6, 14
-    STORE   a7, 15
-    STORE   tp, 16
-    mv      a0, sp
-    call    {rust_trap_exception}
-    LOAD    ra, 0
-    LOAD    t0, 1
-    LOAD    t1, 2
-    LOAD    t2, 3
-    LOAD    t3, 4
-    LOAD    t4, 5
-    LOAD    t5, 6
-    LOAD    t6, 7
-    LOAD    a0, 8
-    LOAD    a1, 9
-    LOAD    a2, 10
-    LOAD    a3, 11
-    LOAD    a4, 12
-    LOAD    a5, 13
-    LOAD    a6, 14
-    LOAD    a7, 15
-    LOAD    tp, 16
-    addi    sp, sp, 17 * {REGBYTES}
-    sret
-    ",
-    REGBYTES = const core::mem::size_of::<usize>(),
-    rust_trap_exception = sym rust_trap_exception,
-    options(noreturn))
-}
-
-#[repr(C)]
-struct TrapFrame {
-    ra: usize,
-    t0: usize,
-    t1: usize,
-    t2: usize,
-    t3: usize,
-    t4: usize,
-    t5: usize,
-    t6: usize,
-    a0: usize,
-    a1: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-    a7: usize,
-    tp: usize,
+    sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
+    unreachable!()
 }
 
 /// 根据硬件线程号设置启动栈。

@@ -27,6 +27,14 @@ impl Clint {
         unsafe { ((self.base as *mut u8).add(0xbff8) as *mut u64).read_volatile() }
     }
 
+    pub fn set_mtimercomp(&self, value: u64) {
+        unsafe {
+            ((self.base + 0x4000) as *mut u64)
+                .add(hart_id())
+                .write_volatile(value)
+        }
+    }
+
     #[inline]
     pub fn send_soft(&self, hart_id: usize) {
         unsafe { (self.base as *mut u32).add(hart_id).write_volatile(1) };
@@ -56,10 +64,7 @@ impl Timer for Clint {
     fn set_timer(&self, time_value: u64) {
         unsafe {
             riscv::register::mip::clear_stimer();
-            riscv::register::mie::set_mtimer();
-            ((self.base as *mut u8).offset(0x4000) as *mut u64)
-                .add(hart_id())
-                .write_volatile(time_value);
+            self.set_mtimercomp(time_value);
         }
     }
 }
