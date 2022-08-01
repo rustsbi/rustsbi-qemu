@@ -25,7 +25,7 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
         medeleg::clear_supervisor_env_call();
         medeleg::clear_machine_env_call();
 
-        crate::set_mtvec(s_to_m as usize);
+        mtvec::write(s_to_m as _, mtvec::TrapMode::Direct);
         mie::set_mext();
         mie::set_msoft();
         mie::set_mtimer();
@@ -282,10 +282,10 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
 /// 裸函数。
 /// 利用恢复的 ra 回到 [`m_to_s`] 的返回地址。
 #[naked]
-#[link_section = ".text.trap_handler"]
 unsafe extern "C" fn s_to_m() {
     asm!(
         r"
+        .align 2
         .altmacro
         .macro SAVE_S n
             sd x\n, \n*8(sp)

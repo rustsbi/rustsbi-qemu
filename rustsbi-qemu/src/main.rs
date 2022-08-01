@@ -1,7 +1,7 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
-#![deny(warnings)]
+// #![deny(warnings)]
 
 mod clint;
 mod device_tree;
@@ -91,30 +91,10 @@ unsafe extern "C" fn entry() -> ! {
     )
 }
 
-/// 真正的异常处理函数设置好之前，使用这个处理异常。
-#[link_section = ".text.early_trap"]
-extern "C" fn early_trap() -> ! {
-    print!(
-        "\
-{:?} at hart[{}]{:#x}
-{:#x?}
-",
-        riscv::register::mcause::read().cause(),
-        hart_id(),
-        riscv::register::mepc::read(),
-        riscv::register::mstatus::read(),
-    );
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
-    unsafe { set_mtvec(early_trap as _) };
-
     #[link_section = ".bss.uninit"] // 以免清零
     static GENESIS: AtomicBool = AtomicBool::new(false);
 
@@ -239,10 +219,4 @@ fn set_pmp(board_info: &BoardInfo) {
 #[inline(always)]
 fn hart_id() -> usize {
     riscv::register::mhartid::read()
-}
-
-#[inline(always)]
-unsafe fn set_mtvec(trap_handler: usize) {
-    use riscv::register::mtvec;
-    mtvec::write(trap_handler, mtvec::TrapMode::Direct);
 }
