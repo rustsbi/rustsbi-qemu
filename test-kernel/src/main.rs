@@ -39,7 +39,6 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
 
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
-
     let BoardInfo {
         smp,
         frequency,
@@ -60,93 +59,13 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 | dtb physical address  | {dtb_pa:#20x} |
 ------------------------------------------------"
     );
-
-    sbi_testing::base::test(|case| {
-        use sbi_testing::base::Case::*;
-        match case {
-            NotExist => panic!("Sbi Base Not Exist"),
-            Begin => println!("[test-kernel] Testing Base"),
-            Pass => println!("[test-kernel] Sbi Base Test Pass"),
-            GetSbiSpecVersion(version) => {
-                println!("[test-kernel] sbi spec version = {version}");
-            }
-            GetSbiImplId(Ok(name)) => {
-                println!("[test-kernel] sbi impl = {name}");
-            }
-            GetSbiImplId(Err(unknown)) => {
-                println!("[test-kernel] unknown sbi impl = {unknown:#x}");
-            }
-            GetSbiImplVersion(version) => {
-                println!("[test-kernel] sbi impl version = {version:#x}");
-            }
-            ProbeExtensions(exts) => {
-                println!("[test-kernel] sbi extensions = {exts}");
-            }
-            GetMVendorId(id) => {
-                println!("[test-kernel] mvendor id = {id:#x}");
-            }
-            GetMArchId(id) => {
-                println!("[test-kernel] march id = {id:#x}");
-            }
-            GetMimpId(id) => {
-                println!("[test-kernel] mimp id = {id:#x}");
-            }
-        }
-    });
-    println!();
-    sbi_testing::time::test(frequency, |case| {
-        use sbi_testing::time::Case::*;
-        match case {
-            NotExist => panic!("Sbi TIME Not Exist"),
-            Begin => println!("[test-kernel] Testing TIME"),
-            Pass => println!("[test-kernel] Sbi TIME Test Pass"),
-            Interval { begin: _, end: _ } => {
-                println!("[test-kernel] read time register successfuly, set timer +1s");
-            }
-            TimeDecreased { a, b } => panic!("time decreased: {a} -> {b}"),
-            SetTimer => {
-                println!("[test-kernel] timer interrupt delegate successfuly");
-            }
-            UnexpectedTrap(trap) => {
-                panic!("expect trap at supervisor timer, but {trap:?} was caught");
-            }
-        }
-    });
-    println!();
-    sbi_testing::spi::test(hartid, |case| {
-        use sbi_testing::spi::Case::*;
-        match case {
-            NotExist => panic!("Sbi sPI Not Exist"),
-            Begin => println!("[test-kernel] Testing sPI"),
-            Pass => println!("[test-kernel] Sbi sPI Test Pass"),
-            SendIpi => println!("[test-kernel] send ipi successfuly"),
-            UnexpectedTrap(trap) => {
-                panic!("expect trap at supervisor soft, but {trap:?} was caught")
-            }
-        }
-    });
-    println!();
-    sbi_testing::hsm::test(hartid, (1 << smp) - 1, 0, |case| {
-        use sbi_testing::hsm::Case::*;
-        match case {
-            NotExist => panic!("Sbi HSM Not Exist"),
-            Begin => println!("[test-kernel] Testing HSM"),
-            Pass => println!("[test-kernel] Sbi HSM Test Pass"),
-            HartStartedBeforeTest(id) => println!("[test-kernel] hart {id} already started"),
-            NoStoppedHart => println!("[test-kernel] no stopped hart"),
-            BatchBegin(batch) => println!("[test-kernel] Testing harts: {batch:?}"),
-            HartStarted(id) => println!("[test-kernel] hart {id} started"),
-            HartStartFailed { hartid, ret } => panic!("hart {hartid} start failed: {ret:?}"),
-            HartSuspendedNonretentive(id) => {
-                println!("[test-kernel] hart {id} suspended nonretentive")
-            }
-            HartResumed(id) => println!("[test-kernel] hart {id} resumed"),
-            HartSuspendedRetentive(id) => println!("[test-kernel] hart {id} suspended retentive"),
-            HartStopped(id) => println!("[test-kernel] hart {id} stopped"),
-            BatchPass(_) => {}
-        }
-    });
-
+    sbi_testing::Testing {
+        hartid,
+        hart_mask: (1 << smp) - 1,
+        hart_mask_base: 0,
+        delay: frequency,
+    }
+    .test();
     sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
     unreachable!()
 }
