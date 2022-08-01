@@ -125,15 +125,25 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
             }
         }
     });
-    sbi_testing::hsm::test(hartid, 0xff, 0, |case| {
+    println!();
+    sbi_testing::hsm::test(hartid, (1 << smp) - 1, 0, |case| {
         use sbi_testing::hsm::Case::*;
         match case {
             NotExist => panic!("Sbi HSM Not Exist"),
             Begin => println!("[test-kernel] Testing HSM"),
             Pass => println!("[test-kernel] Sbi HSM Test Pass"),
-            NoSecondaryHart => println!("[test-kernel] no secondary hart"),
-            HartStarted(id) => println!("[test-kernel] hart{id} already started"),
+            HartStartedBeforeTest(id) => println!("[test-kernel] hart {id} already started"),
+            NoStoppedHart => println!("[test-kernel] no stopped hart"),
+            BatchBegin(batch) => println!("[test-kernel] Testing harts: {batch:?}"),
+            HartStarted(id) => println!("[test-kernel] hart {id} started"),
             HartStartFailed { hartid, ret } => panic!("hart {hartid} start failed: {ret:?}"),
+            HartSuspendedNonretentive(id) => {
+                println!("[test-kernel] hart {id} suspended nonretentive")
+            }
+            HartResumed(id) => println!("[test-kernel] hart {id} resumed"),
+            HartSuspendedRetentive(id) => println!("[test-kernel] hart {id} suspended retentive"),
+            HartStopped(id) => println!("[test-kernel] hart {id} stopped"),
+            BatchPass(_) => {}
         }
     });
 
