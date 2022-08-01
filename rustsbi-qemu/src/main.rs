@@ -1,7 +1,7 @@
-#![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
-// #![deny(warnings)]
+#![feature(naked_functions, asm_sym, asm_const)]
+#![deny(warnings)]
 
 mod clint;
 mod device_tree;
@@ -10,15 +10,6 @@ mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
 mod qemu_test;
-
-#[macro_use] // for print
-extern crate rustsbi;
-
-use constants::*;
-use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
-use device_tree::BoardInfo;
-use execute::Operation;
-use spin::Once;
 
 mod constants {
     /// 特权软件入口。
@@ -30,6 +21,15 @@ mod constants {
     /// SBI 软件全部栈空间容量。
     pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
 }
+
+#[macro_use] // for print
+extern crate rustsbi;
+
+use constants::*;
+use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
+use device_tree::BoardInfo;
+use execute::Operation;
+use spin::Once;
 
 /// 特权软件信息。
 struct Supervisor {
@@ -183,6 +183,11 @@ unsafe extern "C" fn finalize(op: Operation) -> ! {
     }
 }
 
+#[inline(always)]
+fn hart_id() -> usize {
+    riscv::register::mhartid::read()
+}
+
 /// 清零 bss 段。
 #[inline(always)]
 fn zero_bss() {
@@ -214,9 +219,4 @@ fn set_pmp(board_info: &BoardInfo) {
         pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, false);
         pmpaddr3::write(mem.end >> 2);
     }
-}
-
-#[inline(always)]
-fn hart_id() -> usize {
-    riscv::register::mhartid::read()
 }

@@ -1,37 +1,13 @@
-//! A test kernel to test RustSBI function on all platforms
-
-#![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
-
-use core::arch::asm;
-use sbi_testing::sbi;
+#![feature(naked_functions, asm_sym, asm_const)]
+#![deny(warnings)]
 
 #[macro_use]
 mod console;
 
-mod constants {
-    pub(crate) const LEN_PAGE: usize = 4096; // 4KiB
-    pub(crate) const PER_HART_STACK_SIZE: usize = 4 * LEN_PAGE; // 16KiB
-    pub(crate) const MAX_HART_NUMBER: usize = 8; // assume 8 cores in QEMU
-    pub(crate) const STACK_SIZE: usize = PER_HART_STACK_SIZE * MAX_HART_NUMBER;
-}
-
-use constants::*;
-
-#[cfg_attr(not(test), panic_handler)]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
-
-    let (hard_id, pc): (usize, usize);
-    unsafe { asm!("mv    {}, tp", out(reg) hard_id) };
-    unsafe { asm!("auipc {},  0", out(reg) pc) };
-    println!("[test-kernel-panic] hart {hard_id} {info}");
-    println!("[test-kernel-panic] pc = {pc:#x}");
-    println!("[test-kernel-panic] SBI test FAILED due to panic");
-    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
-    loop {}
-}
+use core::arch::asm;
+use sbi_testing::sbi;
 
 /// 内核入口。
 ///
@@ -42,20 +18,33 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[no_mangle]
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
+    const STACK_SIZE: usize = 16384; // 16 KiB
+
+    #[link_section = ".bss.uninit"]
+    static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
+
     asm!(
-        "csrw sie, zero",      // 关中断
-        "call {select_stack}", // 设置启动栈
-        "j    {main}",         // 进入 rust
-        select_stack = sym select_stack,
-        main = sym primary_rust_main,
-        options(noreturn)
+        "   csrw sie, zero
+            la   sp,  {stack}
+            li   t0,  {stack_size}
+            add  sp,  sp, t0
+            j    {main}
+        ",
+        stack_size = const STACK_SIZE,
+        stack      = sym   STACK,
+        main       = sym   primary_rust_main,
+        options(noreturn),
     )
 }
 
 extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     zero_bss();
 
-    let BoardInfo { smp, uart } = parse_smp(dtb_pa);
+    let BoardInfo {
+        smp,
+        frequency,
+        uart,
+    } = BoardInfo::parse(dtb_pa);
     console::init(uart);
     println!(
         r"
@@ -67,6 +56,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 ================================================
 | boot hart id          | {hartid:20} |
 | smp                   | {smp:20} |
+| timebase frequency    | {frequency:17} Hz |
 | dtb physical address  | {dtb_pa:#20x} |
 ------------------------------------------------"
     );
@@ -104,7 +94,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
         }
     });
     println!();
-    sbi_testing::time::test(10_000_000, |case| {
+    sbi_testing::time::test(frequency, |case| {
         use sbi_testing::time::Case::*;
         match case {
             NotExist => panic!("Sbi TIME Not Exist"),
@@ -141,7 +131,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
             NotExist => panic!("Sbi HSM Not Exist"),
             Begin => println!("[test-kernel] Testing HSM"),
             Pass => println!("[test-kernel] Sbi HSM Test Pass"),
-            NoSecondaryHart => println!("no secondary hart"),
+            NoSecondaryHart => println!("[test-kernel] no secondary hart"),
             HartStarted(id) => println!("[test-kernel] hart{id} already started"),
             HartStartFailed { hartid, ret } => panic!("hart {hartid} start failed: {ret:?}"),
         }
@@ -149,32 +139,6 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
 
     sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
     unreachable!()
-}
-
-/// 根据硬件线程号设置启动栈。
-///
-/// # Safety
-///
-/// 裸函数。
-#[naked]
-unsafe extern "C" fn select_stack(hartid: usize) {
-    #[link_section = ".bss.uninit"]
-    static mut BOOT_STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
-
-    asm!("
-           mv   tp, a0
-           addi t0, a0,  1
-           la   sp, {stack}
-           li   t1, {len_per_hart}
-        1: add  sp, sp, t1
-           addi t0, t0, -1
-           bnez t0, 1b
-           ret
-        ",
-        stack = sym BOOT_STACK,
-        len_per_hart = const PER_HART_STACK_SIZE,
-        options(noreturn)
-    )
 }
 
 /// 清零 bss 段。
@@ -191,41 +155,72 @@ fn zero_bss() {
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
+#[cfg_attr(not(test), panic_handler)]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
+
+    let (hard_id, pc): (usize, usize);
+    unsafe { asm!("mv    {}, tp", out(reg) hard_id) };
+    unsafe { asm!("auipc {},  0", out(reg) pc) };
+    println!("[test-kernel-panic] hart {hard_id} {info}");
+    println!("[test-kernel-panic] pc = {pc:#x}");
+    println!("[test-kernel-panic] SBI test FAILED due to panic");
+    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
+    loop {}
+}
+
 struct BoardInfo {
     smp: usize,
+    frequency: u64,
     uart: usize,
 }
 
-fn parse_smp(dtb_pa: usize) -> BoardInfo {
-    use dtb_walker::{Dtb, DtbObj, HeaderError as E, Property, Str, WalkOperation::*};
+impl BoardInfo {
+    fn parse(dtb_pa: usize) -> Self {
+        use dtb_walker::{Dtb, DtbObj, HeaderError as E, Property, Str, WalkOperation::*};
 
-    let mut ans = BoardInfo { smp: 0, uart: 0 };
-    unsafe {
-        Dtb::from_raw_parts_filtered(dtb_pa as _, |e| {
-            matches!(e, E::Misaligned(4) | E::LastCompVersion(16))
-        })
+        let mut ans = Self {
+            smp: 0,
+            frequency: 0,
+            uart: 0,
+        };
+        unsafe {
+            Dtb::from_raw_parts_filtered(dtb_pa as _, |e| {
+                matches!(e, E::Misaligned(4) | E::LastCompVersion(16))
+            })
+        }
+        .unwrap()
+        .walk(|ctx, obj| match obj {
+            DtbObj::SubNode { name } => {
+                if ctx.is_root() && (name == Str::from("cpus") || name == Str::from("soc")) {
+                    StepInto
+                } else if ctx.name() == Str::from("cpus") && name.starts_with("cpu@") {
+                    ans.smp += 1;
+                    StepOver
+                } else if ctx.name() == Str::from("soc") && name.starts_with("uart") {
+                    StepInto
+                } else {
+                    StepOver
+                }
+            }
+            DtbObj::Property(Property::Reg(mut reg)) => {
+                if ctx.name().starts_with("uart") {
+                    ans.uart = reg.next().unwrap().start;
+                }
+                StepOut
+            }
+            DtbObj::Property(Property::General { name, value }) => {
+                if ctx.name() == Str::from("cpus") && name == Str::from("timebase-frequency") {
+                    ans.frequency = match *value {
+                        [a, b, c, d] => u32::from_be_bytes([a, b, c, d]) as _,
+                        [a, b, c, d, e, f, g, h] => u64::from_be_bytes([a, b, c, d, e, f, g, h]),
+                        _ => unreachable!(),
+                    };
+                }
+                StepOver
+            }
+            DtbObj::Property(_) => StepOver,
+        });
+        ans
     }
-    .unwrap()
-    .walk(|ctx, obj| match obj {
-        DtbObj::SubNode { name } => {
-            if ctx.is_root() && (name == Str::from("cpus") || name == Str::from("soc")) {
-                StepInto
-            } else if ctx.name() == Str::from("cpus") && name.starts_with("cpu@") {
-                ans.smp += 1;
-                StepOver
-            } else if ctx.name() == Str::from("soc") && name.starts_with("uart") {
-                StepInto
-            } else {
-                StepOver
-            }
-        }
-        DtbObj::Property(Property::Reg(mut reg)) => {
-            if ctx.name().starts_with("uart") {
-                ans.uart = reg.next().unwrap().start;
-            }
-            StepOut
-        }
-        DtbObj::Property(_) => StepOver,
-    });
-    ans
 }
