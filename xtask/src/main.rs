@@ -8,11 +8,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-lazy_static::lazy_static! {
-    static ref PROJECT_DIR: &'static Path = Path::new(std::env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    static ref TARGET: PathBuf = PROJECT_DIR.join("target");
-}
-
 #[derive(Parser)]
 #[clap(name = "RustSBI-Qemu")]
 #[clap(version, about, long_about = None)]
@@ -72,7 +67,9 @@ impl BuildArgs {
 
     /// Returns the dir of target files.
     fn dir(&self) -> PathBuf {
-        PROJECT_DIR
+        Path::new(std::env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
             .join("target")
             .join(self.target())
             .join(if self.debug { "debug" } else { "release" })
@@ -142,10 +139,13 @@ impl AsmArgs {
         } else {
             self.build.dir().join("rustsbi-qemu")
         };
-        let out = PROJECT_DIR.join(self.output.unwrap_or(format!(
-            "{}.asm",
-            bin.file_stem().unwrap().to_string_lossy()
-        )));
+        let out = Path::new(std::env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(self.output.unwrap_or(format!(
+                "{}.asm",
+                bin.file_stem().unwrap().to_string_lossy()
+            )));
         println!("Asm file dumps to '{}'.", out.display());
         fs::write(out, BinUtil::objdump().arg(bin).arg("-d").output().stdout).unwrap();
     }
