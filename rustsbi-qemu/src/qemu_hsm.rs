@@ -173,8 +173,8 @@ impl QemuHsm {
             asm!("csrrsi {0}, mstatus, 1 << 3", out(reg) mstatus); // 打开中断
             suspend();
             match mcause::read().cause() {
-                T::Interrupt(I::MachineTimer) => clint::get().set_mtimercomp(u64::MAX),
-                T::Interrupt(I::MachineSoft) => clint::get().clear_soft(hart_id()),
+                T::Interrupt(I::MachineTimer) => clint::mtimecmp::clear(),
+                T::Interrupt(I::MachineSoft) => clint::msip::clear(),
                 t => panic!("unexpected trap: {t:?}"),
             }
             asm!("csrw mie,     {}", in(reg) mie); // 恢复中断屏蔽
@@ -215,16 +215,8 @@ impl rustsbi::Hsm for QemuHsm {
         // - It is not a valid physical address.
         // - The address is prohibited by PMP to run in supervisor mode. */
         *self.supervisor[hart_id].lock() = Some(Supervisor { start_addr, opaque });
-        loop {
-            clint::get().clear_soft(hart_id);
-            clint::get().send_soft(hart_id);
-            for _ in 0..0x20000 {
-                core::hint::spin_loop();
-            }
-            if state.load(Acquire) != START_PENDING {
-                break;
-            }
-        }
+        clint::msip::send(hart_id);
+        while state.load(Acquire) == START_PENDING {}
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
         // and the function returns immediately as starting a hart is defined as an asynchronous procedure.

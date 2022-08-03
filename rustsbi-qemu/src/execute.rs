@@ -16,7 +16,8 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
     let mut ctx = Context::new(supervisor);
 
-    clint::get().clear_soft(hart_id());
+    clint::msip::clear();
+    clint::mtimecmp::clear();
     unsafe {
         asm!("csrw     mip, {}", in(reg) 0);
         asm!("csrw mideleg, {}", in(reg) usize::MAX);
@@ -39,11 +40,11 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
         match mcause::read().cause() {
             T::Interrupt(I::MachineTimer) => unsafe {
-                clint::get().set_mtimercomp(u64::MAX);
+                clint::mtimecmp::clear();
                 mip::set_stimer();
             },
             T::Interrupt(I::MachineSoft) => unsafe {
-                clint::get().clear_soft(hart_id());
+                clint::msip::clear();
                 mip::set_ssoft();
             },
             T::Exception(E::SupervisorEnvCall) => {
