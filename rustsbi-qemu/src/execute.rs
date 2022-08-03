@@ -251,7 +251,7 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
         ",
         // 换栈：
         // sp      : S sp
-        // mscratch: M sp
+        // mscratch: M sp = (S ctx)[0]
         "   ld    sp, (sp)
             csrrw sp, mscratch, sp
             mret
@@ -269,6 +269,8 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
 unsafe extern "C" fn trap_vec() {
     asm!(
         ".align 2",
+        ".option push",
+        ".option norvc",
         "j {s_to_m}", // exception
         "j {s_to_m}", // supervisor software
         "j {s_to_m}", // reserved
@@ -281,6 +283,7 @@ unsafe extern "C" fn trap_vec() {
         "j {s_to_m}", // supervisor external
         "j {s_to_m}", // reserved
         "j {s_to_m}", // machine    external
+        ".option pop",
         s_to_m = sym s_to_m,
         mtimer = sym mtimer,
         msoft  = sym msoft,
@@ -296,22 +299,14 @@ unsafe extern "C" fn trap_vec() {
 #[naked]
 unsafe extern "C" fn mtimer() {
     asm!(
-        // // 换栈：
-        // // sp      : S ctx
-        // // mscratch: S sp
-        // "   csrrw sp, mscratch, sp",
-        // // 保存 ra
-        // "   sd    ra, 1*8(sp)",
-        // // 换栈：
-        // // sp      : M sp
-        // // mscratch: S ctx
-        // "   csrrw ra, mscratch, sp
-        //     sd    ra, 2*8(sp)
-        //     ld    sp, (sp)
-        // ",
+        // 换栈：
+        // sp      : M sp
+        // mscratch: S sp
+        "   csrrw sp, mscratch, sp",
         // 需要 a0 传参，保护
-        "   addi sp, sp, -8
-            sd   a0, 0(sp)
+        "   addi sp, sp, -16
+            sd   ra, 0(sp)
+            sd   a0, 8(sp)
         ",
         // clint::mtimecmp::clear();
         "   li   a0, {u64_max}
@@ -322,25 +317,14 @@ unsafe extern "C" fn mtimer() {
            csrrs zero, mip, a0
         ",
         // 恢复 a0
-        "   ld   a0, 0(sp)
-            addi sp, sp,  8
+        "   ld   a0, 8(sp)
+            ld   ra, 0(sp)
+            addi sp, sp,  16
         ",
-        // // 换栈：
-        // // sp      : S ctx
-        // // mscratch: M sp
-        // "   csrrw sp, mscratch, sp",
-        // // 换栈：
-        // // sp      : S ctx
-        // // mscratch: S sp
-        // "   ld   ra, 2*8(sp)
-        //     csrw mscratch, ra
-        // ",
-        // // 恢复 ra
-        // "   ld    ra, 1*8(sp)",
-        // // 换栈：
-        // // sp      : S sp
-        // // mscratch: S ctx
-        // "   csrrw sp, mscratch, sp",
+        // 换栈：
+        // sp      : S sp
+        // mscratch: M sp
+        "   csrrw sp, mscratch, sp",
         // 返回
         "   mret",
         u64_max      = const u64::MAX,
@@ -357,13 +341,30 @@ unsafe extern "C" fn mtimer() {
 /// 裸函数。
 #[naked]
 unsafe extern "C" fn msoft() {
-    // clint::msip::clear();
-    // mip::set_ssoft();
     asm!(
-        "   call   {clear_msip}
-            csrrsi zero, mip, 1<<1
-            mret
+        // 换栈：
+        // sp      : M sp
+        // mscratch: S sp
+        "   csrrw sp, mscratch, sp",
+        // 保护 ra
+        "   addi sp, sp, -8
+            sd   ra, 0(sp)
         ",
+        // clint::msip::clear();
+        // mip::set_ssoft();
+        "   call   {clear_msip}
+            csrrsi zero, mip, 1 << 1
+        ",
+        // 恢复 ra
+        "   ld   ra, 0(sp)
+            addi sp, sp,  8
+        ",
+        // 换栈：
+        // sp      : S sp
+        // mscratch: M sp
+        "   csrrw sp, mscratch, sp",
+        // 返回
+        "   mret",
         clear_msip = sym clint::msip::clear_naked,
         options(noreturn)
     )
@@ -388,7 +389,7 @@ unsafe extern "C" fn s_to_m() {
         .endm
         ",
         // 换栈：
-        // sp      : S ctx 来自 M 栈上的 M 上下文里的 a0
+        // sp      : S ctx = (M sp)[10]
         // mscratch: S sp
         "   csrrw sp, mscratch, sp
             ld    sp, 10*8(sp)
@@ -413,7 +414,7 @@ unsafe extern "C" fn s_to_m() {
             sd   t2, 33*8(sp)
         ",
         // 从 S ctx 恢复 M sp
-        "   ld sp, 0(sp)",
+        "   ld sp, (sp)",
         // 恢复 x[1..31]
         "   .set n, 1
             .rept 31
