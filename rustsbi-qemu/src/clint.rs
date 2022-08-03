@@ -56,11 +56,9 @@ pub mod mtimecmp {
                 ld   t0, 0(t0)
                 add  t0, t0, t1
                 csrr t1, mhartid
-            1:  beqz t1, 1f
-                addi t0, t0,  8
-                addi t1, t1, -1
-                j    1b
-            1:  sd   a0, 0(t0)
+                slli t1, t1, 3
+                add  t0, t0, t1
+                sd   a0, 0(t0)
             ",
             // 恢复上下文并返回
             "   ld   t1, 8(sp)
@@ -85,7 +83,6 @@ pub mod mtimecmp {
 }
 
 pub mod msip {
-    #[allow(unused)]
     #[naked]
     pub unsafe extern "C" fn clear_naked() -> usize {
         core::arch::asm!(
@@ -96,13 +93,11 @@ pub mod msip {
             ",
             // 定位并清除当前核的 msip
             "   la   t0, {base}
-                ld   t0, 0(t0)
+                ld   t0, (t0)
                 csrr t1, mhartid
-            1:  beqz t1, 1f
-                addi t0, t0,  4
-                addi t1, t1, -1
-                j    1b
-            1:  sw   zero, 0(t0)
+                slli t1, t1, 2
+                add  t0, t0, t1
+                sw   zero, 0(t0)
             ",
             // 恢复上下文并返回
             "   ld   t1, 8(sp)
