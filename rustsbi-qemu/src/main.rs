@@ -115,7 +115,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
 
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), NUM_HART_MAX, opaque));
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(NUM_HART_MAX, opaque));
         // 初始化 SBI 服务
         rustsbi::init_ipi(clint::get());
         rustsbi::init_timer(clint::get());

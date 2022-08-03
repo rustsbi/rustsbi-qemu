@@ -39,11 +39,11 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
         match mcause::read().cause() {
             T::Interrupt(I::MachineTimer) => unsafe {
-                crate::clint::get().set_mtimercomp(u64::MAX);
+                clint::get().set_mtimercomp(u64::MAX);
                 mip::set_stimer();
             },
             T::Interrupt(I::MachineSoft) => unsafe {
-                crate::clint::get().clear_soft(hart_id());
+                clint::get().clear_soft(hart_id());
                 mip::set_ssoft();
             },
             T::Exception(E::SupervisorEnvCall) => {

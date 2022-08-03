@@ -1,35 +1,36 @@
-//! 很久很久以前，CLINT 和 PLIC 都定义在 riscv-privileged 里。
-//! 如今，PLIC 有了自己的独立[标准](https://github.com/riscv/riscv-plic-spec)，
-//! CLINT 却消失不见了。
-
 use crate::hart_id;
+use core::cell::UnsafeCell;
 use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
-use spin::Once;
 
-pub(crate) struct Clint {
-    base: usize,
-}
+#[repr(transparent)]
+pub(crate) struct Clint;
 
-static CLINT: Once<Clint> = Once::new();
+static mut BASE: UnsafeCell<usize> = UnsafeCell::new(0);
 
+#[inline]
 pub(crate) fn init(base: usize) {
-    CLINT.call_once(|| Clint { base });
+    #[allow(unused)]
+    static CLINT: spin::Once<usize> = spin::Once::new();
+    CLINT.call_once(|| base); // FIXME: 一旦删了这行测试就不过了
+    unsafe { *BASE.get() = base };
 }
 
+#[inline]
 pub(crate) fn get() -> &'static Clint {
-    CLINT.wait()
+    &Clint
 }
 
 impl Clint {
     #[allow(unused)]
     #[inline]
     pub fn get_mtime(&self) -> u64 {
-        unsafe { ((self.base as *mut u8).add(0xbff8) as *mut u64).read_volatile() }
+        unsafe { ((BASE.get().read_volatile() + 0xbff8) as *mut u64).read_volatile() }
     }
 
+    #[inline]
     pub fn set_mtimercomp(&self, value: u64) {
         unsafe {
-            ((self.base + 0x4000) as *mut u64)
+            ((BASE.get().read_volatile() + 0x4000) as *mut u64)
                 .add(hart_id())
                 .write_volatile(value)
         }
@@ -37,12 +38,20 @@ impl Clint {
 
     #[inline]
     pub fn send_soft(&self, hart_id: usize) {
-        unsafe { (self.base as *mut u32).add(hart_id).write_volatile(1) };
+        unsafe {
+            (BASE.get().read_volatile() as *mut u32)
+                .add(hart_id)
+                .write_volatile(1)
+        };
     }
 
     #[inline]
     pub fn clear_soft(&self, hart_id: usize) {
-        unsafe { (self.base as *mut u32).add(hart_id).write_volatile(0) };
+        unsafe {
+            (BASE.get().read_volatile() as *mut u32)
+                .add(hart_id)
+                .write_volatile(0)
+        };
     }
 }
 

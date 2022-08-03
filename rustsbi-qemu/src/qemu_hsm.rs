@@ -1,6 +1,6 @@
 //! Hart state monitor designed for QEMU
 
-use crate::{clint::Clint, entry, hart_id, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
+use crate::{clint, entry, hart_id, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
 use core::{mem::MaybeUninit, sync::atomic::AtomicU8};
 use riscv::register::*;
 use rustsbi::spec::{binary::SbiRet, hsm as spec};
@@ -15,13 +15,12 @@ const SUSPEND_PENDING: u8 = spec::HART_STATE_SUSPEND_PENDING as _;
 const RESUME_PENDING: u8 = spec::HART_STATE_RESUME_PENDING as _;
 
 pub(crate) struct QemuHsm {
-    clint: &'static Clint,
     state: [AtomicU8; NUM_HART_MAX],
     supervisor: [Mutex<Option<Supervisor>>; NUM_HART_MAX],
 }
 
 impl QemuHsm {
-    pub fn new(clint: &'static Clint, smp: usize, opaque: usize) -> Self {
+    pub fn new(smp: usize, opaque: usize) -> Self {
         let state: MaybeUninit<[AtomicU8; NUM_HART_MAX]> = MaybeUninit::uninit();
         let supervisor: MaybeUninit<[Mutex<Option<Supervisor>>; NUM_HART_MAX]> =
             MaybeUninit::uninit();
@@ -45,11 +44,7 @@ impl QemuHsm {
             );
         }
 
-        Self {
-            clint,
-            state,
-            supervisor,
-        }
+        Self { state, supervisor }
     }
 
     /// 读取特权态入口地址，转换状态准备跳转。
@@ -178,8 +173,8 @@ impl QemuHsm {
             asm!("csrrsi {0}, mstatus, 1 << 3", out(reg) mstatus); // 打开中断
             suspend();
             match mcause::read().cause() {
-                T::Interrupt(I::MachineTimer) => crate::clint::get().set_mtimercomp(u64::MAX),
-                T::Interrupt(I::MachineSoft) => crate::clint::get().clear_soft(hart_id()),
+                T::Interrupt(I::MachineTimer) => clint::get().set_mtimercomp(u64::MAX),
+                T::Interrupt(I::MachineSoft) => clint::get().clear_soft(hart_id()),
                 t => panic!("unexpected trap: {t:?}"),
             }
             asm!("csrw mie,     {}", in(reg) mie); // 恢复中断屏蔽
@@ -221,8 +216,8 @@ impl rustsbi::Hsm for QemuHsm {
         // - The address is prohibited by PMP to run in supervisor mode. */
         *self.supervisor[hart_id].lock() = Some(Supervisor { start_addr, opaque });
         loop {
-            self.clint.clear_soft(hart_id);
-            self.clint.send_soft(hart_id);
+            clint::get().clear_soft(hart_id);
+            clint::get().send_soft(hart_id);
             for _ in 0..0x20000 {
                 core::hint::spin_loop();
             }
