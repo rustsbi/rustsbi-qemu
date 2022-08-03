@@ -34,16 +34,12 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
     hsm.record_current_start_finished();
     loop {
-        use mcause::{Exception as E, Interrupt as I, Trap as T};
+        use mcause::{Exception, Trap};
 
         unsafe { m_to_s(&mut ctx) };
 
         match mcause::read().cause() {
-            T::Interrupt(I::MachineSoft) => unsafe {
-                clint::msip::clear();
-                mip::set_ssoft();
-            },
-            T::Exception(E::SupervisorEnvCall) => {
+            Trap::Exception(Exception::SupervisorEnvCall) => {
                 if let Some(op) = ctx.handle_ecall() {
                     return op;
                 }
@@ -339,10 +335,16 @@ unsafe extern "C" fn mtimer() {
 /// 裸函数。
 #[naked]
 unsafe extern "C" fn msoft() {
+    // clint::msip::clear();
+    // mip::set_ssoft();
     asm!(
-    "j {s_to_m}",
-    s_to_m = sym s_to_m,
-    options(noreturn))
+        "   call   {clear_msip}
+            csrrsi zero, mip, 1<<1
+            mret
+        ",
+        clear_msip = sym clint::msip::clear_naked,
+        options(noreturn)
+    )
 }
 
 /// S 态陷入 M 态。

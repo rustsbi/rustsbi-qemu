@@ -45,11 +45,13 @@ pub mod mtimecmp {
     #[naked]
     pub unsafe extern "C" fn set_naked(time_value: u64) {
         core::arch::asm!(
+            // 保存必要寄存器
             "   addi sp, sp, -16
                 sd   t0, 0(sp)
                 sd   t1, 8(sp)
-
-                li   t1, 0x4000
+            ",
+            // 定位并设置当前核的 mtimecmp
+            "   li   t1, 0x4000
                 la   t0, {base}
                 ld   t0, 0(t0)
                 add  t0, t0, t1
@@ -59,11 +61,11 @@ pub mod mtimecmp {
                 addi t1, t1, -1
                 j    1b
             1:  sd   a0, 0(t0)
-
-                ld   t1, 8(sp)
+            ",
+            // 恢复上下文并返回
+            "   ld   t1, 8(sp)
                 ld   t0, 0(sp)
                 addi sp, sp,  16
-
                 ret
             ",
             base = sym super::BASE,
@@ -83,6 +85,36 @@ pub mod mtimecmp {
 }
 
 pub mod msip {
+    #[allow(unused)]
+    #[naked]
+    pub unsafe extern "C" fn clear_naked() -> usize {
+        core::arch::asm!(
+            // 保存必要寄存器
+            "   addi sp, sp, -16
+                sd   t0, 0(sp)
+                sd   t1, 8(sp)
+            ",
+            // 定位并清除当前核的 msip
+            "   la   t0, {base}
+                ld   t0, 0(t0)
+                csrr t1, mhartid
+            1:  beqz t1, 1f
+                addi t0, t0,  4
+                addi t1, t1, -1
+                j    1b
+            1:  sw   zero, 0(t0)
+            ",
+            // 恢复上下文并返回
+            "   ld   t1, 8(sp)
+                ld   t0, 0(sp)
+                addi sp, sp,  16
+                ret
+            ",
+            base = sym super::BASE,
+            options(noreturn)
+        )
+    }
+
     #[inline]
     pub fn send(hart_id: usize) {
         unsafe {
@@ -94,10 +126,6 @@ pub mod msip {
 
     #[inline]
     pub fn clear() {
-        unsafe {
-            (super::BASE.get().read_volatile() as *mut u32)
-                .add(crate::hart_id())
-                .write_volatile(0)
-        };
+        unsafe { clear_naked() };
     }
 }
