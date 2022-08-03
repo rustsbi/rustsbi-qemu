@@ -9,9 +9,6 @@ static mut BASE: UnsafeCell<usize> = UnsafeCell::new(0);
 
 #[inline]
 pub(crate) fn init(base: usize) {
-    #[allow(unused)]
-    static CLINT: spin::Once<usize> = spin::Once::new();
-    CLINT.call_once(|| base); // FIXME: 一旦删了这行测试就不过了
     unsafe { *BASE.get() = base };
 }
 

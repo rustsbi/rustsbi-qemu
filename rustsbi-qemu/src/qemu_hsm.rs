@@ -151,7 +151,7 @@ impl QemuHsm {
         /// 陷入向量表
         #[naked]
         unsafe extern "C" fn trap() {
-            asm!("ret", options(noreturn))
+            asm!(".align 2", "ret", options(noreturn))
         }
 
         let state = &self.state[hart_id()];
