@@ -26,7 +26,7 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
         medeleg::clear_supervisor_env_call();
         medeleg::clear_machine_env_call();
 
-        mtvec::write(s_to_m as _, mtvec::TrapMode::Direct);
+        mtvec::write(trap_vec as _, mtvec::TrapMode::Vectored);
         mie::set_mext();
         mie::set_msoft();
         mie::set_mtimer();
@@ -39,10 +39,6 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
         unsafe { m_to_s(&mut ctx) };
 
         match mcause::read().cause() {
-            T::Interrupt(I::MachineTimer) => unsafe {
-                clint::mtimecmp::clear();
-                mip::set_stimer();
-            },
             T::Interrupt(I::MachineSoft) => unsafe {
                 clint::msip::clear();
                 mip::set_ssoft();
@@ -276,6 +272,79 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
     )
 }
 
+/// 中断向量表
+///
+/// # Safety
+///
+/// 裸函数。
+#[naked]
+unsafe extern "C" fn trap_vec() {
+    asm!(
+        ".align 2",
+        "j {s_to_m}", // exception
+        "j {s_to_m}", // supervisor software
+        "j {s_to_m}", // reserved
+        "j {msoft} ", // machine    software
+        "j {s_to_m}", // reserved
+        "j {s_to_m}", // supervisor timer
+        "j {s_to_m}", // reserved
+        "j {mtimer}", // machine    timer
+        "j {s_to_m}", // reserved
+        "j {s_to_m}", // supervisor external
+        "j {s_to_m}", // reserved
+        "j {s_to_m}", // machine    external
+        s_to_m = sym s_to_m,
+        mtimer = sym mtimer,
+        msoft  = sym msoft,
+        options(noreturn)
+    )
+}
+
+/// machine timer 中断代理
+///
+/// # Safety
+///
+/// 裸函数。
+#[naked]
+unsafe extern "C" fn mtimer() {
+    asm!(
+        // 需要 a0 传参，保护
+        "   addi sp, sp, -8
+            sd   a0, 0(sp)
+        ",
+        // clint::mtimecmp::clear();
+        "   li   a0, {u64_max}
+            call {set_mtimecmp}
+        ",
+        // mip::set_stimer();
+        "   li   a0, {mip_stip}
+           csrrs zero, mip, a0
+        ",
+        // 恢复 a0
+        "   ld   a0, 0(sp)
+            addi sp, sp,  8
+            mret
+        ",
+        u64_max      = const u64::MAX,
+        mip_stip     = const 1 << 5,
+        set_mtimecmp =   sym clint::mtimecmp::set_naked,
+        options(noreturn)
+    )
+}
+
+/// machine soft 中断代理
+///
+/// # Safety
+///
+/// 裸函数。
+#[naked]
+unsafe extern "C" fn msoft() {
+    asm!(
+    "j {s_to_m}",
+    s_to_m = sym s_to_m,
+    options(noreturn))
+}
+
 /// S 态陷入 M 态。
 ///
 /// # Safety
@@ -286,7 +355,6 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
 unsafe extern "C" fn s_to_m() {
     asm!(
         r"
-        .align 2
         .altmacro
         .macro SAVE_S n
             sd x\n, \n*8(sp)

@@ -33,8 +33,8 @@ pub(crate) fn init(base: usize) {
     unsafe { *BASE.get() = base };
 }
 
+#[allow(unused)]
 pub mod mtime {
-    #[allow(unused)]
     #[inline]
     pub fn read() -> u64 {
         unsafe { ((super::BASE.get().read_volatile() + 0xbff8) as *mut u64).read_volatile() }
@@ -42,22 +42,43 @@ pub mod mtime {
 }
 
 pub mod mtimecmp {
+    #[naked]
+    pub unsafe extern "C" fn set_naked(time_value: u64) {
+        core::arch::asm!(
+            "   addi sp, sp, -16
+                sd   t0, 0(sp)
+                sd   t1, 8(sp)
+
+                li   t1, 0x4000
+                la   t0, {base}
+                ld   t0, 0(t0)
+                add  t0, t0, t1
+                csrr t1, mhartid
+            1:  beqz t1, 1f
+                addi t0, t0,  8
+                addi t1, t1, -1
+                j    1b
+            1:  sd   a0, 0(t0)
+
+                ld   t1, 8(sp)
+                ld   t0, 0(sp)
+                addi sp, sp,  16
+
+                ret
+            ",
+            base = sym super::BASE,
+            options(noreturn)
+        )
+    }
+
     #[inline]
-    pub fn set(value: u64) {
-        unsafe {
-            ((super::BASE.get().read_volatile() + 0x4000) as *mut u64)
-                .add(crate::hart_id())
-                .write_volatile(value)
-        }
+    pub fn set(time_value: u64) {
+        unsafe { set_naked(time_value) };
     }
 
     #[inline]
     pub fn clear() {
-        unsafe {
-            ((super::BASE.get().read_volatile() + 0x4000) as *mut u64)
-                .add(crate::hart_id())
-                .write_volatile(u64::MAX)
-        }
+        unsafe { set_naked(u64::MAX) };
     }
 }
 
