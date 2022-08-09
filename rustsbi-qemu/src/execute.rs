@@ -9,20 +9,15 @@ pub(crate) enum Operation {
 }
 
 pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Operation {
-    unsafe {
-        mstatus::set_mpp(mstatus::MPP::Supervisor);
-        mstatus::set_mie();
-    };
-
-    let mut ctx = Context::new(supervisor);
+    let mut ctx = SupervisorContext::new(supervisor);
+    mscratch::write(&mut ctx as *mut _ as _);
 
     clint::msip::clear();
     clint::mtimecmp::clear();
     unsafe {
-        asm!("csrw     mip, {}", in(reg) 0);
-        asm!("csrw mideleg, {}", in(reg) usize::MAX);
-        asm!("csrw medeleg, {}", in(reg) usize::MAX);
-        mstatus::clear_mie();
+        asm!("csrw mideleg, {}", in(reg) !0);
+        asm!("csrw medeleg, {}", in(reg) !0);
+        medeleg::clear_user_env_call();
         medeleg::clear_supervisor_env_call();
         medeleg::clear_machine_env_call();
 
@@ -34,17 +29,15 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
     hsm.record_current_start_finished();
     loop {
+        unsafe { m_to_s() };
+
         use mcause::{Exception, Trap};
-
-        unsafe { m_to_s(&mut ctx) };
-
         match mcause::read().cause() {
             Trap::Exception(Exception::SupervisorEnvCall) => {
                 if let Some(op) = ctx.handle_ecall() {
-                    return op;
+                    break op;
                 }
             }
-            // TODO 可以修复非原子的非对齐访存？
             t => ctx.trap_stop(t),
         }
     }
@@ -52,14 +45,14 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
 
 #[repr(C)]
 #[derive(Debug)]
-struct Context {
+struct SupervisorContext {
     msp: usize,
     x: [usize; 31],
     mstatus: usize,
     mepc: usize,
 }
 
-impl Context {
+impl SupervisorContext {
     fn new(supervisor: Supervisor) -> Self {
         let mut ctx = Self {
             msp: 0,
@@ -68,7 +61,11 @@ impl Context {
             mepc: supervisor.start_addr,
         };
 
-        unsafe { asm!("csrr {}, mstatus", out(reg) ctx.mstatus) };
+        unsafe {
+            mstatus::set_mpp(mstatus::MPP::Supervisor);
+            mstatus::set_mpie();
+            asm!("csrr {}, mstatus", out(reg) ctx.mstatus)
+        };
         *ctx.a_mut(0) = hart_id();
         *ctx.a_mut(1) = supervisor.opaque;
 
@@ -208,7 +205,7 @@ impl Context {
 /// 为了写起来简单，占 32 * usize 空间，循环 31 次保存 31 个通用寄存器。
 /// 实际 x0(zero) 和 x2(sp) 不需要保存在这里。
 #[naked]
-unsafe extern "C" fn m_to_s(ctx: &mut Context) {
+unsafe extern "C" fn m_to_s() {
     asm!(
         r"  .altmacro
             .macro SAVE_M n
@@ -218,43 +215,96 @@ unsafe extern "C" fn m_to_s(ctx: &mut Context) {
                 ld x\n, \n*8(sp)
             .endm
         ",
-        // 入栈：M 态上下文保存在 M 态栈上
-        "   addi sp, sp, -32*8
-            .set n, 1
+        // 初始化栈帧：sp = Mctx
+        "   addi sp, sp, -32*8",
+        // 特权上下文地址保存到机器上下文
+        "   csrr  t0, mscratch
+            sd    t0, (sp)
+        ",
+        // 保存机器上下文
+        "   .set n, 1
             .rept 31
                 SAVE_M %n
                 .set n, n+1
             .endr
         ",
-        // M 态栈指针保存到 S 态上下文，切换到 S 态栈指针
-        "   sd sp, (a0)
-            mv sp,  a0
+        // 切换上下文：sp = Sctx
+        "   csrrw sp, mscratch, sp",
+        // 机器上下文地址保存到特权上下文
+        "   csrr  t0, mscratch
+            sd    t0, (sp)
         ",
-        // 从 S 态上下文恢复 csr
-        // ctx.x[2](sp) => mscratch
-        // ctx.mstatus  => mstatus
-        // ctx.mepc     => mepc
-        "   ld   t0,  2*8(sp)
-            ld   t1, 32*8(sp)
-            ld   t2, 33*8(sp)
-            csrw mscratch, t0
-            csrw  mstatus, t1
-            csrw     mepc, t2
+        // 恢复 csr
+        "   ld   t0, 32*8(sp)
+            ld   t1, 33*8(sp)
+            csrw mstatus, t0
+            csrw    mepc, t1
         ",
-        // 恢复 S 态上下文
+        // 恢复特权上下文
         "   ld x1, 1*8(sp)
             .set n, 3
             .rept 29
                 LOAD_S %n
                 .set n, n+1
             .endr
+            ld sp, 2*8(sp)
         ",
-        // 换栈：
-        // sp      : S sp
-        // mscratch: M sp = (S ctx)[0]
-        "   ld    sp, (sp)
-            csrrw sp, mscratch, sp
-            mret
+        // 执行特权程序
+        "   mret",
+        options(noreturn)
+    )
+}
+
+/// S 态陷入 M 态。
+///
+/// # Safety
+///
+/// 裸函数。
+/// 利用恢复的 ra 回到 [`m_to_s`] 的返回地址。
+#[naked]
+unsafe extern "C" fn s_to_m() {
+    asm!(
+        r"
+        .altmacro
+        .macro SAVE_S n
+            sd x\n, \n*8(sp)
+        .endm
+        .macro LOAD_M n
+            ld x\n, \n*8(sp)
+        .endm
+        ",
+        // 切换上下文：sp = Sctx
+        "   csrrw sp, mscratch, sp
+            ld    sp, (sp)
+        ",
+        // 保存特权上下文
+        "   sd x1, 1*8(sp)
+            .set n, 3
+            .rept 29
+                SAVE_S %n
+                .set n, n+1
+            .endr
+            csrrw t0, mscratch, sp
+            sd    t0,  2*8(sp)
+        ",
+        // 保存 csr
+        "   csrr t1, mstatus
+            csrr t2, mepc
+            sd   t1, 32*8(sp)
+            sd   t2, 33*8(sp)
+        ",
+        // 切换上下文：sp = Mctx
+        "   ld sp, (sp)",
+        // 恢复机器上下文
+        "   .set n, 1
+            .rept 31
+                LOAD_M %n
+                .set n, n+1
+            .endr
+        ",
+        // 栈帧释放，返回
+        "   addi sp, sp, 32*8
+            ret
         ",
         options(noreturn)
     )
@@ -366,67 +416,6 @@ unsafe extern "C" fn msoft() {
         // 返回
         "   mret",
         clear_msip = sym clint::msip::clear_naked,
-        options(noreturn)
-    )
-}
-
-/// S 态陷入 M 态。
-///
-/// # Safety
-///
-/// 裸函数。
-/// 利用恢复的 ra 回到 [`m_to_s`] 的返回地址。
-#[naked]
-unsafe extern "C" fn s_to_m() {
-    asm!(
-        r"
-        .altmacro
-        .macro SAVE_S n
-            sd x\n, \n*8(sp)
-        .endm
-        .macro LOAD_M n
-            ld x\n, \n*8(sp)
-        .endm
-        ",
-        // 换栈：
-        // sp      : S ctx = (M sp)[10]
-        // mscratch: S sp
-        "   csrrw sp, mscratch, sp
-            ld    sp, 10*8(sp)
-        ",
-        // 保存 x[1,3..32] 到 S ctx
-        "   sd x1, 1*8(sp)
-            .set n, 3
-            .rept 29
-                SAVE_S %n
-                .set n, n+1
-            .endr
-        ",
-        // 利用 ctx 保存 csr
-        // mscratch => S ctx.x[2](sp)
-        // mstatus  => S ctx.mstatus
-        // mepc     => S ctx.mepc
-        "   csrr t0, mscratch
-            csrr t1, mstatus
-            csrr t2, mepc
-            sd   t0,  2*8(sp)
-            sd   t1, 32*8(sp)
-            sd   t2, 33*8(sp)
-        ",
-        // 从 S ctx 恢复 M sp
-        "   ld sp, (sp)",
-        // 恢复 x[1..31]
-        "   .set n, 1
-            .rept 31
-                LOAD_M %n
-                .set n, n+1
-            .endr
-        ",
-        // 出栈完成，栈指针归位
-        // 返回
-        "   addi sp, sp, 32*8
-            ret
-        ",
         options(noreturn)
     )
 }
