@@ -8,7 +8,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sbi-testing = { git = "https://github.com/rustsbi/sbi-testing", rev = "56174a6", features = [
+sbi-testing = { git = "https://github.com/rustsbi/sbi-testing", rev = "c1f9893", features = [
     "log",
 ] }
 log = "0.4.17"
