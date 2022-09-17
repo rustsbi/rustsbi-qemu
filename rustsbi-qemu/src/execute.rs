@@ -17,6 +17,7 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
     unsafe {
         asm!("csrw mideleg, {}", in(reg) !0);
         asm!("csrw medeleg, {}", in(reg) !0);
+        asm!("csrw mcounteren, {}", in(reg) !0);
         medeleg::clear_supervisor_env_call();
         medeleg::clear_machine_env_call();
 
