@@ -204,7 +204,9 @@ fn zero_bss() {
 
 /// 设置 PMP。
 fn set_pmp(board_info: &BoardInfo) {
-    use riscv::register::{pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpcfg0, Permission, Range};
+    use riscv::register::{
+        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpcfg0, Permission, Range,
+    };
     let mem = &board_info.mem;
     unsafe {
         pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
@@ -215,8 +217,11 @@ fn set_pmp(board_info: &BoardInfo) {
         // SBI
         pmpcfg0::set_pmp(2, Range::TOR, Permission::NONE, false);
         pmpaddr2::write(SUPERVISOR_ENTRY >> 2);
-        //主存
+        // 主存
         pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, false);
         pmpaddr3::write(mem.end >> 2);
+        // 其他
+        pmpcfg0::set_pmp(4, Range::TOR, Permission::RW, false);
+        pmpaddr4::write(1 << (usize::BITS - 1));
     }
 }
