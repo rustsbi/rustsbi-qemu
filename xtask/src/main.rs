@@ -174,16 +174,16 @@ impl QemuArgs {
             Qemu::search_at(p);
         }
         Qemu::system(self.build.arch())
-            .args(&["-machine", "virt"])
+            .args(["-machine", "virt"])
             .arg("-bios")
             .arg(self.build.dir().join("rustsbi-qemu.bin"))
             .arg("-kernel")
             .arg(self.build.dir().join("test-kernel.bin"))
-            .args(&["-smp", &self.smp.unwrap_or(8).to_string()])
-            .args(&["-serial", "mon:stdio"])
+            .args(["-smp", &self.smp.unwrap_or(8).to_string()])
+            .args(["-serial", "mon:stdio"])
             .arg("-nographic")
             .optional(&self.gdb, |qemu, gdb| {
-                qemu.args(&["-S", "-gdb", &format!("tcp::{gdb}")]);
+                qemu.args(["-S", "-gdb", &format!("tcp::{gdb}")]);
             })
             .invoke();
     }
