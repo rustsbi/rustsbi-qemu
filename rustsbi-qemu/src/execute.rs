@@ -5,7 +5,7 @@ use riscv::register::*;
 #[repr(usize)]
 pub(crate) enum Operation {
     Stop = 0,
-    SystemReset = usize::MAX,
+    SystemReset = 1,
 }
 
 pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Operation {
