@@ -267,7 +267,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5697645411c21e33776cddebf26f19f98a2405ff82e88d11b2bc35dc8a8b6d59"
 dependencies = [
  "riscv",
- "sbi-spec 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sbi-spec 0.0.2",
 ]
 
 [[package]]
@@ -292,9 +292,10 @@ checksum = "97477e48b4cf8603ad5f7aaf897467cf42ab4218a38ef76fb14c2d6773a6d6a8"
 [[package]]
 name = "sbi-rt"
 version = "0.0.1"
-source = "git+https://github.com/rustsbi/sbi-rt.git?branch=dev#bbabc67b7a613ce1f75cde8610b31335457f15a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07f27f053b4d773f8027cd703baed9764f730a058006da4947522394515afe8c"
 dependencies = [
- "sbi-spec 0.0.2 (git+https://github.com/rustsbi/sbi-spec.git?branch=dev)",
+ "sbi-spec 0.0.3",
 ]
 
 [[package]]
@@ -305,16 +306,18 @@ checksum = "7b617d3b07d7bcdeb0590d4fea9460b004fbc5ecfc975993b9cbcc3a2f67fcce"
 
 [[package]]
 name = "sbi-spec"
-version = "0.0.2"
-source = "git+https://github.com/rustsbi/sbi-spec.git?branch=dev#54a6bad86582b275f0ef0d49c771067cb7518bdd"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab331a5c9852a6587ea9fc74bdda950d7dfc7076aa791434d45cbc2001ba5c7c"
 dependencies = [
  "static_assertions",
 ]
 
 [[package]]
 name = "sbi-testing"
-version = "0.0.1"
-source = "git+https://github.com/rustsbi/sbi-testing?rev=5509657#550965763c83b5ef6affdacd56bd311b40427864"
+version = "0.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe4a082032c0114e213bc67c4bca88671d0959b5692b28e1b2852ee0e14384f1"
 dependencies = [
  "log",
  "riscv",
