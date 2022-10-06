@@ -1,6 +1,17 @@
 [package]
 name = "rustsbi-qemu"
+description = "RustSBI support package for QEMU"
 version = "0.2.0-alpha.1"
+authors = [
+    "Luo Jia <me@luojia.cc>",
+    "YdrMaster <ydrmaster@hotmail.com>",
+    "Campbell He <hkp18@mails.tsinghua.edu.cn>",
+    "Yifan Wu <shinbokuow@163.com>",
+]
+license = "MulanPSL-2.0 OR MIT"
+readme = "README.md"
+keywords = ["riscv", "sbi", "rustsbi"]
+categories = ["os", "embedded", "hardware-support", "no-std"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
