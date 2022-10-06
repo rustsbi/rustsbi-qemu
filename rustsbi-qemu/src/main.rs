@@ -1,6 +1,6 @@
-#![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
+#![feature(naked_functions, asm_sym, asm_const)]
 #![deny(warnings)]
 
 mod clint;
@@ -10,15 +10,6 @@ mod hart_csr_utils;
 mod ns16550a;
 mod qemu_hsm;
 mod qemu_test;
-
-#[macro_use] // for print
-extern crate rustsbi;
-
-use constants::*;
-use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
-use device_tree::BoardInfo;
-use execute::Operation;
-use spin::Once;
 
 mod constants {
     /// 特权软件入口。
@@ -30,6 +21,15 @@ mod constants {
     /// SBI 软件全部栈空间容量。
     pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
 }
+
+#[macro_use] // for print
+extern crate rustsbi;
+
+use constants::*;
+use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
+use device_tree::BoardInfo;
+use execute::Operation;
+use spin::Once;
 
 /// 特权软件信息。
 struct Supervisor {
@@ -91,30 +91,10 @@ unsafe extern "C" fn entry() -> ! {
     )
 }
 
-/// 真正的异常处理函数设置好之前，使用这个处理异常。
-#[link_section = ".text.early_trap"]
-extern "C" fn early_trap() -> ! {
-    print!(
-        "\
-{:?} at hart[{}]{:#x}
-{:#x?}
-",
-        riscv::register::mcause::read().cause(),
-        hart_id(),
-        riscv::register::mepc::read(),
-        riscv::register::mstatus::read(),
-    );
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
-    unsafe { set_mtvec(early_trap as _) };
-
     #[link_section = ".bss.uninit"] // 以免清零
     static GENESIS: AtomicBool = AtomicBool::new(false);
 
@@ -135,10 +115,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
 
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(clint::get(), NUM_HART_MAX, opaque));
+        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(NUM_HART_MAX, opaque));
         // 初始化 SBI 服务
-        rustsbi::init_ipi(clint::get());
-        rustsbi::init_timer(clint::get());
+        rustsbi::init_ipi(&clint::Clint);
+        rustsbi::init_timer(&clint::Clint);
         rustsbi::init_reset(qemu_test::get());
         rustsbi::init_hsm(hsm);
         // 打印启动信息
@@ -203,6 +183,11 @@ unsafe extern "C" fn finalize(op: Operation) -> ! {
     }
 }
 
+#[inline(always)]
+fn hart_id() -> usize {
+    riscv::register::mhartid::read()
+}
+
 /// 清零 bss 段。
 #[inline(always)]
 fn zero_bss() {
@@ -219,7 +204,9 @@ fn zero_bss() {
 
 /// 设置 PMP。
 fn set_pmp(board_info: &BoardInfo) {
-    use riscv::register::{pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpcfg0, Permission, Range};
+    use riscv::register::{
+        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpcfg0, Permission, Range,
+    };
     let mem = &board_info.mem;
     unsafe {
         pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
@@ -230,19 +217,11 @@ fn set_pmp(board_info: &BoardInfo) {
         // SBI
         pmpcfg0::set_pmp(2, Range::TOR, Permission::NONE, false);
         pmpaddr2::write(SUPERVISOR_ENTRY >> 2);
-        //主存
+        // 主存
         pmpcfg0::set_pmp(3, Range::TOR, Permission::RWX, false);
         pmpaddr3::write(mem.end >> 2);
+        // 其他
+        pmpcfg0::set_pmp(4, Range::TOR, Permission::RW, false);
+        pmpaddr4::write(1 << (usize::BITS - 1));
     }
-}
-
-#[inline(always)]
-fn hart_id() -> usize {
-    riscv::register::mhartid::read()
-}
-
-#[inline(always)]
-unsafe fn set_mtvec(trap_handler: usize) {
-    use riscv::register::mtvec;
-    mtvec::write(trap_handler, mtvec::TrapMode::Direct);
 }

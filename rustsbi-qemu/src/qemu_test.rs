@@ -29,10 +29,7 @@ impl Reset for QemuTest {
             RESET_TYPE_SHUTDOWN => match reset_reason {
                 RESET_REASON_NO_REASON => self.0.exit_success(),
                 RESET_REASON_SYSTEM_FAILURE => self.0.exit_failure(),
-                value => match u32::try_from(value) {
-                    Ok(code) => self.0.exit(code),
-                    Err(_) => SbiRet::invalid_param(),
-                },
+                value => self.0.exit(value),
             },
             RESET_TYPE_COLD_REBOOT | RESET_TYPE_WARM_REBOOT => SbiRet::ok(0),
             _ => SbiRet::invalid_param(),

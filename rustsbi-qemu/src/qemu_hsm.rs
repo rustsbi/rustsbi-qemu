@@ -1,7 +1,8 @@
 //! Hart state monitor designed for QEMU
 
-use crate::{clint::Clint, entry, hart_id, set_mtvec, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
+use crate::{clint, entry, hart_id, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
 use core::{mem::MaybeUninit, sync::atomic::AtomicU8};
+use riscv::register::*;
 use rustsbi::spec::{binary::SbiRet, hsm as spec};
 use spin::Mutex;
 
@@ -14,13 +15,12 @@ const SUSPEND_PENDING: u8 = spec::HART_STATE_SUSPEND_PENDING as _;
 const RESUME_PENDING: u8 = spec::HART_STATE_RESUME_PENDING as _;
 
 pub(crate) struct QemuHsm {
-    clint: &'static Clint,
     state: [AtomicU8; NUM_HART_MAX],
     supervisor: [Mutex<Option<Supervisor>>; NUM_HART_MAX],
 }
 
 impl QemuHsm {
-    pub fn new(clint: &'static Clint, smp: usize, opaque: usize) -> Self {
+    pub fn new(smp: usize, opaque: usize) -> Self {
         let state: MaybeUninit<[AtomicU8; NUM_HART_MAX]> = MaybeUninit::uninit();
         let supervisor: MaybeUninit<[Mutex<Option<Supervisor>>; NUM_HART_MAX]> =
             MaybeUninit::uninit();
@@ -44,11 +44,7 @@ impl QemuHsm {
             );
         }
 
-        Self {
-            clint,
-            state,
-            supervisor,
-        }
+        Self { state, supervisor }
     }
 
     /// 读取特权态入口地址，转换状态准备跳转。
@@ -110,7 +106,6 @@ impl QemuHsm {
     /// 此时核状态必然是不可干预的 Pending 状态，中断业已关闭。
     pub fn finallize_before_stop(&self) {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
-        use riscv::register::mie;
 
         // 检查当前状态是重启前的挂起状态
         let state = &self.state[hart_id()];
@@ -131,7 +126,7 @@ impl QemuHsm {
         // 通过软件中断重启
         unsafe {
             mie::set_msoft();
-            set_mtvec(entry as _);
+            mtvec::write(entry as _, mtvec::TrapMode::Direct);
         };
         // 转移状态
         if let Err(unexpected) = state.compare_exchange(current, new, AcqRel, Acquire) {
@@ -145,7 +140,7 @@ impl QemuHsm {
             arch::asm,
             sync::atomic::Ordering::{AcqRel, Acquire},
         };
-        use riscv::{interrupt, register::mtvec};
+        use mcause::{Interrupt as I, Trap as T};
 
         /// 挂起，使用 call 进入以链接 ra
         #[naked]
@@ -153,11 +148,10 @@ impl QemuHsm {
             asm!("1: wfi", "j 1b", options(noreturn))
         }
 
-        /// 恢复，利用 ra 回到挂起前位置
+        /// 陷入向量表
         #[naked]
-        #[link_section = ".text.awaker"]
-        unsafe extern "C" fn resume() {
-            asm!("ret", options(noreturn))
+        unsafe extern "C" fn trap() {
+            asm!(".align 2", "ret", options(noreturn))
         }
 
         let state = &self.state[hart_id()];
@@ -172,14 +166,20 @@ impl QemuHsm {
         unsafe {
             // 支持软中断或外部中断唤醒
             let mut mie: usize = (1 << 11) | (1 << 3);
+            let mstatus: usize;
 
-            set_mtvec(resume as _);
-            asm!("csrrw {0}, mie, {0}", inlateout(reg) mie);
-            interrupt::enable();
+            mtvec::write(trap as _, mtvec::TrapMode::Direct);
+            asm!("csrrw  {0}, mie,     {0}", inlateout(reg) mie); // 打开软中断和外部中断，屏蔽其他中断
+            asm!("csrrsi {0}, mstatus, 1 << 3", out(reg) mstatus); // 打开中断
             suspend();
-            interrupt::disable();
-            asm!("csrw mie, {mie}", mie = in(reg) mie);
-            set_mtvec(mtvec);
+            match mcause::read().cause() {
+                T::Interrupt(I::MachineTimer) => clint::mtimecmp::clear(),
+                T::Interrupt(I::MachineSoft) => clint::msip::clear(),
+                t => panic!("unexpected trap: {t:?}"),
+            }
+            asm!("csrw mie,     {}", in(reg) mie); // 恢复中断屏蔽
+            asm!("csrw mstatus, {}", in(reg) mstatus); // 恢复中断状态
+            mtvec::write(mtvec, mtvec::TrapMode::Direct);
         }
         // 恢复状态
         if let Err(unexpected) = state.compare_exchange(SUSPENDED, STARTED, AcqRel, Acquire) {
@@ -192,7 +192,7 @@ impl QemuHsm {
 impl rustsbi::Hsm for QemuHsm {
     fn hart_start(&self, hart_id: usize, start_addr: usize, opaque: usize) -> SbiRet {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
-        use riscv::register::mstatus::{self, MPP};
+        use mstatus::MPP;
 
         // previous privileged mode should be user or supervisor; start from machine mode is not supported
         if !matches!(mstatus::read().mpp(), MPP::Supervisor | MPP::User) {
@@ -215,16 +215,8 @@ impl rustsbi::Hsm for QemuHsm {
         // - It is not a valid physical address.
         // - The address is prohibited by PMP to run in supervisor mode. */
         *self.supervisor[hart_id].lock() = Some(Supervisor { start_addr, opaque });
-        loop {
-            self.clint.clear_soft(hart_id);
-            self.clint.send_soft(hart_id);
-            for _ in 0..0x20000 {
-                core::hint::spin_loop();
-            }
-            if state.load(Acquire) != START_PENDING {
-                break;
-            }
-        }
+        clint::msip::send(hart_id);
+        while state.load(Acquire) == START_PENDING {}
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
         // and the function returns immediately as starting a hart is defined as an asynchronous procedure.

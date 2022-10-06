@@ -1,42 +1,7 @@
-//! 很久很久以前，CLINT 和 PLIC 都定义在 riscv-privileged 里。
-//! 如今，PLIC 有了自己的独立[标准](https://github.com/riscv/riscv-plic-spec)，
-//! CLINT 却消失不见了。
-
-use crate::hart_id;
+use core::cell::UnsafeCell;
 use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
-use spin::Once;
 
-pub(crate) struct Clint {
-    base: usize,
-}
-
-static CLINT: Once<Clint> = Once::new();
-
-pub(crate) fn init(base: usize) {
-    CLINT.call_once(|| Clint { base });
-}
-
-pub(crate) fn get() -> &'static Clint {
-    CLINT.wait()
-}
-
-impl Clint {
-    #[allow(unused)]
-    #[inline]
-    pub fn get_mtime(&self) -> u64 {
-        unsafe { ((self.base as *mut u8).add(0xbff8) as *mut u64).read_volatile() }
-    }
-
-    #[inline]
-    pub fn send_soft(&self, hart_id: usize) {
-        unsafe { (self.base as *mut u32).add(hart_id).write_volatile(1) };
-    }
-
-    #[inline]
-    pub fn clear_soft(&self, hart_id: usize) {
-        unsafe { (self.base as *mut u32).add(hart_id).write_volatile(0) };
-    }
-}
+pub(crate) struct Clint;
 
 impl Ipi for Clint {
     #[inline]
@@ -44,7 +9,7 @@ impl Ipi for Clint {
         let hsm = crate::HSM.wait();
         for i in 0..crate::NUM_HART_MAX {
             if hart_mask.has_bit(i) && hsm.is_ipi_allowed(i) {
-                self.send_soft(i);
+                msip::send(i);
             }
         }
         SbiRet::ok(0)
@@ -56,10 +21,106 @@ impl Timer for Clint {
     fn set_timer(&self, time_value: u64) {
         unsafe {
             riscv::register::mip::clear_stimer();
-            riscv::register::mie::set_mtimer();
-            ((self.base as *mut u8).offset(0x4000) as *mut u64)
-                .add(hart_id())
-                .write_volatile(time_value);
+            mtimecmp::set(time_value);
         }
+    }
+}
+
+static mut BASE: UnsafeCell<usize> = UnsafeCell::new(0);
+
+#[inline]
+pub(crate) fn init(base: usize) {
+    unsafe { *BASE.get() = base };
+}
+
+#[allow(unused)]
+pub mod mtime {
+    #[inline]
+    pub fn read() -> u64 {
+        unsafe { ((super::BASE.get().read_volatile() + 0xbff8) as *mut u64).read_volatile() }
+    }
+}
+
+pub mod mtimecmp {
+    #[naked]
+    pub unsafe extern "C" fn set_naked(time_value: u64) {
+        core::arch::asm!(
+            // 保存必要寄存器
+            "   addi sp, sp, -16
+                sd   t0, 0(sp)
+                sd   t1, 8(sp)
+            ",
+            // 定位并设置当前核的 mtimecmp
+            "   li   t1, 0x4000
+                la   t0, {base}
+                ld   t0, 0(t0)
+                add  t0, t0, t1
+                csrr t1, mhartid
+                slli t1, t1, 3
+                add  t0, t0, t1
+                sd   a0, 0(t0)
+            ",
+            // 恢复上下文并返回
+            "   ld   t1, 8(sp)
+                ld   t0, 0(sp)
+                addi sp, sp,  16
+                ret
+            ",
+            base = sym super::BASE,
+            options(noreturn)
+        )
+    }
+
+    #[inline]
+    pub fn set(time_value: u64) {
+        unsafe { set_naked(time_value) };
+    }
+
+    #[inline]
+    pub fn clear() {
+        unsafe { set_naked(u64::MAX) };
+    }
+}
+
+pub mod msip {
+    #[naked]
+    pub unsafe extern "C" fn clear_naked() -> usize {
+        core::arch::asm!(
+            // 保存必要寄存器
+            "   addi sp, sp, -16
+                sd   t0, 0(sp)
+                sd   t1, 8(sp)
+            ",
+            // 定位并清除当前核的 msip
+            "   la   t0, {base}
+                ld   t0, (t0)
+                csrr t1, mhartid
+                slli t1, t1, 2
+                add  t0, t0, t1
+                sw   zero, 0(t0)
+            ",
+            // 恢复上下文并返回
+            "   ld   t1, 8(sp)
+                ld   t0, 0(sp)
+                addi sp, sp,  16
+                ret
+            ",
+            base = sym super::BASE,
+            options(noreturn)
+        )
+    }
+
+    #[inline]
+    pub fn send(hart_id: usize) {
+        unsafe {
+            (super::BASE.get().read_volatile() as *mut u32)
+                .add(hart_id)
+                .write_volatile(1)
+        };
+    }
+
+    #[inline]
+    pub fn clear() {
+        unsafe { clear_naked() };
     }
 }
