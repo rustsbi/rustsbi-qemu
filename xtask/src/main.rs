@@ -18,8 +18,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Make this project
     Make(BuildArgs),
+    /// Dump assembly code of RustSBI-QEMU
     Asm(AsmArgs),
+    /// Run RustSBI-QEMU and test-kernel in QEMU
     Qemu(QemuArgs),
 }
 
