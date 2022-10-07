@@ -88,10 +88,10 @@ fn zero_bss() {
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
 
-    let (hard_id, pc): (usize, usize);
-    unsafe { asm!("mv    {}, tp", out(reg) hard_id) };
+    let (hart_id, pc): (usize, usize);
+    unsafe { asm!("mv    {}, tp", out(reg) hart_id) };
     unsafe { asm!("auipc {},  0", out(reg) pc) };
-    println!("[test-kernel-panic] hart {hard_id} {info}");
+    println!("[test-kernel-panic] hart {hart_id} {info}");
     println!("[test-kernel-panic] pc = {pc:#x}");
     println!("[test-kernel-panic] SBI test FAILED due to panic");
     system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
