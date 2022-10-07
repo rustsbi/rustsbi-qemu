@@ -261,12 +261,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "riscv"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73fc4bc7113424814738fe79755a5764e392b3d4d1bc757e6aa6f61cede32095"
+dependencies = [
+ "bare-metal",
+ "bit_field",
+ "embedded-hal",
+]
+
+[[package]]
 name = "rustsbi"
 version = "0.3.0-alpha.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5697645411c21e33776cddebf26f19f98a2405ff82e88d11b2bc35dc8a8b6d59"
 dependencies = [
- "riscv",
+ "riscv 0.8.0",
  "sbi-spec 0.0.2",
 ]
 
@@ -277,7 +288,7 @@ dependencies = [
  "dtb-walker",
  "qemu-exit",
  "r0",
- "riscv",
+ "riscv 0.9.0",
  "rustsbi",
  "spin",
  "uart_16550",
@@ -320,7 +331,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe4a082032c0114e213bc67c4bca88671d0959b5692b28e1b2852ee0e14384f1"
 dependencies = [
  "log",
- "riscv",
+ "riscv 0.8.0",
  "sbi-rt",
 ]
 
@@ -378,7 +389,7 @@ dependencies = [
  "dtb-walker",
  "log",
  "r0",
- "riscv",
+ "riscv 0.9.0",
  "sbi-testing",
  "spin",
  "uart_16550",
