@@ -104,7 +104,7 @@ impl QemuHsm {
     /// 为硬件线程准备休眠或关闭。
     ///
     /// 此时核状态必然是不可干预的 Pending 状态，中断业已关闭。
-    pub fn finallize_before_stop(&self) {
+    pub fn finalize_before_stop(&self) {
         use core::sync::atomic::Ordering::{AcqRel, Acquire};
 
         // 检查当前状态是重启前的挂起状态
@@ -216,7 +216,9 @@ impl rustsbi::Hsm for QemuHsm {
         // - The address is prohibited by PMP to run in supervisor mode. */
         *self.supervisor[hart_id].lock() = Some(Supervisor { start_addr, opaque });
         clint::msip::send(hart_id);
-        while state.load(Acquire) == START_PENDING {}
+        while state.load(Acquire) == START_PENDING {
+            core::hint::spin_loop()
+        }
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
         // and the function returns immediately as starting a hart is defined as an asynchronous procedure.

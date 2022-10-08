@@ -168,7 +168,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
 unsafe extern "C" fn finalize(op: Operation) -> ! {
     match op {
         Operation::Stop => {
-            HSM.wait().finallize_before_stop();
+            HSM.wait().finalize_before_stop();
             riscv::interrupt::enable();
             // 从中断响应直接回 entry
             loop {

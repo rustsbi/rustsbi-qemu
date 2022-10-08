@@ -9,6 +9,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Hint spin loop in hart state monitor module
+
 ### Modified
 
 ## [0.1.1] - 2022-03-23
