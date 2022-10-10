@@ -66,7 +66,7 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
         delay: frequency,
     }
     .test();
-    sbi::system_reset(sbi::RESET_TYPE_SHUTDOWN, sbi::RESET_REASON_NO_REASON);
+    sbi::system_reset(sbi::Shutdown, sbi::NoReason);
     unreachable!()
 }
 
@@ -86,15 +86,13 @@ fn zero_bss() {
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use sbi::{system_reset, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN};
-
     let (hart_id, pc): (usize, usize);
     unsafe { asm!("mv    {}, tp", out(reg) hart_id) };
     unsafe { asm!("auipc {},  0", out(reg) pc) };
     println!("[test-kernel-panic] hart {hart_id} {info}");
     println!("[test-kernel-panic] pc = {pc:#x}");
     println!("[test-kernel-panic] SBI test FAILED due to panic");
-    system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
+    sbi::system_reset(sbi::Shutdown, sbi::SystemFailure);
     loop {}
 }
 

@@ -83,14 +83,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "command-ext"
-version = "0.1.0"
-source = "git+https://github.com/YdrMaster/command-ext.git?rev=f25befb#f25befb0b5a58e3e75fb3a891d6cc5969a13d93c"
-dependencies = [
- "lazy_static",
-]
-
-[[package]]
 name = "dtb-walker"
 version = "0.2.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -138,12 +130,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazy_static"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-
-[[package]]
 name = "libc"
 version = "0.2.133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -188,6 +174,15 @@ name = "once_cell"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e82dad04139b71a90c080c8463fe0dc7902db5192d939bd0950f074d014339e1"
+
+[[package]]
+name = "os-xtask-utils"
+version = "0.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5e9cccd7bf690840399e09e283b7f5aa219886dc5770c083beee2adca0ffabe"
+dependencies = [
+ "once_cell",
+]
 
 [[package]]
 name = "os_str_bytes"
@@ -251,17 +246,6 @@ checksum = "bd7a31eed1591dcbc95d92ad7161908e72f4677f8fabf2a32ca49b4237cbf211"
 
 [[package]]
 name = "riscv"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e2856a701069e2d262b264750d382407d272d5527f7a51d3777d1805b4e2d3c"
-dependencies = [
- "bare-metal",
- "bit_field",
- "embedded-hal",
-]
-
-[[package]]
-name = "riscv"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73fc4bc7113424814738fe79755a5764e392b3d4d1bc757e6aa6f61cede32095"
@@ -277,8 +261,8 @@ version = "0.3.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ffd816cc6c1abe4662ddef08d3dc9b6fe02cdba388bb461d2418f5c183615f3"
 dependencies = [
- "riscv 0.9.0",
- "sbi-spec",
+ "riscv",
+ "sbi-spec 0.0.3",
 ]
 
 [[package]]
@@ -288,7 +272,7 @@ dependencies = [
  "dtb-walker",
  "qemu-exit",
  "r0",
- "riscv 0.9.0",
+ "riscv",
  "rustsbi",
  "spin",
  "uart_16550",
@@ -302,11 +286,11 @@ checksum = "97477e48b4cf8603ad5f7aaf897467cf42ab4218a38ef76fb14c2d6773a6d6a8"
 
 [[package]]
 name = "sbi-rt"
-version = "0.0.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07f27f053b4d773f8027cd703baed9764f730a058006da4947522394515afe8c"
+checksum = "8c113c53291db8ac141e01f43224ed488b8d6001ab66737b82e04695a43a42b7"
 dependencies = [
- "sbi-spec",
+ "sbi-spec 0.0.4",
 ]
 
 [[package]]
@@ -319,14 +303,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "sbi-testing"
-version = "0.0.0"
+name = "sbi-spec"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe4a082032c0114e213bc67c4bca88671d0959b5692b28e1b2852ee0e14384f1"
+checksum = "6d4027cf9bb591a9fd0fc0e283be6165c5abe96cb73e9f0e24738c227f425377"
+dependencies = [
+ "static_assertions",
+]
+
+[[package]]
+name = "sbi-testing"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b5723dcf4011f2d181c2547227344900bd68027b1fa9bc42dfe3bd8f1d57443"
 dependencies = [
  "log",
- "riscv 0.8.0",
+ "riscv",
  "sbi-rt",
+ "sbi-spec 0.0.4",
 ]
 
 [[package]]
@@ -383,7 +377,7 @@ dependencies = [
  "dtb-walker",
  "log",
  "r0",
- "riscv 0.9.0",
+ "riscv",
  "sbi-testing",
  "spin",
  "uart_16550",
@@ -478,5 +472,5 @@ name = "xtask"
 version = "0.2.0"
 dependencies = [
  "clap",
- "command-ext",
+ "os-xtask-utils",
 ]
