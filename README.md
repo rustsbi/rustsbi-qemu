@@ -5,7 +5,12 @@ file and implement simple SBI directly, thus RustSBI provides a bootable ELF fil
 
 ## Try it out!
 
-Compile and run with:
+To prepare for environment, you should have Rust compiler and QEMU installed.
+You may install Rust by [rustup](https://rustup.rs) or using vendor provided rustc and cargo packages.
+To install QEMU, your may need to use package manager (e.g. apt, dnf etc.) from system distribution
+to get a proper QEMU software package.
+
+After environment prepared, compile and run with:
 
 ```shell
 cargo qemu
@@ -68,11 +73,10 @@ When running `cargo qemu`, the test kernel will build and run. Expected output s
 
 ### Requirements
 
-You should have `cargo-binutils` and `llvm-tools-preview` installed.
+You should have `cargo-binutils` installed.
 
 ```
 cargo install cargo-binutils
-rustup component add llvm-tools-preview
 ```
 
 ### Run
