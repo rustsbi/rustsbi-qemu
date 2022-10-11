@@ -16,6 +16,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Update sbi-testing to version 0.0.1
 - Use crate os-xtask-utils version 0.0.0 in xtask builder
 
+### Fixed
+
+- Xtask will now print error when system does not have qemu installed
+
 ## [0.1.1] - 2022-03-23
 
 ### Added
