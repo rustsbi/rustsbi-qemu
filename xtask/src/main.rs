@@ -4,8 +4,9 @@ extern crate clap;
 use clap::Parser;
 use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
-    fs,
+    fs, io,
     path::{Path, PathBuf},
+    process,
 };
 
 #[derive(Parser)]
@@ -176,7 +177,7 @@ impl QemuArgs {
         if let Some(p) = &self.qemu_dir {
             Qemu::search_at(p);
         }
-        Qemu::system(self.build.arch())
+        let status = Qemu::system(self.build.arch())
             .args(["-machine", "virt"])
             .arg("-bios")
             .arg(self.build.dir().join("rustsbi-qemu.bin"))
@@ -188,7 +189,17 @@ impl QemuArgs {
             .optional(&self.gdb, |qemu, gdb| {
                 qemu.args(["-S", "-gdb", &format!("tcp::{gdb}")]);
             })
-            .invoke();
+            .as_mut()
+            .status();
+        if let Err(e) = status {
+            if e.kind() == io::ErrorKind::NotFound {
+                println!("xtask: QEMU command not found. Does your system have QEMU installed and environment variable configured?");
+                println!("xtask: error: {}", e);
+            } else {
+                println!("xtask: error: {}", e);
+            }
+            process::exit(1);
+        }
     }
 }
 
