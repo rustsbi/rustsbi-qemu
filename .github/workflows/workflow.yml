@@ -3,9 +3,7 @@
 on:
   push:
   pull_request:
-
-env:
-  qemu_version: 7.0.0
+  workflow_dispatch:
 
 jobs:
   build:
@@ -29,41 +27,32 @@ jobs:
           command: clippy
 
   test:
+    needs: build
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        base-img: [slim]
+        qemu-version: [6.2.0, 7.0.0, 7.1.0]
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
         with:
-          profile: minimal
-          toolchain: nightly
-          components: llvm-tools-preview
-          target: riscv64imac-unknown-none-elf
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache QEMU
-        id: cache-qemu
-        uses: actions/cache@v3
-        with:
-          path: qemu-${{ env.qemu_version }}
-          key: qemu-${{ env.qemu_version }}
-
-      - name: Install ninja-build
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
-      - name: Download and Compile QEMU
-        if: steps.cache-qemu.outputs.cache-hit != 'true'
-        run: |
-          wget https://download.qemu.org/qemu-${{ env.qemu_version }}.tar.xz
-          tar xf qemu-${{ env.qemu_version }}.tar.xz
-          cd qemu-${{ env.qemu_version }}
-          ./configure --target-list=riscv64-softmmu
-          make -j
-
-      - name: Install QEMU
-        run: |
-          cd qemu-${{ env.qemu_version }} && sudo make install
-          qemu-system-riscv64 --version
+      - name: Pull image
+        run: docker pull ghcr.io/rustsbi/qemu:${{ matrix.base-img }}-${{ matrix.qemu-version }}-rv64
 
       - name: Test
-        uses: actions-rs/cargo@v1
+        uses: addnab/docker-run-action@v3
         with:
-          command: test
+          image: ghcr.io/rustsbi/qemu:${{ matrix.base-img }}-${{ matrix.qemu-version }}-rv64
+          options: -v ${{ github.workspace }}:/work
+          run: |
+            rustup component add llvm-tools-preview
+            rustup target add riscv64imac-unknown-none-elf
+            cd /work
+            cargo test
