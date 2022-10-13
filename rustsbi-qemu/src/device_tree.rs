@@ -46,7 +46,7 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
     };
     let dtb = unsafe {
         Dtb::from_raw_parts_filtered(opaque as _, |e| {
-            matches!(e, E::Misaligned(4) | E::LastCompVersion(16))
+            matches!(e, E::Misaligned(4) | E::LastCompVersion(_))
         })
     }
     .unwrap();
