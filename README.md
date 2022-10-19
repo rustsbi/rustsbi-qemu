@@ -119,6 +119,10 @@ You should use these following line of parameters:
 
 ... to enable H extension on QEMU software.
 
+3. What is the minimum supported Rust version of this package?
+
+You should build RustSBI-QEMU on nightly at least `rustc 1.66.0-nightly (a24a020e6 2022-10-18)`.
+
 ## License 
 
 This project is licensed under Mulan PSL v2.
