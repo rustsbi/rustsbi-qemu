@@ -82,6 +82,14 @@ jobs:
         with:
           version: ${{ (steps.check.outputs.PRE_RELEASE && 'Unreleased') || github.ref_name }}
 
+      - name: Update Unreleased Tag
+        if: ${{ steps.changelog-reader.outputs.version == 'Unreleased' }}
+        uses: richardsimko/update-tag@v1
+        with:
+          tag_name: Unreleased
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
