@@ -194,9 +194,9 @@ impl QemuArgs {
         if let Err(e) = status {
             if e.kind() == io::ErrorKind::NotFound {
                 println!("xtask: QEMU command not found. Does your system have QEMU installed and environment variable configured?");
-                println!("xtask: error: {}", e);
+                println!("xtask: error: {e}");
             } else {
-                println!("xtask: error: {}", e);
+                println!("xtask: error: {e}");
             }
             process::exit(1);
         }
