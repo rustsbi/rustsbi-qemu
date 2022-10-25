@@ -16,14 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Rust Toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          target: riscv64imac-unknown-none-elf
-          override: true
-
       - name: Cache Dependencies
         uses: Swatinem/rust-cache@v2
         with:
