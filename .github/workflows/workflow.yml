@@ -10,21 +10,12 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          components: rustfmt, clippy
-          target: riscv64imac-unknown-none-elf
+
       - name: Check format
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
+
       - name: Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
+        run: cargo clippy
 
   test:
     needs: build
