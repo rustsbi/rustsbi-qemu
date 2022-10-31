@@ -3,12 +3,12 @@
 #![feature(naked_functions, asm_const)]
 #![deny(warnings)]
 
-#[macro_use]
-extern crate console;
+use core::mem::MaybeUninit;
 
 use console::log;
 use riscv::register::*;
 use sbi_rt::*;
+use uart_16550::MmioSerialPort;
 
 #[naked]
 #[no_mangle]
@@ -35,17 +35,15 @@ extern "C" fn rust_main(_hartid: usize, _dtb_pa: usize) -> ! {
         static mut ebss: u64;
     }
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+    unsafe { UART = MaybeUninit::new(MmioSerialPort::new(0x1000_0000)) };
     console::init_console(&Console);
     console::set_log_level(option_env!("LOG"));
     console::test_log();
 
     let t0 = time::read();
 
-    for i in 0..0x2000 {
-        print!("{i:#08x}");
-        for _ in 0..8 {
-            print!("{}", 8 as char);
-        }
+    for _ in 0..0xffff {
+        let _ = sbi_rt::get_marchid();
     }
 
     let t1 = time::read();
@@ -62,12 +60,12 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-pub struct Console;
+struct Console;
+static mut UART: MaybeUninit<MmioSerialPort> = MaybeUninit::uninit();
 
 impl console::Console for Console {
     #[inline]
     fn put_char(&self, c: u8) {
-        #[allow(deprecated)]
-        legacy::console_putchar(c as _);
+        unsafe { UART.assume_init_mut().send(c) }
     }
 }
