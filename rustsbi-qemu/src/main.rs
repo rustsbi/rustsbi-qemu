@@ -109,16 +109,15 @@ type FixedRustSBI<'a> = RustSBI<
 
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
-    #[link_section = ".bss.uninit"] // 以免清零
-    static GENESIS: AtomicBool = AtomicBool::new(false);
-
+    static GENESIS: AtomicBool = AtomicBool::new(true);
+    static SERIAL: Once<ns16550a::Ns16550a> = Once::new();
     static BOARD_INFO: Once<BoardInfo> = Once::new();
     static CSR_PRINT: AtomicBool = AtomicBool::new(false);
 
     // static RUSTSBI: Once<RustSBI<>> = Once::new();
 
     // 全局初始化过程
-    if !GENESIS.swap(true, AcqRel) {
+    if GENESIS.swap(false, AcqRel) {
         // 清零 bss 段
         zero_bss();
         // 解析设备树

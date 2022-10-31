@@ -81,6 +81,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "console"
+version = "0.0.1"
+source = "git+https://github.com/YdrMaster/rCore-Tutorial-in-single-workspace#e1703cfc384cd01aad514d616b174f8dd385e4fa"
+dependencies = [
+ "log",
+ "spin",
+]
+
+[[package]]
 name = "dtb-walker"
 version = "0.2.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -109,6 +118,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "legacy-console-bench"
+version = "0.1.0"
+dependencies = [
+ "console",
+ "r0",
+ "riscv",
+ "sbi-rt",
 ]
 
 [[package]]
@@ -440,5 +459,6 @@ name = "xtask"
 version = "0.2.0"
 dependencies = [
  "clap",
+ "once_cell",
  "os-xtask-utils",
 ]

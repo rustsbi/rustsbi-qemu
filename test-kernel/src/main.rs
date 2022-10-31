@@ -24,21 +24,21 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
 
     asm!(
-        "   csrw sie, zero
-            la   sp,  {stack}
-            li   t0,  {stack_size}
-            add  sp,  sp, t0
-            j    {main}
-        ",
+        "la sp,  {stack} + {stack_size}",
+        "j  {main}",
         stack_size = const STACK_SIZE,
         stack      = sym   STACK,
-        main       = sym   primary_rust_main,
+        main       = sym   rust_main,
         options(noreturn),
     )
 }
 
-extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    zero_bss();
+extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
+    extern "C" {
+        static mut sbss: u64;
+        static mut ebss: u64;
+    }
+    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
     let BoardInfo {
         smp,
         frequency,
@@ -68,20 +68,6 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     .test();
     sbi::system_reset(sbi::Shutdown, sbi::NoReason);
     unreachable!()
-}
-
-/// 清零 bss 段。
-#[inline(always)]
-fn zero_bss() {
-    #[cfg(target_pointer_width = "32")]
-    type Word = u32;
-    #[cfg(target_pointer_width = "64")]
-    type Word = u64;
-    extern "C" {
-        static mut sbss: Word;
-        static mut ebss: Word;
-    }
-    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
