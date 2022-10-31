@@ -10,5 +10,4 @@ sbi-rt = "0.0.2"
 riscv = "0.9.0"
 r0 = "1"
 uart_16550 = "0.2"
-
-console = { git = "https://github.com/YdrMaster/rCore-Tutorial-in-single-workspace" }
+rcore-console = "0.0.0"

@@ -4,8 +4,7 @@
 #![deny(warnings)]
 
 use core::mem::MaybeUninit;
-
-use console::log;
+use rcore_console::log;
 use riscv::register::*;
 use sbi_rt::*;
 use uart_16550::MmioSerialPort;
@@ -29,21 +28,21 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     )
 }
 
-extern "C" fn rust_main(_hartid: usize, _dtb_pa: usize) -> ! {
+extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
     extern "C" {
         static mut sbss: u64;
         static mut ebss: u64;
     }
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
     unsafe { UART = MaybeUninit::new(MmioSerialPort::new(0x1000_0000)) };
-    console::init_console(&Console);
-    console::set_log_level(option_env!("LOG"));
-    console::test_log();
+    rcore_console::init_console(&Console);
+    rcore_console::set_log_level(option_env!("LOG"));
+    rcore_console::test_log();
 
     let t0 = time::read();
 
     for _ in 0..0xffff {
-        let _ = sbi_rt::get_marchid();
+        let _ = sbi_rt::send_ipi(1 << hartid, 0);
     }
 
     let t1 = time::read();
@@ -63,9 +62,9 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 struct Console;
 static mut UART: MaybeUninit<MmioSerialPort> = MaybeUninit::uninit();
 
-impl console::Console for Console {
+impl rcore_console::Console for Console {
     #[inline]
     fn put_char(&self, c: u8) {
-        unsafe { UART.assume_init_mut().send(c) }
+        unsafe { UART.assume_init_mut() }.send(c);
     }
 }

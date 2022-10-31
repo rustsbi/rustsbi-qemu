@@ -4,10 +4,12 @@
 #![deny(warnings)]
 
 #[macro_use]
-mod console;
+extern crate rcore_console;
 
-use core::arch::asm;
+use core::{arch::asm, mem::MaybeUninit};
 use sbi_testing::sbi;
+use spin::Mutex;
+use uart_16550::MmioSerialPort;
 
 /// 内核入口。
 ///
@@ -44,7 +46,9 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         frequency,
         uart,
     } = BoardInfo::parse(dtb_pa);
-    console::init(uart);
+    *UART.lock() = MaybeUninit::new(unsafe { MmioSerialPort::new(uart) });
+    rcore_console::init_console(&Console);
+    rcore_console::set_log_level(option_env!("LOG"));
     println!(
         r"
  _____         _     _  __                    _
@@ -135,5 +139,24 @@ impl BoardInfo {
             DtbObj::Property(_) => StepOver,
         });
         ans
+    }
+}
+
+struct Console;
+static UART: Mutex<MaybeUninit<MmioSerialPort>> = Mutex::new(MaybeUninit::uninit());
+
+impl rcore_console::Console for Console {
+    #[inline]
+    fn put_char(&self, c: u8) {
+        unsafe { UART.lock().assume_init_mut() }.send(c);
+    }
+
+    #[inline]
+    fn put_str(&self, s: &str) {
+        let mut uart = UART.lock();
+        let uart = unsafe { uart.assume_init_mut() };
+        for c in s.bytes() {
+            uart.send(c);
+        }
     }
 }

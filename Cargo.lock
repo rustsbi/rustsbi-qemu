@@ -81,15 +81,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "console"
-version = "0.0.1"
-source = "git+https://github.com/YdrMaster/rCore-Tutorial-in-single-workspace#e1703cfc384cd01aad514d616b174f8dd385e4fa"
-dependencies = [
- "log",
- "spin",
-]
-
-[[package]]
 name = "dtb-walker"
 version = "0.2.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -124,8 +115,8 @@ dependencies = [
 name = "legacy-console-bench"
 version = "0.1.0"
 dependencies = [
- "console",
  "r0",
+ "rcore-console",
  "riscv",
  "sbi-rt",
  "uart_16550",
@@ -245,6 +236,16 @@ name = "r0"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd7a31eed1591dcbc95d92ad7161908e72f4677f8fabf2a32ca49b4237cbf211"
+
+[[package]]
+name = "rcore-console"
+version = "0.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63aae49a6d2e6fd69821507a979b5871e4c47dc3abc9066347fa5c4a51a73dd6"
+dependencies = [
+ "log",
+ "spin",
+]
 
 [[package]]
 name = "riscv"
@@ -371,6 +372,7 @@ dependencies = [
  "dtb-walker",
  "log",
  "r0",
+ "rcore-console",
  "riscv",
  "sbi-testing",
  "spin",
