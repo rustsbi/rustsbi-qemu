@@ -34,20 +34,51 @@ extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
         static mut ebss: u64;
     }
     unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+    // 初始化打印
     unsafe { UART = MaybeUninit::new(MmioSerialPort::new(0x1000_0000)) };
     rcore_console::init_console(&Console);
     rcore_console::set_log_level(option_env!("LOG"));
     rcore_console::test_log();
-
+    // 打开软中断
+    unsafe {
+        sie::set_ssoft();
+        sstatus::set_sie();
+    };
+    // 测试调用延迟
     let t0 = time::read();
 
     for _ in 0..0xffff {
-        let _ = sbi_rt::send_ipi(1 << hartid, 0);
+        let _ = sbi_rt::get_marchid();
     }
 
     let t1 = time::read();
+    log::info!("marchid duration = {}", t1 - t0);
+    // 测试中断响应延迟
+    let t0 = time::read();
 
-    log::info!("{}", t1 - t0);
+    for _ in 0..0xffff {
+        unsafe {
+            core::arch::asm!(
+                "   la   {0}, 1f
+                    csrw stvec, {0}
+                    ecall
+                    wfi
+                .align 2
+                1:
+                ",
+                out(reg) _,
+                in("a7") 0x735049,
+                in("a6") 0,
+                in("a0") 1 << hartid,
+                in("a1") 0,
+                options(nomem),
+            );
+        }
+    }
+
+    let t1 = time::read();
+    log::info!("ipi duration = {}", t1 - t0);
+
     system_reset(Shutdown, NoReason);
     unreachable!()
 }
