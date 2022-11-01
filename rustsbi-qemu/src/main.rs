@@ -136,7 +136,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
 [rustsbi] Supervisor Address : {SUPERVISOR_ENTRY:#x}
 ",
             ver_sbi = rustsbi::VERSION,
-            logo = rustsbi::logo(),
+            logo = rustsbi::LOGO,
             ver_impl = env!("CARGO_PKG_VERSION"),
             model = board_info.model,
             smp = board_info.smp,

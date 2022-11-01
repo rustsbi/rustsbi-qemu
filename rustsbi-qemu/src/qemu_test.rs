@@ -31,7 +31,7 @@ impl Reset for QemuTest {
                 RESET_REASON_SYSTEM_FAILURE => self.0.exit_failure(),
                 value => self.0.exit(value),
             },
-            RESET_TYPE_COLD_REBOOT | RESET_TYPE_WARM_REBOOT => SbiRet::ok(0),
+            RESET_TYPE_COLD_REBOOT | RESET_TYPE_WARM_REBOOT => SbiRet::success(0),
             _ => SbiRet::invalid_param(),
         }
     }

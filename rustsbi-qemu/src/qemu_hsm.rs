@@ -222,7 +222,7 @@ impl rustsbi::Hsm for QemuHsm {
         // this does not block the current function
         // The following process is going to be handled in software interrupt handler,
         // and the function returns immediately as starting a hart is defined as an asynchronous procedure.
-        SbiRet::ok(0)
+        SbiRet::success(0)
     }
 
     fn hart_stop(&self) -> SbiRet {
@@ -230,7 +230,7 @@ impl rustsbi::Hsm for QemuHsm {
         match self.state[hart_id()].compare_exchange(STARTED, STOP_PENDING, AcqRel, Acquire) {
             Ok(_) => {
                 *self.supervisor[hart_id()].lock() = None;
-                SbiRet::ok(0)
+                SbiRet::success(0)
             }
             Err(_) => SbiRet::failed(),
         }
@@ -240,7 +240,7 @@ impl rustsbi::Hsm for QemuHsm {
         use core::sync::atomic::Ordering::Acquire;
         self.state.get(hart_id).map_or(
             SbiRet::invalid_param(), // not in `state` map structure, the given hart id is invalid
-            |s| SbiRet::ok(s.load(Acquire) as _),
+            |s| SbiRet::success(s.load(Acquire) as _),
         )
     }
 
@@ -250,14 +250,14 @@ impl rustsbi::Hsm for QemuHsm {
             Ok(_) => match suspend_type {
                 spec::HART_SUSPEND_TYPE_RETENTIVE => {
                     self.retentive_suspend();
-                    SbiRet::ok(0)
+                    SbiRet::success(0)
                 }
                 spec::HART_SUSPEND_TYPE_NON_RETENTIVE => {
                     *self.supervisor[hart_id()].lock() = Some(Supervisor {
                         start_addr: resume_addr,
                         opaque,
                     });
-                    SbiRet::ok(0)
+                    SbiRet::success(0)
                 }
                 _ => SbiRet::not_supported(),
             },

@@ -5,14 +5,14 @@ pub(crate) struct Clint;
 
 impl Ipi for Clint {
     #[inline]
-    fn send_ipi_many(&self, hart_mask: HartMask) -> SbiRet {
+    fn send_ipi(&self, hart_mask: HartMask) -> SbiRet {
         let hsm = crate::HSM.wait();
         for i in 0..crate::NUM_HART_MAX {
             if hart_mask.has_bit(i) && hsm.is_ipi_allowed(i) {
                 msip::send(i);
             }
         }
-        SbiRet::ok(0)
+        SbiRet::success(0)
     }
 }
 
