@@ -3,6 +3,9 @@
 #![feature(naked_functions, asm_const)]
 #![deny(warnings)]
 
+#[macro_use]
+mod console;
+
 mod clint;
 mod device_tree;
 mod execute;
@@ -22,16 +25,18 @@ mod constants {
     pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
 }
 
-#[macro_use] // for print
-extern crate rustsbi;
-
 use constants::*;
-use core::sync::atomic::{AtomicBool, Ordering::AcqRel};
+use core::{
+    convert::Infallible,
+    sync::atomic::{AtomicBool, Ordering::AcqRel},
+};
 use device_tree::BoardInfo;
 use execute::Operation;
+use rustsbi::RustSBI;
 use spin::Once;
 
 /// 特权软件信息。
+#[derive(Debug)]
 struct Supervisor {
     start_addr: usize,
     opaque: usize,
@@ -93,14 +98,24 @@ unsafe extern "C" fn entry() -> ! {
 
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
+type FixedRustSBI<'a> = RustSBI<
+    &'a clint::Clint,
+    &'a clint::Clint,
+    Infallible,
+    &'a qemu_hsm::QemuHsm,
+    &'a qemu_test::QemuTest,
+    Infallible,
+>;
+
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
     #[link_section = ".bss.uninit"] // 以免清零
     static GENESIS: AtomicBool = AtomicBool::new(false);
 
-    static SERIAL: Once<ns16550a::Ns16550a> = Once::new();
     static BOARD_INFO: Once<BoardInfo> = Once::new();
     static CSR_PRINT: AtomicBool = AtomicBool::new(false);
+
+    // static RUSTSBI: Once<RustSBI<>> = Once::new();
 
     // 全局初始化过程
     if !GENESIS.swap(true, AcqRel) {
@@ -109,18 +124,10 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
         // 解析设备树
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
-        rustsbi::legacy_stdio::init_legacy_stdio(
-            SERIAL.call_once(|| unsafe { ns16550a::Ns16550a::new(board_info.uart.start) }),
-        );
-
+        console::init(unsafe { ns16550a::Ns16550a::new(board_info.uart.start) });
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
-        let hsm = HSM.call_once(|| qemu_hsm::QemuHsm::new(NUM_HART_MAX, opaque));
-        // 初始化 SBI 服务
-        rustsbi::init_ipi(&clint::Clint);
-        rustsbi::init_timer(&clint::Clint);
-        rustsbi::init_reset(qemu_test::get());
-        rustsbi::init_hsm(hsm);
+        HSM.call_once(|| qemu_hsm::QemuHsm::new(NUM_HART_MAX, opaque));
         // 打印启动信息
         print!(
             "\
@@ -155,7 +162,14 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
         if !CSR_PRINT.swap(true, AcqRel) {
             hart_csr_utils::print_pmps();
         }
-        execute_supervisor(hsm, supervisor)
+        // 初始化 SBI 服务
+        let sbi = rustsbi::Builder::new_machine()
+            .with_ipi(&clint::Clint)
+            .with_timer(&clint::Clint)
+            .with_reset(qemu_test::get())
+            .with_hsm(hsm)
+            .build();
+        execute_supervisor(sbi, hsm, supervisor)
     } else {
         Operation::Stop
     }

@@ -13,6 +13,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Modified
 
+- Use instance based RustSBI interface, with separate functions for legacy stdio
 - Update sbi-testing to version 0.0.1
 - Use crate os-xtask-utils version 0.0.0 in xtask builder
 
