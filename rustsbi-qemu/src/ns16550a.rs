@@ -1,5 +1,4 @@
-use core::fmt::Write;
-use rustsbi::legacy_stdio::LegacyStdio;
+use core::fmt;
 use spin::Mutex;
 use uart_16550::MmioSerialPort;
 
@@ -9,18 +8,21 @@ impl Ns16550a {
     pub unsafe fn new(base: usize) -> Self {
         Self(Mutex::new(MmioSerialPort::new(base)))
     }
-}
 
-impl LegacyStdio for Ns16550a {
-    fn getchar(&self) -> u8 {
+    #[inline]
+    pub(crate) fn getchar(&self) -> u8 {
         self.0.lock().receive()
     }
 
-    fn putchar(&self, ch: u8) {
+    #[inline]
+    pub(crate) fn putchar(&self, ch: u8) {
         self.0.lock().send(ch);
     }
+}
 
-    fn write_str(&self, s: &str) {
+impl fmt::Write for &Ns16550a {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
         self.0.lock().write_str(s).unwrap();
+        Ok(())
     }
 }

@@ -1,6 +1,7 @@
-use crate::{clint, hart_id, qemu_hsm::QemuHsm, Supervisor};
+use crate::{clint, hart_id, qemu_hsm::QemuHsm, FixedRustSBI, Supervisor};
 use core::arch::asm;
 use riscv::register::*;
+use rustsbi::spec::binary::SbiRet;
 
 #[repr(usize)]
 pub(crate) enum Operation {
@@ -8,10 +9,11 @@ pub(crate) enum Operation {
     SystemReset = 1,
 }
 
-pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Operation {
-    let mut ctx = SupervisorContext::new(supervisor);
-    mscratch::write(&mut ctx as *mut _ as _);
-
+pub(crate) fn execute_supervisor(
+    sbi: FixedRustSBI,
+    hsm: &QemuHsm,
+    supervisor: Supervisor,
+) -> Operation {
     clint::msip::clear();
     clint::mtimecmp::clear();
     unsafe {
@@ -26,6 +28,10 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
         mie::set_msoft();
         mie::set_mtimer();
     }
+    let ctx = SupervisorContext::new(supervisor);
+
+    let mut env = Environment { ctx, sbi };
+    mscratch::write(&mut env.ctx as *mut _ as _);
 
     hsm.record_current_start_finished();
     loop {
@@ -34,12 +40,84 @@ pub(crate) fn execute_supervisor(hsm: &QemuHsm, supervisor: Supervisor) -> Opera
         use mcause::{Exception, Trap};
         match mcause::read().cause() {
             Trap::Exception(Exception::SupervisorEnvCall) => {
-                if let Some(op) = ctx.handle_ecall() {
+                if let Some(op) = env.handle_ecall() {
                     break op;
                 }
             }
-            t => ctx.trap_stop(t),
+            t => env.trap_stop(t),
         }
+    }
+}
+
+struct Environment<'a> {
+    ctx: SupervisorContext,
+    sbi: FixedRustSBI<'a>,
+}
+
+impl<'a> Environment<'a> {
+    fn handle_ecall(&mut self) -> Option<Operation> {
+        use rustsbi::spec::{binary::*, hsm::*, srst::*};
+        if self.ctx.sbi_extension() == sbi_spec::legacy::LEGACY_CONSOLE_PUTCHAR {
+            let ch = self.ctx.a(0);
+            crate::console::STDOUT.wait().putchar((ch & 0xFF) as u8);
+            self.ctx.mepc = self.ctx.mepc.wrapping_add(4);
+            return None;
+        } else if self.ctx.sbi_extension() == sbi_spec::legacy::LEGACY_CONSOLE_GETCHAR {
+            let ch = crate::console::STDOUT.wait().getchar();
+            *self.ctx.a_mut(0) = ch as usize;
+            self.ctx.mepc = self.ctx.mepc.wrapping_add(4);
+            return None;
+        }
+        let ans = self.sbi.handle_ecall(
+            self.ctx.sbi_extension(),
+            self.ctx.sbi_function(),
+            self.ctx.sbi_param(),
+        );
+        // 判断导致退出执行流程的调用
+        if ans.error == RET_SUCCESS {
+            match (self.ctx.sbi_extension(), self.ctx.sbi_function()) {
+                // 核状态
+                (EID_HSM, HART_STOP) => return Some(Operation::Stop),
+                (EID_HSM, HART_SUSPEND)
+                    if matches!(
+                        u32::try_from(self.ctx.a(0)),
+                        Ok(HART_SUSPEND_TYPE_NON_RETENTIVE)
+                    ) =>
+                {
+                    return Some(Operation::Stop)
+                }
+                // 系统重置
+                (EID_SRST, SYSTEM_RESET)
+                    if matches!(
+                        u32::try_from(self.ctx.a(0)),
+                        Ok(RESET_TYPE_COLD_REBOOT) | Ok(RESET_TYPE_WARM_REBOOT)
+                    ) =>
+                {
+                    return Some(Operation::SystemReset)
+                }
+                _ => {}
+            }
+        }
+        self.ctx.fill_in(ans);
+        self.ctx.mepc = self.ctx.mepc.wrapping_add(4);
+        None
+    }
+
+    fn trap_stop(&self, trap: mcause::Trap) -> ! {
+        println!(
+            "
+-----------------------------
+> trap:    {trap:?}
+> mstatus: {:#018x}
+> mepc:    {:#018x}
+> mtval:   {:#018x}
+-----------------------------
+",
+            self.ctx.mstatus,
+            self.ctx.mepc,
+            mtval::read()
+        );
+        panic!("stopped with unsupported trap")
     }
 }
 
@@ -73,6 +151,34 @@ impl SupervisorContext {
     }
 
     #[inline]
+    fn sbi_extension(&self) -> usize {
+        self.a(7)
+    }
+
+    #[inline]
+    fn sbi_function(&self) -> usize {
+        self.a(6)
+    }
+
+    #[inline]
+    fn sbi_param(&self) -> [usize; 6] {
+        [
+            self.a(0),
+            self.a(1),
+            self.a(2),
+            self.a(3),
+            self.a(4),
+            self.a(5),
+        ]
+    }
+
+    #[inline]
+    fn fill_in(&mut self, ans: SbiRet) {
+        *self.a_mut(0) = ans.error;
+        *self.a_mut(1) = ans.value;
+    }
+
+    #[inline]
     fn x(&self, n: usize) -> usize {
         self.x[n - 1]
     }
@@ -90,60 +196,6 @@ impl SupervisorContext {
     #[inline]
     fn a_mut(&mut self, n: usize) -> &mut usize {
         self.x_mut(n + 10)
-    }
-
-    fn handle_ecall(&mut self) -> Option<Operation> {
-        use rustsbi::spec::{binary::*, hsm::*, srst::*};
-        let extension = self.a(7);
-        let function = self.a(6);
-        let ans = rustsbi::ecall(
-            extension,
-            function,
-            [
-                self.a(0),
-                self.a(1),
-                self.a(2),
-                self.a(3),
-                self.a(4),
-                self.a(5),
-            ],
-        );
-        // 判断导致退出执行流程的调用
-        if ans.error == RET_SUCCESS {
-            match extension {
-                // 核状态
-                EID_HSM => match function {
-                    HART_STOP => return Some(Operation::Stop),
-                    HART_SUSPEND
-                        if matches!(
-                            u32::try_from(self.a(0)),
-                            Ok(HART_SUSPEND_TYPE_NON_RETENTIVE)
-                        ) =>
-                    {
-                        return Some(Operation::Stop);
-                    }
-                    _ => {}
-                },
-                // 系统重置
-                EID_SRST => match function {
-                    SYSTEM_RESET
-                        if matches!(
-                            u32::try_from(self.a(0)),
-                            Ok(RESET_TYPE_COLD_REBOOT) | Ok(RESET_TYPE_WARM_REBOOT)
-                        ) =>
-                    {
-                        return Some(Operation::SystemReset)
-                    }
-                    _ => {}
-                },
-
-                _ => {}
-            }
-        }
-        *self.a_mut(0) = ans.error;
-        *self.a_mut(1) = ans.value;
-        self.mepc = self.mepc.wrapping_add(4);
-        None
     }
 
     #[allow(unused)]
@@ -177,23 +229,6 @@ impl SupervisorContext {
             // TODO Vectored stvec?
             self.mepc = stvec::read().address();
         }
-    }
-
-    fn trap_stop(&self, trap: mcause::Trap) -> ! {
-        println!(
-            "
------------------------------
-> trap:    {trap:?}
-> mstatus: {:#018x}
-> mepc:    {:#018x}
-> mtval:   {:#018x}
------------------------------
-",
-            self.mstatus,
-            self.mepc,
-            mtval::read()
-        );
-        panic!("stopped with unsupported trap")
     }
 }
 
