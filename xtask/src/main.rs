@@ -128,9 +128,7 @@ impl QemuArgs {
         let kernel = self.build.kernel.take().unwrap_or_else(|| "test".into());
         let kernel = match kernel.to_lowercase().as_str() {
             "test" | "test-kernel" => objcopy(self.build.make("test-kernel"), true),
-            "bench" | "legacy-console-bench" => {
-                objcopy(self.build.make("legacy-console-bench"), true)
-            }
+            "bench" | "bench-kernel" => objcopy(self.build.make("bench-kernel"), true),
             _ => panic!(),
         };
         let status = Qemu::system("riscv64")
@@ -163,7 +161,7 @@ fn package<T: AsRef<str>>(name: Option<T>) -> &'static str {
     if let Some(t) = name {
         match t.as_ref().to_lowercase().as_str() {
             "test" | "test-kernel" => "test-kernel",
-            "bench" | "legacy-console-bench" => "legacy-console-bench",
+            "bench" | "bench-kernel" => "bench-kernel",
             "rustsbi" | "rustsbi-qemu" => "rustsbi-qemu",
             _ => panic!(),
         }

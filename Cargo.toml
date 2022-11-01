@@ -1,3 +1,3 @@
 [workspace]
-members = ["rustsbi-qemu", "test-kernel", "legacy-console-bench", "xtask"]
+members = ["rustsbi-qemu", "test-kernel", "bench-kernel", "xtask"]
 default-members = ["xtask"]
