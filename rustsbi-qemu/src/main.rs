@@ -110,7 +110,6 @@ type FixedRustSBI<'a> = RustSBI<
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
     static GENESIS: AtomicBool = AtomicBool::new(true);
-    static SERIAL: Once<ns16550a::Ns16550a> = Once::new();
     static BOARD_INFO: Once<BoardInfo> = Once::new();
     static CSR_PRINT: AtomicBool = AtomicBool::new(false);
 
