@@ -275,6 +275,7 @@ dependencies = [
  "dtb-walker",
  "qemu-exit",
  "r0",
+ "rcore-console",
  "riscv",
  "rustsbi",
  "sbi-spec",

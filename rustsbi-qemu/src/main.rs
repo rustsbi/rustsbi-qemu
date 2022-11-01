@@ -3,14 +3,10 @@
 #![feature(naked_functions, asm_const)]
 #![deny(warnings)]
 
-#[macro_use]
-mod console;
-
 mod clint;
 mod device_tree;
 mod execute;
 mod hart_csr_utils;
-mod ns16550a;
 mod qemu_hsm;
 mod qemu_test;
 
@@ -25,15 +21,20 @@ mod constants {
     pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
 }
 
+#[macro_use]
+extern crate rcore_console;
+
 use constants::*;
 use core::{
     convert::Infallible,
+    mem::MaybeUninit,
     sync::atomic::{AtomicBool, Ordering::AcqRel},
 };
 use device_tree::BoardInfo;
 use execute::Operation;
 use rustsbi::RustSBI;
-use spin::Once;
+use spin::{Mutex, Once};
+use uart_16550::MmioSerialPort;
 
 /// 特权软件信息。
 #[derive(Debug)]
@@ -65,9 +66,9 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 ///
 /// 裸函数。
 #[naked]
+#[no_mangle]
 #[link_section = ".text.entry"]
-#[export_name = "_start"]
-unsafe extern "C" fn entry() -> ! {
+unsafe extern "C" fn _start() -> ! {
     #[link_section = ".bss.uninit"]
     static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
 
@@ -113,16 +114,19 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
     static BOARD_INFO: Once<BoardInfo> = Once::new();
     static CSR_PRINT: AtomicBool = AtomicBool::new(false);
 
-    // static RUSTSBI: Once<RustSBI<>> = Once::new();
-
     // 全局初始化过程
     if GENESIS.swap(false, AcqRel) {
-        // 清零 bss 段
-        zero_bss();
+        extern "C" {
+            static mut sbss: u64;
+            static mut ebss: u64;
+        }
+        unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
         // 解析设备树
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
-        console::init(unsafe { ns16550a::Ns16550a::new(board_info.uart.start) });
+        *UART.lock() = MaybeUninit::new(unsafe { MmioSerialPort::new(board_info.uart.start) });
+        rcore_console::init_console(&Console);
+        rcore_console::set_log_level(option_env!("LOG"));
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
         HSM.call_once(|| qemu_hsm::QemuHsm::new(NUM_HART_MAX, opaque));
@@ -148,13 +152,12 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
             mem = board_info.mem,
             hartid = hart_id(),
             dtb = board_info.dtb,
-            firmware = entry as usize,
+            firmware = _start as usize,
         );
     }
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
-        use execute::*;
         // 设置并打印 pmp
         set_pmp(BOARD_INFO.wait());
         if !CSR_PRINT.swap(true, AcqRel) {
@@ -167,7 +170,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
             .with_reset(qemu_test::get())
             .with_hsm(hsm)
             .build();
-        execute_supervisor(sbi, hsm, supervisor)
+        execute::execute_supervisor(sbi, hsm, supervisor)
     } else {
         Operation::Stop
     }
@@ -190,7 +193,7 @@ unsafe extern "C" fn finalize(op: Operation) -> ! {
         Operation::SystemReset => {
             // TODO 等待其他核关闭
             // 直接回 entry
-            entry()
+            _start()
         }
     }
 }
@@ -198,20 +201,6 @@ unsafe extern "C" fn finalize(op: Operation) -> ! {
 #[inline(always)]
 fn hart_id() -> usize {
     riscv::register::mhartid::read()
-}
-
-/// 清零 bss 段。
-#[inline(always)]
-fn zero_bss() {
-    #[cfg(target_pointer_width = "32")]
-    type Word = u32;
-    #[cfg(target_pointer_width = "64")]
-    type Word = u64;
-    extern "C" {
-        static mut sbss: Word;
-        static mut ebss: Word;
-    }
-    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
 /// 设置 PMP。
@@ -235,5 +224,24 @@ fn set_pmp(board_info: &BoardInfo) {
         // 其他
         pmpcfg0::set_pmp(4, Range::TOR, Permission::RW, false);
         pmpaddr4::write(1 << (usize::BITS - 1));
+    }
+}
+
+struct Console;
+static UART: Mutex<MaybeUninit<MmioSerialPort>> = Mutex::new(MaybeUninit::uninit());
+
+impl rcore_console::Console for Console {
+    #[inline]
+    fn put_char(&self, c: u8) {
+        unsafe { UART.lock().assume_init_mut() }.send(c);
+    }
+
+    #[inline]
+    fn put_str(&self, s: &str) {
+        let mut uart = UART.lock();
+        let uart = unsafe { uart.assume_init_mut() };
+        for c in s.bytes() {
+            uart.send(c);
+        }
     }
 }

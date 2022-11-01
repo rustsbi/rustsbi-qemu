@@ -59,12 +59,11 @@ impl<'a> Environment<'a> {
         use rustsbi::spec::{binary::*, hsm::*, srst::*};
         if self.ctx.sbi_extension() == sbi_spec::legacy::LEGACY_CONSOLE_PUTCHAR {
             let ch = self.ctx.a(0);
-            crate::console::STDOUT.wait().putchar((ch & 0xFF) as u8);
+            print!("{:}", ch as u8 as char);
             self.ctx.mepc = self.ctx.mepc.wrapping_add(4);
             return None;
         } else if self.ctx.sbi_extension() == sbi_spec::legacy::LEGACY_CONSOLE_GETCHAR {
-            let ch = crate::console::STDOUT.wait().getchar();
-            *self.ctx.a_mut(0) = ch as usize;
+            *self.ctx.a_mut(0) = unsafe { crate::UART.lock().assume_init_mut().receive() } as usize;
             self.ctx.mepc = self.ctx.mepc.wrapping_add(4);
             return None;
         }
