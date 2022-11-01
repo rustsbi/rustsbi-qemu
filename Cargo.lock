@@ -27,7 +27,7 @@ checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 
 [[package]]
 name = "bench-kernel"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "r0",
  "rcore-console",
