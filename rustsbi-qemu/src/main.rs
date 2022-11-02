@@ -17,8 +17,6 @@ mod constants {
     pub(crate) const LEN_STACK_PER_HART: usize = 16 * 1024;
     /// qemu-virt 最多 8 核。
     pub(crate) const NUM_HART_MAX: usize = 8;
-    /// SBI 软件全部栈空间容量。
-    pub(crate) const LEN_STACK_SBI: usize = LEN_STACK_PER_HART * NUM_HART_MAX;
 }
 
 #[macro_use]
@@ -36,26 +34,6 @@ use rustsbi::RustSBI;
 use spin::{Mutex, Once};
 use uart_16550::MmioSerialPort;
 
-/// 特权软件信息。
-#[derive(Debug)]
-struct Supervisor {
-    start_addr: usize,
-    opaque: usize,
-}
-
-#[cfg_attr(not(test), panic_handler)]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    use rustsbi::{
-        spec::srst::{RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN},
-        Reset,
-    };
-    // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
-    println!("[rustsbi-panic] hart {} {info}", hart_id());
-    println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
-    qemu_test::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
-    unreachable!()
-}
-
 /// 入口。
 ///
 /// 1. 关中断
@@ -70,7 +48,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
     #[link_section = ".bss.uninit"]
-    static mut SBI_STACK: [u8; LEN_STACK_SBI] = [0; LEN_STACK_SBI];
+    static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 
     core::arch::asm!(
         // 关中断
@@ -90,7 +68,7 @@ unsafe extern "C" fn _start() -> ! {
         1: wfi
            j     1b",
         per_hart_stack_size = const LEN_STACK_PER_HART,
-        stack               =   sym SBI_STACK,
+        stack               =   sym ROOT_STACK,
         rust_main           =   sym rust_main,
         finalize            =   sym finalize,
         options(noreturn)
@@ -225,6 +203,35 @@ fn set_pmp(board_info: &BoardInfo) {
         pmpcfg0::set_pmp(4, Range::TOR, Permission::RW, false);
         pmpaddr4::write(1 << (usize::BITS - 1));
     }
+}
+
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use rustsbi::{
+        spec::srst::{RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_SHUTDOWN},
+        Reset,
+    };
+    // 输出的信息大概是“[rustsbi-panic] hart 0 panicked at ...”
+    println!("[rustsbi-panic] hart {} {info}", hart_id());
+    println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
+    qemu_test::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
+    unreachable!()
+}
+
+/// 类型化栈。
+#[repr(C, align(128))]
+struct Stack([u8; LEN_STACK_PER_HART]);
+
+impl Stack {
+    /// 零初始化以避免加载。
+    const ZERO: Self = Self([0; LEN_STACK_PER_HART]);
+}
+
+/// 特权软件信息。
+#[derive(Debug)]
+struct Supervisor {
+    start_addr: usize,
+    opaque: usize,
 }
 
 struct Console;
