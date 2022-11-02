@@ -4,10 +4,12 @@
 #![deny(warnings)]
 
 #[macro_use]
-mod console;
+extern crate rcore_console;
 
-use core::arch::asm;
+use core::{arch::asm, mem::MaybeUninit};
 use sbi_testing::sbi;
+use spin::Mutex;
+use uart_16550::MmioSerialPort;
 
 /// 内核入口。
 ///
@@ -24,27 +26,29 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
 
     asm!(
-        "   csrw sie, zero
-            la   sp,  {stack}
-            li   t0,  {stack_size}
-            add  sp,  sp, t0
-            j    {main}
-        ",
+        "la sp,  {stack} + {stack_size}",
+        "j  {main}",
         stack_size = const STACK_SIZE,
         stack      = sym   STACK,
-        main       = sym   primary_rust_main,
+        main       = sym   rust_main,
         options(noreturn),
     )
 }
 
-extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    zero_bss();
+extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
+    extern "C" {
+        static mut sbss: u64;
+        static mut ebss: u64;
+    }
+    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
     let BoardInfo {
         smp,
         frequency,
         uart,
     } = BoardInfo::parse(dtb_pa);
-    console::init(uart);
+    *UART.lock() = MaybeUninit::new(unsafe { MmioSerialPort::new(uart) });
+    rcore_console::init_console(&Console);
+    rcore_console::set_log_level(option_env!("LOG"));
     println!(
         r"
  _____         _     _  __                    _
@@ -68,20 +72,6 @@ extern "C" fn primary_rust_main(hartid: usize, dtb_pa: usize) -> ! {
     .test();
     sbi::system_reset(sbi::Shutdown, sbi::NoReason);
     unreachable!()
-}
-
-/// 清零 bss 段。
-#[inline(always)]
-fn zero_bss() {
-    #[cfg(target_pointer_width = "32")]
-    type Word = u32;
-    #[cfg(target_pointer_width = "64")]
-    type Word = u64;
-    extern "C" {
-        static mut sbss: Word;
-        static mut ebss: Word;
-    }
-    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
@@ -149,5 +139,24 @@ impl BoardInfo {
             DtbObj::Property(_) => StepOver,
         });
         ans
+    }
+}
+
+struct Console;
+static UART: Mutex<MaybeUninit<MmioSerialPort>> = Mutex::new(MaybeUninit::uninit());
+
+impl rcore_console::Console for Console {
+    #[inline]
+    fn put_char(&self, c: u8) {
+        unsafe { UART.lock().assume_init_mut() }.send(c);
+    }
+
+    #[inline]
+    fn put_str(&self, s: &str) {
+        let mut uart = UART.lock();
+        let uart = unsafe { uart.assume_init_mut() };
+        for c in s.bytes() {
+            uart.send(c);
+        }
     }
 }

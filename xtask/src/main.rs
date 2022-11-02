@@ -2,12 +2,16 @@
 extern crate clap;
 
 use clap::Parser;
+use once_cell::sync::Lazy;
 use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
     fs, io,
     path::{Path, PathBuf},
     process,
 };
+
+static PROJECT: Lazy<&'static Path> =
+    Lazy::new(|| Path::new(std::env!("CARGO_MANIFEST_DIR")).parent().unwrap());
 
 #[derive(Parser)]
 #[clap(name = "RustSBI-Qemu")]
@@ -30,7 +34,9 @@ enum Commands {
 fn main() {
     use Commands::*;
     match Cli::parse().command {
-        Make(args) => args.make(),
+        Make(args) => {
+            args.make(package(args.kernel.as_ref()));
+        }
         Asm(args) => args.dump(),
         Qemu(args) => args.run(),
     }
@@ -41,79 +47,32 @@ struct BuildArgs {
     /// With supervisor.
     #[clap(short, long)]
     kernel: Option<String>,
-    /// Target arch.
+    /// Log level.
     #[clap(long)]
-    target: Option<String>,
+    log: Option<String>,
     /// Build in debug mode.
     #[clap(long)]
     debug: bool,
 }
 
 impl BuildArgs {
-    /// Returns the build target name.
-    fn target(&self) -> &str {
-        self.target
-            .as_ref()
-            .map_or("riscv64imac-unknown-none-elf", |s| s.as_str())
-    }
-
-    fn arch(&self) -> &str {
-        if self
-            .target
-            .as_ref()
-            .map_or(false, |t| t.contains("riscv32"))
-        {
-            "riscv32"
-        } else {
-            "riscv64"
-        }
-    }
-
-    /// Returns the dir of target files.
-    fn dir(&self) -> PathBuf {
-        Path::new(std::env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("target")
-            .join(self.target())
-            .join(if self.debug { "debug" } else { "release" })
-    }
-
-    /// 编译 `rustsbi-qemu`。
-    ///
-    /// 如果设置了 `kernel` 是 'test' 或 'test-kernel'，同时编译 `test-kernel`。
-    ///
-    /// 如果设置了 `kernel` 但不是 'test' 或 'test-kernel'，则检查 `kernel` 是一个编译好的二进制文件。
-    fn make(&self) {
-        self.make_package("rustsbi-qemu");
-        if let Some(ref kernel) = self.kernel {
-            if kernel == "test" || kernel == "test-kernel" {
-                self.make_package("test-kernel");
-            } else {
-                todo!("检查内核是一个二进制文件");
-            }
-        }
-    }
-
-    fn make_package(&self, package: &str) {
-        // 生成
+    fn make(&self, package: &str) -> PathBuf {
+        let target = "riscv64imac-unknown-none-elf";
         Cargo::build()
             .package(package)
-            .conditional(!self.debug, |sbi| {
-                sbi.release();
+            .optional(&self.log, |cargo, log| {
+                cargo.env("LOG", log);
             })
-            .target(self.target())
+            .conditional(!self.debug, |cargo| {
+                cargo.release();
+            })
+            .target(target)
             .invoke();
-        // 裁剪
-        let target = self.dir().join(package);
-        BinUtil::objcopy()
-            .arg(format!("--binary-architecture={}", self.arch()))
-            .arg(&target)
-            .arg("--strip-all")
-            .arg("-O")
-            .arg("binary")
-            .arg(target.with_extension("bin"))
-            .invoke();
+        PROJECT
+            .join("target")
+            .join(target)
+            .join(if self.debug { "debug" } else { "release" })
+            .join(package)
     }
 }
 
@@ -133,25 +92,13 @@ impl AsmArgs {
     ///
     /// 如果设置了 `kernel` 但不是 'test' 或 'test-kernel'，将 `kernel` 指定的二进制文件反汇编，并保存到指定位置。
     fn dump(self) {
-        self.build.make();
-        let bin = if let Some(kernel) = &self.build.kernel {
-            if kernel == "test" || kernel == "test-kernel" {
-                self.build.dir().join("test-kernel")
-            } else {
-                PathBuf::from(kernel)
-            }
-        } else {
-            self.build.dir().join("rustsbi-qemu")
-        };
-        let out = Path::new(std::env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join(self.output.unwrap_or(format!(
-                "{}.asm",
-                bin.file_stem().unwrap().to_string_lossy()
-            )));
+        let elf = self.build.make(package(self.build.kernel.as_ref()));
+        let out = PROJECT.join(self.output.unwrap_or(format!(
+            "{}.asm",
+            elf.file_stem().unwrap().to_string_lossy()
+        )));
         println!("Asm file dumps to '{}'.", out.display());
-        fs::write(out, BinUtil::objdump().arg(bin).arg("-d").output().stdout).unwrap();
+        fs::write(out, BinUtil::objdump().arg(elf).arg("-d").output().stdout).unwrap();
     }
 }
 
@@ -159,9 +106,9 @@ impl AsmArgs {
 struct QemuArgs {
     #[clap(flatten)]
     build: BuildArgs,
-    /// Path of executable qemu-system-x.
+    /// Which sbi to use, open or rust.
     #[clap(long)]
-    qemu_dir: Option<String>,
+    sbi: Option<String>,
     /// Number of hart (SMP for Symmetrical Multiple Processor).
     #[clap(long)]
     smp: Option<u8>,
@@ -172,20 +119,27 @@ struct QemuArgs {
 
 impl QemuArgs {
     fn run(mut self) {
-        self.build.kernel.get_or_insert_with(|| "test".into());
-        self.build.make();
-        if let Some(p) = &self.qemu_dir {
-            Qemu::search_at(p);
-        }
-        let status = Qemu::system(self.build.arch())
-            .args(["-machine", "virt"])
-            .arg("-bios")
-            .arg(self.build.dir().join("rustsbi-qemu.bin"))
-            .arg("-kernel")
-            .arg(self.build.dir().join("test-kernel.bin"))
-            .args(["-smp", &self.smp.unwrap_or(8).to_string()])
-            .args(["-serial", "mon:stdio"])
+        let sbi = self.sbi.take().unwrap_or_else(|| "rust".into());
+        let sbi = match sbi.to_lowercase().as_str() {
+            "rust" | "rustsbi" => objcopy(self.build.make("rustsbi-qemu"), true),
+            "open" | "opensbi" => PathBuf::from("default"),
+            _ => panic!(),
+        };
+        let kernel = self.build.kernel.take().unwrap_or_else(|| "test".into());
+        let kernel = match kernel.to_lowercase().as_str() {
+            "test" | "test-kernel" => objcopy(self.build.make("test-kernel"), true),
+            "bench" | "bench-kernel" => objcopy(self.build.make("bench-kernel"), true),
+            _ => panic!(),
+        };
+        let status = Qemu::system("riscv64")
+            .args(&["-machine", "virt"])
             .arg("-nographic")
+            .arg("-bios")
+            .arg(sbi)
+            .arg("-kernel")
+            .arg(kernel)
+            .args(["-serial", "mon:stdio"])
+            .args(["-smp", &self.smp.unwrap_or(8).to_string()])
             .optional(&self.gdb, |qemu, gdb| {
                 qemu.args(["-S", "-gdb", &format!("tcp::{gdb}")]);
             })
@@ -201,6 +155,33 @@ impl QemuArgs {
             process::exit(1);
         }
     }
+}
+
+fn package<T: AsRef<str>>(name: Option<T>) -> &'static str {
+    if let Some(t) = name {
+        match t.as_ref().to_lowercase().as_str() {
+            "test" | "test-kernel" => "test-kernel",
+            "bench" | "bench-kernel" => "bench-kernel",
+            "rustsbi" | "rustsbi-qemu" => "rustsbi-qemu",
+            _ => panic!(),
+        }
+    } else {
+        "rustsbi-qemu"
+    }
+}
+
+fn objcopy(elf: impl AsRef<Path>, binary: bool) -> PathBuf {
+    let elf = elf.as_ref();
+    let bin = elf.with_extension("bin");
+    BinUtil::objcopy()
+        .arg(elf)
+        .arg("--strip-all")
+        .conditional(binary, |binutil| {
+            binutil.args(["-O", "binary"]);
+        })
+        .arg(&bin)
+        .invoke();
+    bin
 }
 
 #[test]

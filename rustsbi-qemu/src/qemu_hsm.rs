@@ -1,6 +1,6 @@
 //! Hart state monitor designed for QEMU
 
-use crate::{clint, entry, hart_id, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
+use crate::{_start, clint, hart_id, Supervisor, NUM_HART_MAX, SUPERVISOR_ENTRY};
 use core::{mem::MaybeUninit, sync::atomic::AtomicU8};
 use riscv::register::*;
 use rustsbi::spec::{binary::SbiRet, hsm as spec};
@@ -126,7 +126,7 @@ impl QemuHsm {
         // 通过软件中断重启
         unsafe {
             mie::set_msoft();
-            mtvec::write(entry as _, mtvec::TrapMode::Direct);
+            mtvec::write(_start as _, mtvec::TrapMode::Direct);
         };
         // 转移状态
         if let Err(unexpected) = state.compare_exchange(current, new, AcqRel, Acquire) {

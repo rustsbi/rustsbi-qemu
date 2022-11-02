@@ -26,6 +26,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 
 [[package]]
+name = "bench-kernel"
+version = "0.0.1"
+dependencies = [
+ "r0",
+ "rcore-console",
+ "riscv",
+ "sbi-rt",
+ "uart_16550",
+]
+
+[[package]]
 name = "bit_field"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -227,6 +238,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd7a31eed1591dcbc95d92ad7161908e72f4677f8fabf2a32ca49b4237cbf211"
 
 [[package]]
+name = "rcore-console"
+version = "0.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63aae49a6d2e6fd69821507a979b5871e4c47dc3abc9066347fa5c4a51a73dd6"
+dependencies = [
+ "log",
+ "spin",
+]
+
+[[package]]
 name = "riscv"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -254,6 +275,7 @@ dependencies = [
  "dtb-walker",
  "qemu-exit",
  "r0",
+ "rcore-console",
  "riscv",
  "rustsbi",
  "sbi-spec",
@@ -351,6 +373,7 @@ dependencies = [
  "dtb-walker",
  "log",
  "r0",
+ "rcore-console",
  "riscv",
  "sbi-testing",
  "spin",
@@ -440,5 +463,6 @@ name = "xtask"
 version = "0.2.0"
 dependencies = [
  "clap",
+ "once_cell",
  "os-xtask-utils",
 ]
