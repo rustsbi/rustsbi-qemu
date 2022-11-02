@@ -35,7 +35,7 @@ fn main() {
     use Commands::*;
     match Cli::parse().command {
         Make(args) => {
-            args.make(package(args.kernel.as_ref()));
+            args.make(package(args.kernel.as_ref()), true);
         }
         Asm(args) => args.dump(),
         Qemu(args) => args.run(),
@@ -56,7 +56,7 @@ struct BuildArgs {
 }
 
 impl BuildArgs {
-    fn make(&self, package: &str) -> PathBuf {
+    fn make(&self, package: &str, binary: bool) -> PathBuf {
         let target = "riscv64imac-unknown-none-elf";
         Cargo::build()
             .package(package)
@@ -68,11 +68,23 @@ impl BuildArgs {
             })
             .target(target)
             .invoke();
-        PROJECT
+        let elf = PROJECT
             .join("target")
             .join(target)
             .join(if self.debug { "debug" } else { "release" })
-            .join(package)
+            .join(package);
+        if binary {
+            let bin = elf.with_extension("bin");
+            BinUtil::objcopy()
+                .arg(elf)
+                .arg("--strip-all")
+                .args(["-O", "binary"])
+                .arg(&bin)
+                .invoke();
+            bin
+        } else {
+            elf
+        }
     }
 }
 
@@ -92,7 +104,7 @@ impl AsmArgs {
     ///
     /// 如果设置了 `kernel` 但不是 'test' 或 'test-kernel'，将 `kernel` 指定的二进制文件反汇编，并保存到指定位置。
     fn dump(self) {
-        let elf = self.build.make(package(self.build.kernel.as_ref()));
+        let elf = self.build.make(package(self.build.kernel.as_ref()), false);
         let out = PROJECT.join(self.output.unwrap_or(format!(
             "{}.asm",
             elf.file_stem().unwrap().to_string_lossy()
@@ -121,14 +133,14 @@ impl QemuArgs {
     fn run(mut self) {
         let sbi = self.sbi.take().unwrap_or_else(|| "rust".into());
         let sbi = match sbi.to_lowercase().as_str() {
-            "rust" | "rustsbi" => objcopy(self.build.make("rustsbi-qemu"), true),
+            "rust" | "rustsbi" => self.build.make("rustsbi-qemu", true),
             "open" | "opensbi" => PathBuf::from("default"),
             _ => panic!(),
         };
         let kernel = self.build.kernel.take().unwrap_or_else(|| "test".into());
         let kernel = match kernel.to_lowercase().as_str() {
-            "test" | "test-kernel" => objcopy(self.build.make("test-kernel"), true),
-            "bench" | "bench-kernel" => objcopy(self.build.make("bench-kernel"), true),
+            "test" | "test-kernel" => self.build.make("test-kernel", true),
+            "bench" | "bench-kernel" => self.build.make("bench-kernel", true),
             _ => panic!(),
         };
         let status = Qemu::system("riscv64")
@@ -168,20 +180,6 @@ fn package<T: AsRef<str>>(name: Option<T>) -> &'static str {
     } else {
         "rustsbi-qemu"
     }
-}
-
-fn objcopy(elf: impl AsRef<Path>, binary: bool) -> PathBuf {
-    let elf = elf.as_ref();
-    let bin = elf.with_extension("bin");
-    BinUtil::objcopy()
-        .arg(elf)
-        .arg("--strip-all")
-        .conditional(binary, |binutil| {
-            binutil.args(["-O", "binary"]);
-        })
-        .arg(&bin)
-        .invoke();
-    bin
 }
 
 #[test]
