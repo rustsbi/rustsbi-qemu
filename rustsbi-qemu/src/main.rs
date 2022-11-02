@@ -13,9 +13,9 @@ mod qemu_test;
 mod constants {
     /// 特权软件入口。
     pub(crate) const SUPERVISOR_ENTRY: usize = 0x8020_0000;
-    /// 每个核设置 16KiB 栈空间。
+    /// 每个硬件线程设置 16KiB 栈空间。
     pub(crate) const LEN_STACK_PER_HART: usize = 16 * 1024;
-    /// qemu-virt 最多 8 核。
+    /// qemu-virt 最多 8 个硬件线程。
     pub(crate) const NUM_HART_MAX: usize = 8;
 }
 
@@ -25,13 +25,15 @@ extern crate rcore_console;
 use constants::*;
 use core::{
     convert::Infallible,
-    mem::{forget, MaybeUninit},
+    mem::{forget, size_of, MaybeUninit},
     ptr::NonNull,
-    sync::atomic::{AtomicBool, Ordering::AcqRel},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering::AcqRel},
 };
 use device_tree::BoardInfo;
 use execute::Operation;
-use fast_trap::{reuse_stack_for_trap, FastContext, FastResult, FreeTrapStack, TrapStackBlock};
+use fast_trap::{
+    reuse_stack_for_trap, FastContext, FastResult, FlowContext, FreeTrapStack, TrapStackBlock,
+};
 use rustsbi::RustSBI;
 use spin::{Mutex, Once};
 use uart_16550::MmioSerialPort;
@@ -178,7 +180,7 @@ unsafe extern "C" fn finalize(op: Operation) -> ! {
             }
         }
         Operation::SystemReset => {
-            // TODO 等待其他核关闭
+            // TODO 等待其他硬件线程关闭
             // 直接回 entry
             _start()
         }
@@ -241,6 +243,10 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 /// 类型化栈。
+///
+/// 每个硬件线程拥有一个满足这样条件的内存块。
+/// 这个内存块的底部放着硬件线程状态 [`HartContext`]，顶部用于陷入处理，中间是这个硬件线程的栈空间。
+/// 不需要 M 态线程，每个硬件线程只有这一个栈。
 #[repr(C, align(128))]
 struct Stack([u8; LEN_STACK_PER_HART]);
 
@@ -248,16 +254,18 @@ impl Stack {
     /// 零初始化以避免加载。
     const ZERO: Self = Self([0; LEN_STACK_PER_HART]);
 
+    /// 从栈上取出硬件线程状态。
+    #[inline]
+    fn hart_context(&mut self) -> &mut HartContext {
+        unsafe { &mut *self.0.as_mut_ptr().cast() }
+    }
+
     fn load_as_stack(&'static mut self) {
-        let bottom = self.0.as_mut_ptr().cast();
+        let ptr = unsafe { NonNull::new_unchecked(&mut self.hart_context().flow) };
         forget(
-            FreeTrapStack::new(
-                StackRef(self),
-                unsafe { NonNull::new_unchecked(bottom) },
-                fast_handler,
-            )
-            .unwrap()
-            .load(),
+            FreeTrapStack::new(StackRef(self), ptr, fast_handler)
+                .unwrap()
+                .load(),
         );
     }
 }
@@ -268,14 +276,14 @@ struct StackRef(&'static mut Stack);
 impl AsRef<[u8]> for StackRef {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        &self.0 .0
+        &self.0 .0[size_of::<HartContext>()..]
     }
 }
 
 impl AsMut<[u8]> for StackRef {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0 .0
+        &mut self.0 .0[size_of::<HartContext>()..]
     }
 }
 
@@ -285,6 +293,14 @@ impl Drop for StackRef {
     fn drop(&mut self) {
         panic!("Root stack cannot be dropped")
     }
+}
+
+#[repr(C)]
+struct HartContext {
+    flow: FlowContext,
+    state: AtomicUsize,
+    start_address: usize,
+    opaque: usize,
 }
 
 /// 特权软件信息。
