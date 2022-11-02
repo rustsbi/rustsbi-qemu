@@ -25,14 +25,20 @@ extern crate rcore_console;
 use constants::*;
 use core::{
     convert::Infallible,
-    mem::MaybeUninit,
+    mem::{forget, MaybeUninit},
+    ptr::NonNull,
     sync::atomic::{AtomicBool, Ordering::AcqRel},
 };
 use device_tree::BoardInfo;
 use execute::Operation;
+use fast_trap::{reuse_stack_for_trap, FastContext, FastResult, FreeTrapStack, TrapStackBlock};
 use rustsbi::RustSBI;
 use spin::{Mutex, Once};
 use uart_16550::MmioSerialPort;
+
+/// 栈空间。
+#[link_section = ".bss.uninit"]
+static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 
 /// 入口。
 ///
@@ -47,9 +53,6 @@ use uart_16550::MmioSerialPort;
 #[no_mangle]
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
-    #[link_section = ".bss.uninit"]
-    static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
-
     core::arch::asm!(
         // 关中断
         "  csrw mie,  zero",
@@ -60,15 +63,19 @@ unsafe extern "C" fn _start() -> ! {
            addi  t1,  t1,  1
         1: add   sp,  sp, t0
            addi  t1,  t1, -1
-           bnez  t1,  1b",
+           bnez  t1,  1b
+           call  {move_stack}
+        ",
         "  call {rust_main}",
         // 清理，然后重启或等待
         "  call {finalize}
            bnez  a0,  _start
         1: wfi
-           j     1b",
+           j     1b
+        ",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym ROOT_STACK,
+        move_stack          =   sym reuse_stack_for_trap,
         rust_main           =   sym rust_main,
         finalize            =   sym finalize,
         options(noreturn)
@@ -133,6 +140,8 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
             firmware = _start as usize,
         );
     }
+
+    unsafe { ROOT_STACK[hart_id()].load_as_stack() };
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
@@ -205,6 +214,19 @@ fn set_pmp(board_info: &BoardInfo) {
     }
 }
 
+extern "C" fn fast_handler(
+    mut _ctx: FastContext,
+    _a1: usize,
+    _a2: usize,
+    _a3: usize,
+    _a4: usize,
+    _a5: usize,
+    _a6: usize,
+    _a7: usize,
+) -> FastResult {
+    todo!()
+}
+
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use rustsbi::{
@@ -225,6 +247,44 @@ struct Stack([u8; LEN_STACK_PER_HART]);
 impl Stack {
     /// 零初始化以避免加载。
     const ZERO: Self = Self([0; LEN_STACK_PER_HART]);
+
+    fn load_as_stack(&'static mut self) {
+        let bottom = self.0.as_mut_ptr().cast();
+        forget(
+            FreeTrapStack::new(
+                StackRef(self),
+                unsafe { NonNull::new_unchecked(bottom) },
+                fast_handler,
+            )
+            .unwrap()
+            .load(),
+        );
+    }
+}
+
+#[repr(transparent)]
+struct StackRef(&'static mut Stack);
+
+impl AsRef<[u8]> for StackRef {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        &self.0 .0
+    }
+}
+
+impl AsMut<[u8]> for StackRef {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0 .0
+    }
+}
+
+impl TrapStackBlock for StackRef {}
+
+impl Drop for StackRef {
+    fn drop(&mut self) {
+        panic!("Root stack cannot be dropped")
+    }
 }
 
 /// 特权软件信息。

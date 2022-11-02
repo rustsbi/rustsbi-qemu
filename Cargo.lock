@@ -108,6 +108,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast-trap"
+version = "0.0.1"
+source = "git+https://github.com/YdrMaster/fast-trap#ff2b99ebd8a71b30e846874180366192b2776ba7"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "heck"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,6 +281,7 @@ name = "rustsbi-qemu"
 version = "0.2.0-alpha.2"
 dependencies = [
  "dtb-walker",
+ "fast-trap",
  "qemu-exit",
  "r0",
  "rcore-console",
