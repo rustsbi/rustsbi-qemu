@@ -28,6 +28,14 @@ unsafe impl<T: Send> Send for HsmCell<T> {}
 const HART_STATE_START_PENDING_EXT: usize = usize::MAX;
 
 impl<T> HsmCell<T> {
+    /// 创建一个新的共享对象。
+    pub const fn new() -> Self {
+        Self {
+            status: AtomicUsize::new(HART_STATE_STOPPED),
+            val: UnsafeCell::new(None),
+        }
+    }
+
     /// 从当前硬件线程的状态中获取线程间共享对象。
     ///
     /// # Safety

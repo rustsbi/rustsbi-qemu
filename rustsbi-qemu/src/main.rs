@@ -1,13 +1,11 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions, asm_const)]
-#![deny(warnings)]
+// #![deny(warnings)]
 
 mod clint;
 mod device_tree;
-mod execute;
 mod hart_csr_utils;
-mod qemu_hsm;
 mod qemu_test;
 
 mod constants {
@@ -31,9 +29,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use device_tree::BoardInfo;
-use execute::Operation;
 use fast_trap::{
-    load_direct_trap_entry, reuse_stack_for_trap, FastContext, FastResult, FlowContext,
+    load_direct_trap_entry, reuse_stack_for_trap, trap_entry, FastContext, FastResult, FlowContext,
     FreeTrapStack, TrapStackBlock,
 };
 use hsm_cell::HsmCell;
@@ -61,29 +58,24 @@ static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 unsafe extern "C" fn _start() -> ! {
     asm!(
         // 关中断
-        "  csrw mie,  zero",
+        "   csrw mie,  zero",
         // 设置栈
-        "  la    sp, {stack}
-           li    t0, {per_hart_stack_size}
-           csrr  t1,  mhartid
-           addi  t1,  t1,  1
-        1: add   sp,  sp, t0
-           addi  t1,  t1, -1
-           bnez  t1,  1b
-           call  {move_stack}
+        "   la   sp, {stack}
+            li   t0, {per_hart_stack_size}
+            csrr t1,  mhartid
+            addi t1,  t1,  1
+         1: add  sp,  sp, t0
+            addi t1,  t1, -1
+            bnez t1,  1b
+            call {move_stack}
         ",
-        "  call {rust_main}",
-        // 清理，然后重启或等待
-        "  call {finalize}
-           bnez  a0,  _start
-        1: wfi
-           j     1b
-        ",
+        "   call {rust_main}",
+        "   j    {trap}",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym ROOT_STACK,
         move_stack          =   sym reuse_stack_for_trap,
         rust_main           =   sym rust_main,
-        finalize            =   sym finalize,
+        trap                =   sym trap_entry,
         options(noreturn)
     )
 }
@@ -93,19 +85,19 @@ unsafe extern "C" fn _stop() -> ! {
     asm!("wfi", options(noreturn))
 }
 
-static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
+static mut SBI: MaybeUninit<FixedRustSBI> = MaybeUninit::uninit();
 
 type FixedRustSBI<'a> = RustSBI<
     &'a clint::Clint,
     &'a clint::Clint,
     Infallible,
-    &'a qemu_hsm::QemuHsm,
+    Infallible,
     &'a qemu_test::QemuTest,
     Infallible,
 >;
 
 /// rust 入口。
-extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
+extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     static GENESIS: AtomicBool = AtomicBool::new(true);
     static BOARD_INFO: Once<BoardInfo> = Once::new();
 
@@ -124,7 +116,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
         rcore_console::set_log_level(option_env!("LOG"));
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
-        HSM.call_once(|| qemu_hsm::QemuHsm::new(NUM_HART_MAX, opaque));
         // 打印启动信息
         print!(
             "\
@@ -149,6 +140,16 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
             dtb = board_info.dtb,
             firmware = _start as usize,
         );
+        // 初始化 SBI
+        unsafe {
+            SBI = MaybeUninit::new(
+                rustsbi::Builder::new_machine()
+                    .with_ipi(&clint::Clint)
+                    .with_timer(&clint::Clint)
+                    .with_reset(qemu_test::get())
+                    .build(),
+            );
+        };
         // 设置并打印 pmp
         set_pmp(board_info);
         hart_csr_utils::print_pmps();
@@ -165,6 +166,9 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
                     opaque,
                 });
         }
+        // 清理 clint
+        clint::msip::clear();
+        clint::mtimecmp::clear();
     } else {
         // 设置 pmp
         set_pmp(BOARD_INFO.wait());
@@ -183,42 +187,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
         mie::set_msoft();
         mie::set_mtimer();
         load_direct_trap_entry();
-    }
-
-    let hsm = HSM.wait();
-    if let Some(supervisor) = hsm.take_supervisor() {
-        // 初始化 SBI 服务
-        let sbi = rustsbi::Builder::new_machine()
-            .with_ipi(&clint::Clint)
-            .with_timer(&clint::Clint)
-            .with_reset(qemu_test::get())
-            .with_hsm(hsm)
-            .build();
-        execute::execute_supervisor(sbi, hsm, supervisor)
-    } else {
-        Operation::Stop
-    }
-}
-
-/// 准备好不可恢复休眠或关闭
-///
-/// 在隔离的环境（汇编）调用，以确保 main 中使用的堆资源完全释放。
-/// （只是作为示例，因为这个版本完全不使用堆）
-unsafe extern "C" fn finalize(op: Operation) -> ! {
-    match op {
-        Operation::Stop => {
-            HSM.wait().finalize_before_stop();
-            riscv::interrupt::enable();
-            // 从中断响应直接回 entry
-            loop {
-                riscv::asm::wfi();
-            }
-        }
-        Operation::SystemReset => {
-            // TODO 等待其他硬件线程关闭
-            // 直接回 entry
-            _start()
-        }
     }
 }
 
@@ -253,14 +221,14 @@ mod cause {
 }
 
 extern "C" fn fast_handler(
-    ctx: FastContext,
-    _a1: usize,
-    _a2: usize,
-    _a3: usize,
-    _a4: usize,
-    _a5: usize,
-    _a6: usize,
-    _a7: usize,
+    mut ctx: FastContext,
+    a1: usize,
+    a2: usize,
+    a3: usize,
+    a4: usize,
+    a5: usize,
+    a6: usize,
+    a7: usize,
 ) -> FastResult {
     use mcause::{Exception as E, Trap as T};
 
@@ -279,17 +247,30 @@ extern "C" fn fast_handler(
                         hart_ctx.trap.a[0] = hart_id;
                         hart_ctx.trap.a[1] = supervisor.opaque;
                         hart_ctx.trap.pc = supervisor.start_addr;
+                        println!("trap = {:?}", (&hart_ctx.trap) as *const _);
                     }
-                    // TODO 检查状态，设置启动参数
                     Err(_state) => {
                         hart_ctx.trap.pc = _stop as usize;
+                        println!("{_state:#x}");
                     }
                 }
                 ctx.call(2)
             }
             _ => unreachable!(),
         },
-        T::Exception(_) | T::Interrupt(_) => todo!(),
+        T::Exception(E::SupervisorEnvCall) => {
+            let ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
+                a7,
+                a6,
+                [ctx.a0(), a1, a2, a3, a4, a5],
+            );
+            mepc::write(mepc::read() + 4);
+            ctx.save_args(ret.value, a2, a3, a4, a5, a6, a7);
+            ctx.write_a(0, ret.error);
+            ctx.restore()
+        }
+        T::Exception(e) => todo!("{e:?}"),
+        T::Interrupt(i) => todo!("{i:?}"),
     }
 }
 
@@ -325,7 +306,9 @@ impl Stack {
     }
 
     fn load_as_stack(&'static mut self) {
-        let ptr = unsafe { NonNull::new_unchecked(&mut self.hart_context().trap) };
+        let hart = self.hart_context();
+        hart.hsm = HsmCell::new();
+        let ptr = unsafe { NonNull::new_unchecked(&mut hart.trap) };
         forget(
             FreeTrapStack::new(StackRef(self), ptr, fast_handler)
                 .unwrap()
