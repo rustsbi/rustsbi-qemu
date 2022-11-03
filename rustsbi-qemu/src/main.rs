@@ -7,6 +7,7 @@ mod clint;
 mod device_tree;
 mod execute;
 mod hart_csr_utils;
+mod hsm_cell;
 mod qemu_hsm;
 mod qemu_test;
 
@@ -24,16 +25,18 @@ extern crate rcore_console;
 
 use constants::*;
 use core::{
+    arch::asm,
     convert::Infallible,
     mem::{forget, size_of, MaybeUninit},
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering::AcqRel},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use device_tree::BoardInfo;
 use execute::Operation;
 use fast_trap::{
     reuse_stack_for_trap, FastContext, FastResult, FlowContext, FreeTrapStack, TrapStackBlock,
 };
+use hsm_cell::HsmCell;
 use riscv::register::*;
 use rustsbi::RustSBI;
 use spin::{Mutex, Once};
@@ -56,7 +59,7 @@ static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 #[no_mangle]
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
-    core::arch::asm!(
+    asm!(
         // 关中断
         "  csrw mie,  zero",
         // 设置栈
@@ -85,6 +88,11 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
+#[naked]
+unsafe extern "C" fn _stop() -> ! {
+    asm!("wfi", options(noreturn))
+}
+
 static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
 
 type FixedRustSBI<'a> = RustSBI<
@@ -100,10 +108,9 @@ type FixedRustSBI<'a> = RustSBI<
 extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
     static GENESIS: AtomicBool = AtomicBool::new(true);
     static BOARD_INFO: Once<BoardInfo> = Once::new();
-    static CSR_PRINT: AtomicBool = AtomicBool::new(false);
 
     // 全局初始化过程
-    if GENESIS.swap(false, AcqRel) {
+    if GENESIS.swap(false, Ordering::AcqRel) {
         extern "C" {
             static mut sbss: u64;
             static mut ebss: u64;
@@ -142,17 +149,17 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
             dtb = board_info.dtb,
             firmware = _start as usize,
         );
+        // 设置并打印 pmp
+        set_pmp(board_info);
+        hart_csr_utils::print_pmps();
+    } else {
+        set_pmp(BOARD_INFO.wait());
     }
 
     unsafe { ROOT_STACK[hart_id()].load_as_stack() };
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
-        // 设置并打印 pmp
-        set_pmp(BOARD_INFO.wait());
-        if !CSR_PRINT.swap(true, AcqRel) {
-            hart_csr_utils::print_pmps();
-        }
         // 初始化 SBI 服务
         let sbi = rustsbi::Builder::new_machine()
             .with_ipi(&clint::Clint)
@@ -234,7 +241,19 @@ extern "C" fn fast_handler(
     match cause.cause() {
         T::Exception(E::Unknown) => match cause.bits() {
             cause::BOOT => {
-                // TODO 检查状态，设置启动参数
+                let hart_id = hart_id();
+                let hart_ctx = unsafe { ROOT_STACK[hart_id].hart_context() };
+                match hart_ctx.hsm.take() {
+                    Ok(supervisor) => {
+                        hart_ctx.trap.a[0] = hart_id;
+                        hart_ctx.trap.a[1] = supervisor.opaque;
+                        hart_ctx.trap.pc = supervisor.start_addr;
+                    }
+                    // TODO 检查状态，设置启动参数
+                    Err(_state) => {
+                        hart_ctx.trap.pc = _stop as usize;
+                    }
+                }
                 ctx.call(2)
             }
             _ => todo!(),
@@ -275,7 +294,7 @@ impl Stack {
     }
 
     fn load_as_stack(&'static mut self) {
-        let ptr = unsafe { NonNull::new_unchecked(&mut self.hart_context().flow) };
+        let ptr = unsafe { NonNull::new_unchecked(&mut self.hart_context().trap) };
         forget(
             FreeTrapStack::new(StackRef(self), ptr, fast_handler)
                 .unwrap()
@@ -309,12 +328,12 @@ impl Drop for StackRef {
     }
 }
 
+/// 硬件线程上下文。
 #[repr(C)]
 struct HartContext {
-    flow: FlowContext,
-    state: AtomicUsize,
-    start_address: usize,
-    opaque: usize,
+    /// 陷入上下文。
+    trap: FlowContext,
+    hsm: HsmCell<Supervisor>,
 }
 
 /// 特权软件信息。
