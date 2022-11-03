@@ -7,7 +7,6 @@ mod clint;
 mod device_tree;
 mod execute;
 mod hart_csr_utils;
-mod hsm_cell;
 mod qemu_hsm;
 mod qemu_test;
 
@@ -34,7 +33,8 @@ use core::{
 use device_tree::BoardInfo;
 use execute::Operation;
 use fast_trap::{
-    reuse_stack_for_trap, FastContext, FastResult, FlowContext, FreeTrapStack, TrapStackBlock,
+    load_direct_trap_entry, reuse_stack_for_trap, FastContext, FastResult, FlowContext,
+    FreeTrapStack, TrapStackBlock,
 };
 use hsm_cell::HsmCell;
 use riscv::register::*;
@@ -152,11 +152,38 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
         // 设置并打印 pmp
         set_pmp(board_info);
         hart_csr_utils::print_pmps();
+        // 设置陷入栈
+        unsafe { ROOT_STACK[hart_id()].load_as_stack() };
+        // 设置内核入口
+        unsafe {
+            ROOT_STACK[hart_id()]
+                .hart_context()
+                .hsm
+                .remote()
+                .start(Supervisor {
+                    start_addr: SUPERVISOR_ENTRY,
+                    opaque,
+                });
+        }
     } else {
+        // 设置 pmp
         set_pmp(BOARD_INFO.wait());
+        // 设置陷入栈
+        unsafe { ROOT_STACK[hart_id()].load_as_stack() };
     }
-
-    unsafe { ROOT_STACK[hart_id()].load_as_stack() };
+    // 准备启动调度
+    unsafe {
+        asm!("csrw mcause, {}", in(reg) cause::BOOT);
+        asm!("csrw mideleg, {}", in(reg) !0);
+        asm!("csrw medeleg, {}", in(reg) !0);
+        asm!("csrw mcounteren, {}", in(reg) !0);
+        medeleg::clear_supervisor_env_call();
+        medeleg::clear_machine_env_call();
+        mie::set_mext();
+        mie::set_msoft();
+        mie::set_mtimer();
+        load_direct_trap_entry();
+    }
 
     let hsm = HSM.wait();
     if let Some(supervisor) = hsm.take_supervisor() {
@@ -243,8 +270,12 @@ extern "C" fn fast_handler(
             cause::BOOT => {
                 let hart_id = hart_id();
                 let hart_ctx = unsafe { ROOT_STACK[hart_id].hart_context() };
-                match hart_ctx.hsm.take() {
+                match unsafe { hart_ctx.hsm.local() }.start() {
                     Ok(supervisor) => {
+                        unsafe {
+                            mstatus::set_mpie();
+                            mstatus::set_mpp(mstatus::MPP::Supervisor);
+                        }
                         hart_ctx.trap.a[0] = hart_id;
                         hart_ctx.trap.a[1] = supervisor.opaque;
                         hart_ctx.trap.pc = supervisor.start_addr;
@@ -256,7 +287,7 @@ extern "C" fn fast_handler(
                 }
                 ctx.call(2)
             }
-            _ => todo!(),
+            _ => unreachable!(),
         },
         T::Exception(_) | T::Interrupt(_) => todo!(),
     }

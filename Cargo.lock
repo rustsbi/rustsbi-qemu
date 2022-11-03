@@ -131,6 +131,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hsm-cell"
+version = "0.1.0"
+dependencies = [
+ "sbi-spec",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -282,6 +289,7 @@ version = "0.2.0-alpha.2"
 dependencies = [
  "dtb-walker",
  "fast-trap",
+ "hsm-cell",
  "qemu-exit",
  "r0",
  "rcore-console",
