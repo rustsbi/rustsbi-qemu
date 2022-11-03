@@ -275,9 +275,9 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.3.0-rc.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99a419920f956be760611d66db2563120fd98b39d9d39ca61e0aac669c5a8175"
+checksum = "9671db0f50ebfd111cdaf17783ff72ffeb637e76eb1a399ff7fc347408505403"
 dependencies = [
  "riscv",
  "sbi-spec",
