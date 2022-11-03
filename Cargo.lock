@@ -110,7 +110,7 @@ dependencies = [
 [[package]]
 name = "fast-trap"
 version = "0.0.1"
-source = "git+https://github.com/YdrMaster/fast-trap#ff2b99ebd8a71b30e846874180366192b2776ba7"
+source = "git+https://github.com/YdrMaster/fast-trap#ba1df5e8b6706318bc498d44933003409c738d66"
 dependencies = [
  "log",
 ]

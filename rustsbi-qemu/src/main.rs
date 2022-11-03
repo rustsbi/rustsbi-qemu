@@ -34,6 +34,7 @@ use execute::Operation;
 use fast_trap::{
     reuse_stack_for_trap, FastContext, FastResult, FlowContext, FreeTrapStack, TrapStackBlock,
 };
+use riscv::register::*;
 use rustsbi::RustSBI;
 use spin::{Mutex, Once};
 use uart_16550::MmioSerialPort;
@@ -194,9 +195,6 @@ fn hart_id() -> usize {
 
 /// 设置 PMP。
 fn set_pmp(board_info: &BoardInfo) {
-    use riscv::register::{
-        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpcfg0, Permission, Range,
-    };
     let mem = &board_info.mem;
     unsafe {
         pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
@@ -216,8 +214,12 @@ fn set_pmp(board_info: &BoardInfo) {
     }
 }
 
+mod cause {
+    pub(crate) const BOOT: usize = 24;
+}
+
 extern "C" fn fast_handler(
-    mut _ctx: FastContext,
+    ctx: FastContext,
     _a1: usize,
     _a2: usize,
     _a3: usize,
@@ -226,7 +228,19 @@ extern "C" fn fast_handler(
     _a6: usize,
     _a7: usize,
 ) -> FastResult {
-    todo!()
+    use mcause::{Exception as E, Trap as T};
+
+    let cause = mcause::read();
+    match cause.cause() {
+        T::Exception(E::Unknown) => match cause.bits() {
+            cause::BOOT => {
+                // TODO 检查状态，设置启动参数
+                ctx.call(2)
+            }
+            _ => todo!(),
+        },
+        T::Exception(_) | T::Interrupt(_) => todo!(),
+    }
 }
 
 #[panic_handler]
