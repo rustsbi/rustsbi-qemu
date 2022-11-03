@@ -159,6 +159,9 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         // 设置陷入栈
         unsafe { ROOT_STACK[hart_id()].load_as_stack() };
     }
+    // 清理 clint
+    clint::msip::clear();
+    clint::mtimecmp::clear();
     // 准备启动调度
     unsafe {
         asm!("csrw mcause, {}", in(reg) cause::BOOT);
