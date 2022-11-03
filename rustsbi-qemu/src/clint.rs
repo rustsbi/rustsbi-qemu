@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use core::cell::UnsafeCell;
 use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
 
@@ -34,7 +36,6 @@ pub(crate) fn init(base: usize) {
     unsafe { *BASE.get() = base };
 }
 
-#[allow(unused)]
 pub mod mtime {
     #[inline]
     pub fn read() -> u64 {

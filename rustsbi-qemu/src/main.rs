@@ -1,13 +1,13 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions, asm_const)]
-// #![deny(warnings)]
+#![deny(warnings)]
 
 mod clint;
 mod device_tree;
-mod execute;
 mod hart_csr_utils;
 mod qemu_test;
+mod trap_vec;
 
 mod constants {
     /// 特权软件入口。
@@ -83,17 +83,6 @@ unsafe extern "C" fn _stop() -> ! {
     asm!("wfi", options(noreturn))
 }
 
-static mut SBI: MaybeUninit<FixedRustSBI> = MaybeUninit::uninit();
-
-type FixedRustSBI<'a> = RustSBI<
-    &'a clint::Clint,
-    &'a clint::Clint,
-    Infallible,
-    Infallible,
-    &'a qemu_test::QemuTest,
-    Infallible,
->;
-
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     static GENESIS: AtomicBool = AtomicBool::new(true);
@@ -164,9 +153,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
                     opaque,
                 });
         }
-        // 清理 clint
-        clint::msip::clear();
-        clint::mtimecmp::clear();
     } else {
         // 设置 pmp
         set_pmp(BOARD_INFO.wait());
@@ -184,7 +170,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         mie::set_mext();
         mie::set_msoft();
         mie::set_mtimer();
-        mtvec::write(execute::trap_vec as _, mtvec::TrapMode::Vectored);
+        mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Vectored);
     }
 }
 
@@ -232,6 +218,7 @@ extern "C" fn fast_handler(
 
     let cause = mcause::read();
     match cause.cause() {
+        // 启动
         T::Exception(E::Unknown) => match cause.bits() {
             cause::BOOT => {
                 let hart_id = hart_id();
@@ -245,17 +232,16 @@ extern "C" fn fast_handler(
                         hart_ctx.trap.a[0] = hart_id;
                         hart_ctx.trap.a[1] = supervisor.opaque;
                         hart_ctx.trap.pc = supervisor.start_addr;
-                        println!("trap = {:?}", (&hart_ctx.trap) as *const _);
                     }
                     Err(_state) => {
                         hart_ctx.trap.pc = _stop as usize;
-                        println!("{_state:#x}");
                     }
                 }
                 ctx.call(2)
             }
             _ => unreachable!(),
         },
+        // SBI call
         T::Exception(E::SupervisorEnvCall) => {
             let ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
                 a7,
@@ -267,8 +253,24 @@ extern "C" fn fast_handler(
             ctx.write_a(0, ret.error);
             ctx.restore()
         }
-        T::Exception(e) => todo!("{e:?}"),
-        T::Interrupt(i) => todo!("{i:?}"),
+        // 其他陷入
+        trap => {
+            let mstatus: usize;
+            unsafe { asm!("csrr {}, mstatus", out(reg) mstatus) };
+            println!(
+                "
+-----------------------------
+> trap:    {trap:?}
+> mstatus: {mstatus:#018x}
+> mepc:    {:#018x}
+> mtval:   {:#018x}
+-----------------------------
+            ",
+                mepc::read(),
+                mtval::read()
+            );
+            panic!("stopped with unsupported trap")
+        }
     }
 }
 
@@ -373,3 +375,14 @@ impl rcore_console::Console for Console {
         }
     }
 }
+
+static mut SBI: MaybeUninit<FixedRustSBI> = MaybeUninit::uninit();
+
+type FixedRustSBI<'a> = RustSBI<
+    &'a clint::Clint,
+    &'a clint::Clint,
+    Infallible,
+    Infallible,
+    &'a qemu_test::QemuTest,
+    Infallible,
+>;
