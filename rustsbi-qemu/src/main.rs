@@ -34,6 +34,7 @@ use fast_trap::{FastContext, FastResult, FlowContext, FreeTrapStack, TrapStackBl
 use hsm_cell::HsmCell;
 use riscv::register::*;
 use rustsbi::RustSBI;
+use sbi_spec::binary::SbiRet;
 use spin::{Mutex, Once};
 use uart_16550::MmioSerialPort;
 
@@ -173,7 +174,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         mie::set_mext();
         mie::set_msoft();
         mie::set_mtimer();
-        mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Vectored);
     }
 }
 
@@ -217,33 +217,36 @@ extern "C" fn fast_handler(
     a6: usize,
     a7: usize,
 ) -> FastResult {
-    use mcause::{Exception as E, Trap as T};
+    use mcause::{Exception as E, Interrupt as I, Trap as T};
 
     let cause = mcause::read();
-    match cause.cause() {
-        // 启动
-        T::Exception(E::Unknown) => match cause.bits() {
-            cause::BOOT => {
-                let hart_id = hart_id();
-                let hart_ctx = unsafe { ROOT_STACK[hart_id].hart_context() };
-                match unsafe { hart_ctx.hsm.local() }.start() {
-                    Ok(supervisor) => {
-                        unsafe {
-                            mstatus::set_mpie();
-                            mstatus::set_mpp(mstatus::MPP::Supervisor);
-                        }
-                        hart_ctx.trap.a[0] = hart_id;
-                        hart_ctx.trap.a[1] = supervisor.opaque;
-                        hart_ctx.trap.pc = supervisor.start_addr;
-                    }
-                    Err(_state) => {
-                        hart_ctx.trap.pc = _stop as usize;
-                    }
+    // 启动
+    if (cause.cause() == T::Exception(E::Unknown) && cause.bits() == cause::BOOT)
+        || cause.cause() == T::Interrupt(I::MachineSoft)
+    {
+        let hart_id = hart_id();
+        let hart_ctx = unsafe { ROOT_STACK[hart_id].hart_context() };
+        match unsafe { hart_ctx.hsm.local() }.start() {
+            Ok(supervisor) => {
+                unsafe {
+                    mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Vectored);
+                    mstatus::set_mpie();
+                    mstatus::set_mpp(mstatus::MPP::Supervisor);
                 }
-                ctx.call(2)
+                hart_ctx.trap.a[0] = hart_id;
+                hart_ctx.trap.a[1] = supervisor.opaque;
+                hart_ctx.trap.pc = supervisor.start_addr;
             }
-            _ => unreachable!(),
-        },
+            Err(_state) => {
+                unsafe {
+                    mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
+                };
+                hart_ctx.trap.pc = _stop as usize;
+            }
+        }
+        return ctx.call(2);
+    }
+    match cause.cause() {
         // SBI call
         T::Exception(E::SupervisorEnvCall) => {
             let ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
@@ -251,6 +254,17 @@ extern "C" fn fast_handler(
                 a6,
                 [ctx.a0(), a1, a2, a3, a4, a5],
             );
+            if ret.is_ok() && a7 == sbi_spec::hsm::EID_HSM {
+                match a6 {
+                    sbi_spec::hsm::HART_STOP => unsafe {
+                        mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
+                        mstatus::set_mpp(mstatus::MPP::Machine);
+                        ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
+                        return ctx.call(0);
+                    },
+                    _ => {}
+                }
+            }
             mepc::write(mepc::read() + 4);
             ctx.save_args(ret.value, a2, a3, a4, a5, a6, a7);
             ctx.write_a(0, ret.error);
@@ -389,3 +403,41 @@ type FixedRustSBI<'a> = RustSBI<
     &'a qemu_test::QemuTest,
     Infallible,
 >;
+
+struct Hsm;
+
+impl rustsbi::Hsm for Hsm {
+    fn hart_start(&self, hartid: usize, start_addr: usize, opaque: usize) -> SbiRet {
+        match unsafe { ROOT_STACK.get_mut(hartid).map(|s| s.hart_context()) } {
+            Some(hart) => {
+                if hart.hsm.remote().start(Supervisor { start_addr, opaque }) {
+                    clint::msip::send(hartid);
+                    SbiRet::success(0)
+                } else {
+                    SbiRet::already_started()
+                }
+            }
+            None => SbiRet::invalid_param(),
+        }
+    }
+
+    #[inline]
+    fn hart_stop(&self) -> SbiRet {
+        unsafe { ROOT_STACK[hart_id()].hart_context().hsm.local().stop() };
+        SbiRet::success(0)
+    }
+
+    #[inline]
+    fn hart_get_status(&self, hartid: usize) -> SbiRet {
+        match unsafe { ROOT_STACK.get_mut(hartid).map(|s| s.hart_context()) } {
+            Some(hart) => SbiRet::success(hart.hsm.remote().sbi_get_status()),
+            None => SbiRet::invalid_param(),
+        }
+    }
+
+    #[inline]
+    fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
+        let _ = (suspend_type, resume_addr, opaque);
+        SbiRet::not_supported()
+    }
+}

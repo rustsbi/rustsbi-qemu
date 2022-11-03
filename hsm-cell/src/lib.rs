@@ -70,6 +70,12 @@ impl<T> LocalHsmCell<'_, T> {
             }
         }
     }
+
+    /// 关闭。
+    #[inline]
+    pub fn stop(&self) {
+        self.0.status.store(HART_STATE_STOPPED, Ordering::Release)
+    }
 }
 
 impl<T> RemoteHsmCell<'_, T> {
