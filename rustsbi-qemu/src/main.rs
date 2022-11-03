@@ -5,6 +5,7 @@
 
 mod clint;
 mod device_tree;
+mod execute;
 mod hart_csr_utils;
 mod qemu_test;
 
@@ -29,10 +30,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use device_tree::BoardInfo;
-use fast_trap::{
-    load_direct_trap_entry, reuse_stack_for_trap, trap_entry, FastContext, FastResult, FlowContext,
-    FreeTrapStack, TrapStackBlock,
-};
+use fast_trap::{FastContext, FastResult, FlowContext, FreeTrapStack, TrapStackBlock};
 use hsm_cell::HsmCell;
 use riscv::register::*;
 use rustsbi::RustSBI;
@@ -73,9 +71,9 @@ unsafe extern "C" fn _start() -> ! {
         "   j    {trap}",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym ROOT_STACK,
-        move_stack          =   sym reuse_stack_for_trap,
+        move_stack          =   sym fast_trap::reuse_stack_for_trap,
         rust_main           =   sym rust_main,
-        trap                =   sym trap_entry,
+        trap                =   sym fast_trap::trap_entry,
         options(noreturn)
     )
 }
@@ -186,7 +184,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         mie::set_mext();
         mie::set_msoft();
         mie::set_mtimer();
-        load_direct_trap_entry();
+        mtvec::write(execute::trap_vec as _, mtvec::TrapMode::Vectored);
     }
 }
 
