@@ -7,6 +7,7 @@ mod clint;
 mod device_tree;
 mod hart_csr_utils;
 mod qemu_test;
+mod riscv_spec;
 mod trap_vec;
 
 mod constants {
@@ -32,10 +33,11 @@ use core::{
 use device_tree::BoardInfo;
 use fast_trap::{FastContext, FastResult, FlowContext, FreeTrapStack, TrapStackBlock};
 use hsm_cell::HsmCell;
-use riscv::register::*;
+use riscv_spec::*;
 use rustsbi::RustSBI;
 use sbi_spec::binary::SbiRet;
 use spin::{Mutex, Once};
+use trap_vec::{load_trap_vec, trap_vec};
 use uart_16550::MmioSerialPort;
 
 /// 栈空间。
@@ -43,10 +45,6 @@ use uart_16550::MmioSerialPort;
 static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 
 /// 入口。
-///
-/// 1. 关中断
-/// 2. 设置启动栈
-/// 3. 跳转到 rust 入口函数
 ///
 /// # Safety
 ///
@@ -56,9 +54,6 @@ static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
     asm!(
-        // 关中断
-        "   csrw mie,  zero",
-        // 设置栈
         "   la   sp, {stack}
             li   t0, {per_hart_stack_size}
             csrr t1,  mhartid
@@ -67,14 +62,14 @@ unsafe extern "C" fn _start() -> ! {
             addi t1,  t1, -1
             bnez t1,  1b
             call {move_stack}
+            call {rust_main}
+            j    {trap}
         ",
-        "   call {rust_main}",
-        "   j    {trap}",
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym ROOT_STACK,
         move_stack          =   sym fast_trap::reuse_stack_for_trap,
         rust_main           =   sym rust_main,
-        trap                =   sym fast_trap::trap_entry,
+        trap                =   sym trap_vec,
         options(noreturn)
     )
 }
@@ -175,8 +170,8 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         asm!("csrw mideleg, {}", in(reg) !0);
         asm!("csrw medeleg, {}", in(reg) !0);
         asm!("csrw mcounteren, {}", in(reg) !0);
-        medeleg::clear_supervisor_env_call();
-        medeleg::clear_machine_env_call();
+        riscv::register::medeleg::clear_supervisor_env_call();
+        riscv::register::medeleg::clear_machine_env_call();
     }
 }
 
@@ -187,6 +182,7 @@ fn hart_id() -> usize {
 
 /// 设置 PMP。
 fn set_pmp(board_info: &BoardInfo) {
+    use riscv::register::*;
     let mem = &board_info.mem;
     unsafe {
         pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
@@ -220,7 +216,10 @@ extern "C" fn fast_handler(
     a6: usize,
     a7: usize,
 ) -> FastResult {
-    use mcause::{Exception as E, Interrupt as I, Trap as T};
+    use riscv::register::{
+        mcause::{self, Exception as E, Interrupt as I, Trap as T},
+        mepc, mstatus, mtval,
+    };
 
     let cause = mcause::read();
     // 启动
@@ -232,10 +231,10 @@ extern "C" fn fast_handler(
         match unsafe { hart_ctx.hsm.local() }.start() {
             Ok(supervisor) => {
                 unsafe {
-                    mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Vectored);
+                    load_trap_vec(true);
                     mstatus::set_mpie();
                     mstatus::set_mpp(mstatus::MPP::Supervisor);
-                    asm!("csrw mie, {}", in(reg) (1<<3)|(1<<7)|(1<<11));
+                    mie::write(mie::MSIE | mie::MTIE | mie::MEIE);
                 }
                 hart_ctx.trap.a[0] = hart_id;
                 hart_ctx.trap.a[1] = supervisor.opaque;
@@ -243,10 +242,10 @@ extern "C" fn fast_handler(
             }
             Err(_state) => {
                 unsafe {
-                    mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
+                    load_trap_vec(false);
                     mstatus::set_mpie();
                     mstatus::set_mpp(mstatus::MPP::Machine);
-                    asm!("csrw mie, {}", in(reg) 1<<3);
+                    mie::write(mie::MSIE);
                 };
                 hart_ctx.trap.pc = _stop as usize;
             }
@@ -265,9 +264,9 @@ extern "C" fn fast_handler(
             if ret.is_ok() && a7 == hsm::EID_HSM {
                 if a6 == hsm::HART_STOP {
                     unsafe {
-                        mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
+                        load_trap_vec(true);
                         mstatus::set_mpp(mstatus::MPP::Machine);
-                        asm!("csrw mie, {}", in(reg) 1<<3);
+                        mie::write(mie::MSIE);
                         ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
                     }
                     return ctx.call(0);
@@ -276,7 +275,7 @@ extern "C" fn fast_handler(
                     && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
                 {
                     unsafe {
-                        mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
+                        load_trap_vec(false);
                         mstatus::set_mpp(mstatus::MPP::Machine);
                         ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
                     }
