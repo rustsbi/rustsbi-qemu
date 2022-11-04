@@ -87,6 +87,7 @@ unsafe extern "C" fn _stop() -> ! {
 /// rust 入口。
 extern "C" fn rust_main(_hartid: usize, opaque: usize) {
     static GENESIS: AtomicBool = AtomicBool::new(true);
+    static DONE: AtomicBool = AtomicBool::new(true);
     static BOARD_INFO: Once<BoardInfo> = Once::new();
 
     // 全局初始化过程
@@ -134,6 +135,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
                 rustsbi::Builder::new_machine()
                     .with_ipi(&clint::Clint)
                     .with_timer(&clint::Clint)
+                    .with_hsm(Hsm)
                     .with_reset(qemu_test::get())
                     .build(),
             );
@@ -154,11 +156,15 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
                     opaque,
                 });
         }
+        DONE.store(false, Ordering::SeqCst);
     } else {
         // 设置 pmp
         set_pmp(BOARD_INFO.wait());
         // 设置陷入栈
         unsafe { ROOT_STACK[hart_id()].load_as_stack() };
+        while DONE.load(Ordering::SeqCst) {
+            core::hint::spin_loop();
+        }
     }
     // 清理 clint
     clint::msip::clear();
@@ -171,9 +177,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         asm!("csrw mcounteren, {}", in(reg) !0);
         medeleg::clear_supervisor_env_call();
         medeleg::clear_machine_env_call();
-        mie::set_mext();
-        mie::set_msoft();
-        mie::set_mtimer();
     }
 }
 
@@ -232,6 +235,7 @@ extern "C" fn fast_handler(
                     mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Vectored);
                     mstatus::set_mpie();
                     mstatus::set_mpp(mstatus::MPP::Supervisor);
+                    asm!("csrw mie, {}", in(reg) (1<<3)|(1<<7)|(1<<11));
                 }
                 hart_ctx.trap.a[0] = hart_id;
                 hart_ctx.trap.a[1] = supervisor.opaque;
@@ -240,6 +244,9 @@ extern "C" fn fast_handler(
             Err(_state) => {
                 unsafe {
                     mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
+                    mstatus::set_mpie();
+                    mstatus::set_mpp(mstatus::MPP::Machine);
+                    asm!("csrw mie, {}", in(reg) 1<<3);
                 };
                 hart_ctx.trap.pc = _stop as usize;
             }
@@ -249,20 +256,31 @@ extern "C" fn fast_handler(
     match cause.cause() {
         // SBI call
         T::Exception(E::SupervisorEnvCall) => {
+            use sbi_spec::hsm;
             let ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
                 a7,
                 a6,
                 [ctx.a0(), a1, a2, a3, a4, a5],
             );
-            if ret.is_ok() && a7 == sbi_spec::hsm::EID_HSM {
-                match a6 {
-                    sbi_spec::hsm::HART_STOP => unsafe {
+            if ret.is_ok() && a7 == hsm::EID_HSM {
+                if a6 == hsm::HART_STOP {
+                    unsafe {
+                        mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
+                        mstatus::set_mpp(mstatus::MPP::Machine);
+                        asm!("csrw mie, {}", in(reg) 1<<3);
+                        ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
+                    }
+                    return ctx.call(0);
+                }
+                if a6 == hsm::HART_SUSPEND
+                    && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
+                {
+                    unsafe {
                         mtvec::write(trap_vec::trap_vec as _, mtvec::TrapMode::Direct);
                         mstatus::set_mpp(mstatus::MPP::Machine);
                         ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
-                        return ctx.call(0);
-                    },
-                    _ => {}
+                    }
+                    return ctx.call(0);
                 }
             }
             mepc::write(mepc::read() + 4);
@@ -399,7 +417,7 @@ type FixedRustSBI<'a> = RustSBI<
     &'a clint::Clint,
     &'a clint::Clint,
     Infallible,
-    Infallible,
+    Hsm,
     &'a qemu_test::QemuTest,
     Infallible,
 >;
@@ -435,9 +453,40 @@ impl rustsbi::Hsm for Hsm {
         }
     }
 
-    #[inline]
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
-        let _ = (suspend_type, resume_addr, opaque);
-        SbiRet::not_supported()
+        use sbi_spec::hsm as spec;
+        match suspend_type {
+            spec::HART_SUSPEND_TYPE_NON_RETENTIVE => unsafe {
+                ROOT_STACK[hart_id()]
+                    .hart_context()
+                    .hsm
+                    .local()
+                    .suspend_non_retentive(Supervisor {
+                        start_addr: resume_addr,
+                        opaque,
+                    });
+                SbiRet::success(0)
+            },
+            spec::HART_SUSPEND_TYPE_RETENTIVE => unsafe {
+                ROOT_STACK[hart_id()].hart_context().hsm.local().suspend();
+                asm!(
+                    "   la    {0}, 1f
+                        csrrw {0}, mtvec,   {0}
+                        csrrw {1}, mepc,    {1}
+                        csrrw {2}, mstatus, {2}
+                        wfi
+                    1:  csrrw {2}, mstatus, {2}
+                        csrrw {1}, mepc,    {1}
+                        csrrw {0}, mtvec,   {0}
+                    ",
+                    out(reg) _,
+                    out(reg) _,
+                    out(reg) _,
+                );
+                ROOT_STACK[hart_id()].hart_context().hsm.local().resume();
+                SbiRet::success(0)
+            },
+            _ => SbiRet::not_supported(),
+        }
     }
 }
