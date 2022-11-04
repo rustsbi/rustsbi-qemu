@@ -218,7 +218,7 @@ extern "C" fn fast_handler(
 ) -> FastResult {
     use riscv::register::{
         mcause::{self, Exception as E, Interrupt as I, Trap as T},
-        mepc, mstatus, mtval,
+        mtval,
     };
 
     let cause = mcause::read();
@@ -231,10 +231,12 @@ extern "C" fn fast_handler(
         match unsafe { hart_ctx.hsm.local() }.start() {
             Ok(supervisor) => {
                 unsafe {
-                    load_trap_vec(true);
-                    mstatus::set_mpie();
-                    mstatus::set_mpp(mstatus::MPP::Supervisor);
+                    let mut status = mstatus::read();
+                    status &= !mstatus::MPP;
+                    status |= mstatus::MPIE | mstatus::MPP_SUPERVISOR;
+                    mstatus::write(status);
                     mie::write(mie::MSIE | mie::MTIE | mie::MEIE);
+                    load_trap_vec(true);
                 }
                 hart_ctx.trap.a[0] = hart_id;
                 hart_ctx.trap.a[1] = supervisor.opaque;
@@ -242,10 +244,12 @@ extern "C" fn fast_handler(
             }
             Err(_state) => {
                 unsafe {
-                    load_trap_vec(false);
-                    mstatus::set_mpie();
-                    mstatus::set_mpp(mstatus::MPP::Machine);
+                    let mut status = mstatus::read();
+                    status &= !mstatus::MPP;
+                    status |= mstatus::MPIE | mstatus::MPP_MACHINE;
+                    mstatus::write(status);
                     mie::write(mie::MSIE);
+                    load_trap_vec(false);
                 };
                 hart_ctx.trap.pc = _stop as usize;
             }
@@ -262,27 +266,27 @@ extern "C" fn fast_handler(
                 [ctx.a0(), a1, a2, a3, a4, a5],
             );
             if ret.is_ok() && a7 == hsm::EID_HSM {
+                // 关闭
                 if a6 == hsm::HART_STOP {
                     unsafe {
-                        load_trap_vec(true);
-                        mstatus::set_mpp(mstatus::MPP::Machine);
+                        load_trap_vec(false);
                         mie::write(mie::MSIE);
                         ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
                     }
                     return ctx.call(0);
                 }
+                // 不可恢复挂起
                 if a6 == hsm::HART_SUSPEND
                     && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
                 {
                     unsafe {
                         load_trap_vec(false);
-                        mstatus::set_mpp(mstatus::MPP::Machine);
                         ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
                     }
                     return ctx.call(0);
                 }
             }
-            mepc::write(mepc::read() + 4);
+            mepc::next();
             ctx.save_args(ret.value, a2, a3, a4, a5, a6, a7);
             ctx.write_a(0, ret.error);
             ctx.restore()
@@ -469,18 +473,19 @@ impl rustsbi::Hsm for Hsm {
             spec::HART_SUSPEND_TYPE_RETENTIVE => unsafe {
                 ROOT_STACK[hart_id()].hart_context().hsm.local().suspend();
                 asm!(
-                    "   la    {0}, 1f
-                        csrrw {0}, mtvec,   {0}
-                        csrrw {1}, mepc,    {1}
-                        csrrw {2}, mstatus, {2}
+                    "   la     {0}, 1f
+                        csrrw  {0}, mtvec,   {0}
+                        csrr   {1}, mepc
+                        csrrsi {2}, mstatus, {mie}
                         wfi
-                    1:  csrrw {2}, mstatus, {2}
-                        csrrw {1}, mepc,    {1}
-                        csrrw {0}, mtvec,   {0}
+                    1:  csrw   mstatus, {2}
+                        csrw   mepc,    {1}
+                        csrw   mtvec,   {0}
                     ",
                     out(reg) _,
                     out(reg) _,
                     out(reg) _,
+                    mie = const mstatus::MIE,
                 );
                 ROOT_STACK[hart_id()].hart_context().hsm.local().resume();
                 SbiRet::success(0)
