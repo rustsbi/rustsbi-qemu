@@ -233,32 +233,60 @@ extern "C" fn fast_handler(
     match cause.cause() {
         // SBI call
         T::Exception(E::SupervisorEnvCall) => {
-            use sbi_spec::hsm;
-            let ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
+            use sbi_spec::{base, hsm, legacy};
+            let mut ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
                 a7,
                 a6,
                 [ctx.a0(), a1, a2, a3, a4, a5],
             );
-            if ret.is_ok() && a7 == hsm::EID_HSM {
-                // 关闭
-                if a6 == hsm::HART_STOP {
-                    local_hsm().stop();
-                    mie::write(mie::MSIE);
-                    trap_vec::load(false);
-                    ctx.regs().pc = _stop as _;
-                    return ctx.call(0);
+            if ret.is_ok() {
+                match a7 {
+                    hsm::EID_HSM => {
+                        // 关闭
+                        if a6 == hsm::HART_STOP {
+                            local_hsm().stop();
+                            mie::write(mie::MSIE);
+                            trap_vec::load(false);
+                            ctx.regs().pc = _stop as _;
+                            return ctx.call(0);
+                        }
+                        // 不可恢复挂起
+                        if a6 == hsm::HART_SUSPEND
+                            && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
+                        {
+                            trap_vec::load(false);
+                            ctx.regs().pc = _stop as _;
+                            return ctx.call(0);
+                        }
+                    }
+                    base::EID_BASE => {
+                        if a6 == base::PROBE_EXTENSION {
+                            if matches!(
+                                ctx.a0(),
+                                legacy::LEGACY_CONSOLE_PUTCHAR | legacy::LEGACY_CONSOLE_GETCHAR
+                            ) {
+                                ret.value = 1;
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                // 不可恢复挂起
-                if a6 == hsm::HART_SUSPEND
-                    && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
-                {
-                    trap_vec::load(false);
-                    ctx.regs().pc = _stop as _;
-                    return ctx.call(0);
+            } else {
+                match a7 {
+                    legacy::LEGACY_CONSOLE_PUTCHAR => {
+                        print!("{}", ctx.a0() as u8 as char);
+                        ret.error = 0;
+                        ret.value = a1;
+                    }
+                    legacy::LEGACY_CONSOLE_GETCHAR => {
+                        ret.error = unsafe { UART.lock().assume_init_mut() }.receive() as _;
+                        ret.value = a1;
+                    }
+                    _ => {}
                 }
             }
-            mepc::next();
             ctx.regs().a = [ret.error, ret.value, a2, a3, a4, a5, a6, a7];
+            mepc::next();
             ctx.restore()
         }
         // 其他陷入
