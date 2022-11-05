@@ -5,17 +5,18 @@
 
 mod clint;
 mod device_tree;
-mod execute;
 mod hart_csr_utils;
-mod qemu_hsm;
 mod qemu_test;
+mod riscv_spec;
+mod trap_stack;
+mod trap_vec;
 
 mod constants {
     /// 特权软件入口。
     pub(crate) const SUPERVISOR_ENTRY: usize = 0x8020_0000;
-    /// 每个核设置 16KiB 栈空间。
+    /// 每个硬件线程设置 16KiB 栈空间。
     pub(crate) const LEN_STACK_PER_HART: usize = 16 * 1024;
-    /// qemu-virt 最多 8 核。
+    /// qemu-virt 最多 8 个硬件线程。
     pub(crate) const NUM_HART_MAX: usize = 8;
 }
 
@@ -24,21 +25,21 @@ extern crate rcore_console;
 
 use constants::*;
 use core::{
+    arch::asm,
     convert::Infallible,
     mem::MaybeUninit,
-    sync::atomic::{AtomicBool, Ordering::AcqRel},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use device_tree::BoardInfo;
-use execute::Operation;
+use fast_trap::{FastContext, FastResult};
+use riscv_spec::*;
 use rustsbi::RustSBI;
+use sbi_spec::binary::SbiRet;
 use spin::{Mutex, Once};
+use trap_stack::{local_hsm, local_remote_hsm, remote_hsm};
 use uart_16550::MmioSerialPort;
 
 /// 入口。
-///
-/// 1. 关中断
-/// 2. 设置启动栈
-/// 3. 跳转到 rust 入口函数
 ///
 /// # Safety
 ///
@@ -47,53 +48,31 @@ use uart_16550::MmioSerialPort;
 #[no_mangle]
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
-    #[link_section = ".bss.uninit"]
-    static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
-
-    core::arch::asm!(
-        // 关中断
-        "  csrw mie,  zero",
-        // 设置栈
-        "  la    sp, {stack}
-           li    t0, {per_hart_stack_size}
-           csrr  t1,  mhartid
-           addi  t1,  t1,  1
-        1: add   sp,  sp, t0
-           addi  t1,  t1, -1
-           bnez  t1,  1b",
-        "  call {rust_main}",
-        // 清理，然后重启或等待
-        "  call {finalize}
-           bnez  a0,  _start
-        1: wfi
-           j     1b",
-        per_hart_stack_size = const LEN_STACK_PER_HART,
-        stack               =   sym ROOT_STACK,
-        rust_main           =   sym rust_main,
-        finalize            =   sym finalize,
+    asm!(
+        "   call {locate_stack}
+            call {rust_main}
+            j    {trap}
+        ",
+        locate_stack = sym trap_stack::locate,
+        rust_main    = sym rust_main,
+        trap         = sym trap_vec::trap_vec,
         options(noreturn)
     )
 }
 
-static HSM: Once<qemu_hsm::QemuHsm> = Once::new();
-
-type FixedRustSBI<'a> = RustSBI<
-    &'a clint::Clint,
-    &'a clint::Clint,
-    Infallible,
-    &'a qemu_hsm::QemuHsm,
-    &'a qemu_test::QemuTest,
-    Infallible,
->;
+#[naked]
+unsafe extern "C" fn _stop() -> ! {
+    asm!("wfi", options(noreturn))
+}
 
 /// rust 入口。
-extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
+extern "C" fn rust_main(hartid: usize, opaque: usize) {
     static GENESIS: AtomicBool = AtomicBool::new(true);
+    static DONE: AtomicBool = AtomicBool::new(true);
     static BOARD_INFO: Once<BoardInfo> = Once::new();
-    static CSR_PRINT: AtomicBool = AtomicBool::new(false);
 
     // 全局初始化过程
-    if GENESIS.swap(false, AcqRel) {
+    if GENESIS.swap(false, Ordering::AcqRel) {
         extern "C" {
             static mut sbss: u64;
             static mut ebss: u64;
@@ -107,7 +86,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
         rcore_console::set_log_level(option_env!("LOG"));
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
-        HSM.call_once(|| qemu_hsm::QemuHsm::new(NUM_HART_MAX, opaque));
         // 打印启动信息
         print!(
             "\
@@ -128,51 +106,51 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) -> Operation {
             model = board_info.model,
             smp = board_info.smp,
             mem = board_info.mem,
-            hartid = hart_id(),
             dtb = board_info.dtb,
             firmware = _start as usize,
         );
-    }
-
-    let hsm = HSM.wait();
-    if let Some(supervisor) = hsm.take_supervisor() {
+        // 初始化 SBI
+        unsafe {
+            SBI = MaybeUninit::new(
+                rustsbi::Builder::new_machine()
+                    .with_ipi(&clint::Clint)
+                    .with_timer(&clint::Clint)
+                    .with_hsm(Hsm)
+                    .with_reset(qemu_test::get())
+                    .build(),
+            );
+        };
         // 设置并打印 pmp
-        set_pmp(BOARD_INFO.wait());
-        if !CSR_PRINT.swap(true, AcqRel) {
-            hart_csr_utils::print_pmps();
-        }
-        // 初始化 SBI 服务
-        let sbi = rustsbi::Builder::new_machine()
-            .with_ipi(&clint::Clint)
-            .with_timer(&clint::Clint)
-            .with_reset(qemu_test::get())
-            .with_hsm(hsm)
-            .build();
-        execute::execute_supervisor(sbi, hsm, supervisor)
+        set_pmp(board_info);
+        hart_csr_utils::print_pmps();
+        // 设置陷入栈
+        trap_stack::prepare_for_trap();
+        // 设置内核入口
+        local_remote_hsm().start(Supervisor {
+            start_addr: SUPERVISOR_ENTRY,
+            opaque,
+        });
+        DONE.store(false, Ordering::SeqCst);
     } else {
-        Operation::Stop
+        // 设置 pmp
+        set_pmp(BOARD_INFO.wait());
+        // 设置陷入栈
+        trap_stack::prepare_for_trap();
+        while DONE.load(Ordering::SeqCst) {
+            core::hint::spin_loop();
+        }
     }
-}
-
-/// 准备好不可恢复休眠或关闭
-///
-/// 在隔离的环境（汇编）调用，以确保 main 中使用的堆资源完全释放。
-/// （只是作为示例，因为这个版本完全不使用堆）
-unsafe extern "C" fn finalize(op: Operation) -> ! {
-    match op {
-        Operation::Stop => {
-            HSM.wait().finalize_before_stop();
-            riscv::interrupt::enable();
-            // 从中断响应直接回 entry
-            loop {
-                riscv::asm::wfi();
-            }
-        }
-        Operation::SystemReset => {
-            // TODO 等待其他核关闭
-            // 直接回 entry
-            _start()
-        }
+    // 清理 clint
+    clint::msip::clear();
+    clint::mtimecmp::clear();
+    // 准备启动调度
+    unsafe {
+        asm!("csrw mcause, {}", in(reg) cause::BOOT);
+        asm!("csrw mideleg, {}", in(reg) !0);
+        asm!("csrw medeleg, {}", in(reg) !0);
+        asm!("csrw mcounteren, {}", in(reg) !0);
+        riscv::register::medeleg::clear_supervisor_env_call();
+        riscv::register::medeleg::clear_machine_env_call();
     }
 }
 
@@ -183,9 +161,7 @@ fn hart_id() -> usize {
 
 /// 设置 PMP。
 fn set_pmp(board_info: &BoardInfo) {
-    use riscv::register::{
-        pmpaddr0, pmpaddr1, pmpaddr2, pmpaddr3, pmpaddr4, pmpcfg0, Permission, Range,
-    };
+    use riscv::register::*;
     let mem = &board_info.mem;
     unsafe {
         pmpcfg0::set_pmp(0, Range::OFF, Permission::NONE, false);
@@ -205,6 +181,134 @@ fn set_pmp(board_info: &BoardInfo) {
     }
 }
 
+mod cause {
+    pub(crate) const BOOT: usize = 24;
+}
+
+extern "C" fn fast_handler(
+    mut ctx: FastContext,
+    a1: usize,
+    a2: usize,
+    a3: usize,
+    a4: usize,
+    a5: usize,
+    a6: usize,
+    a7: usize,
+) -> FastResult {
+    use riscv::register::{
+        mcause::{self, Exception as E, Interrupt as I, Trap as T},
+        mtval,
+    };
+
+    let cause = mcause::read();
+    // 启动
+    if (cause.cause() == T::Exception(E::Unknown) && cause.bits() == cause::BOOT)
+        || cause.cause() == T::Interrupt(I::MachineSoft)
+    {
+        let hart_id = hart_id();
+        match local_hsm().start() {
+            Ok(supervisor) => {
+                mstatus::update(|bits| {
+                    *bits &= !mstatus::MPP;
+                    *bits |= mstatus::MPIE | mstatus::MPP_SUPERVISOR;
+                });
+                mie::write(mie::MSIE | mie::MTIE | mie::MEIE);
+                trap_vec::load(true);
+                ctx.regs().a[0] = hart_id;
+                ctx.regs().a[1] = supervisor.opaque;
+                ctx.regs().pc = supervisor.start_addr;
+            }
+            Err(_state) => {
+                mstatus::update(|bits| {
+                    *bits &= !mstatus::MPP;
+                    *bits |= mstatus::MPIE | mstatus::MPP_MACHINE;
+                });
+                mie::write(mie::MSIE);
+                trap_vec::load(false);
+                ctx.regs().pc = _stop as usize;
+            }
+        }
+        return ctx.call(2);
+    }
+    match cause.cause() {
+        // SBI call
+        T::Exception(E::SupervisorEnvCall) => {
+            use sbi_spec::{base, hsm, legacy};
+            let mut ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
+                a7,
+                a6,
+                [ctx.a0(), a1, a2, a3, a4, a5],
+            );
+            if ret.is_ok() {
+                match a7 {
+                    hsm::EID_HSM => {
+                        // 关闭
+                        if a6 == hsm::HART_STOP {
+                            local_hsm().stop();
+                            mie::write(mie::MSIE);
+                            trap_vec::load(false);
+                            ctx.regs().pc = _stop as _;
+                            return ctx.call(0);
+                        }
+                        // 不可恢复挂起
+                        if a6 == hsm::HART_SUSPEND
+                            && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
+                        {
+                            trap_vec::load(false);
+                            ctx.regs().pc = _stop as _;
+                            return ctx.call(0);
+                        }
+                    }
+                    base::EID_BASE => {
+                        if a6 == base::PROBE_EXTENSION {
+                            if matches!(
+                                ctx.a0(),
+                                legacy::LEGACY_CONSOLE_PUTCHAR | legacy::LEGACY_CONSOLE_GETCHAR
+                            ) {
+                                ret.value = 1;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            } else {
+                match a7 {
+                    legacy::LEGACY_CONSOLE_PUTCHAR => {
+                        print!("{}", ctx.a0() as u8 as char);
+                        ret.error = 0;
+                        ret.value = a1;
+                    }
+                    legacy::LEGACY_CONSOLE_GETCHAR => {
+                        ret.error = unsafe { UART.lock().assume_init_mut() }.receive() as _;
+                        ret.value = a1;
+                    }
+                    _ => {}
+                }
+            }
+            ctx.regs().a = [ret.error, ret.value, a2, a3, a4, a5, a6, a7];
+            mepc::next();
+            ctx.restore()
+        }
+        // 其他陷入
+        trap => {
+            println!(
+                "
+-----------------------------
+> trap:    {trap:?}
+> mstatus: {:#018x}
+> mepc:    {:#018x}
+> mtval:   {:#018x}
+-----------------------------
+            ",
+                mstatus::read(),
+                mepc::read(),
+                mtval::read()
+            );
+            panic!("stopped with unsupported trap")
+        }
+    }
+}
+
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use rustsbi::{
@@ -216,15 +320,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     println!("[rustsbi-panic] system shutdown scheduled due to RustSBI panic");
     qemu_test::get().system_reset(RESET_TYPE_SHUTDOWN, RESET_REASON_SYSTEM_FAILURE);
     unreachable!()
-}
-
-/// 类型化栈。
-#[repr(C, align(128))]
-struct Stack([u8; LEN_STACK_PER_HART]);
-
-impl Stack {
-    /// 零初始化以避免加载。
-    const ZERO: Self = Self([0; LEN_STACK_PER_HART]);
 }
 
 /// 特权软件信息。
@@ -249,6 +344,83 @@ impl rcore_console::Console for Console {
         let uart = unsafe { uart.assume_init_mut() };
         for c in s.bytes() {
             uart.send(c);
+        }
+    }
+}
+
+static mut SBI: MaybeUninit<FixedRustSBI> = MaybeUninit::uninit();
+
+type FixedRustSBI<'a> = RustSBI<
+    &'a clint::Clint,
+    &'a clint::Clint,
+    Infallible,
+    Hsm,
+    &'a qemu_test::QemuTest,
+    Infallible,
+>;
+
+struct Hsm;
+
+impl rustsbi::Hsm for Hsm {
+    fn hart_start(&self, hartid: usize, start_addr: usize, opaque: usize) -> SbiRet {
+        match remote_hsm(hartid) {
+            Some(remote) => {
+                if remote.start(Supervisor { start_addr, opaque }) {
+                    clint::msip::send(hartid);
+                    SbiRet::success(0)
+                } else {
+                    SbiRet::already_started()
+                }
+            }
+            None => SbiRet::invalid_param(),
+        }
+    }
+
+    #[inline]
+    fn hart_stop(&self) -> SbiRet {
+        local_hsm().stop_pending();
+        SbiRet::success(0)
+    }
+
+    #[inline]
+    fn hart_get_status(&self, hartid: usize) -> SbiRet {
+        match remote_hsm(hartid) {
+            Some(remote) => SbiRet::success(remote.sbi_get_status()),
+            None => SbiRet::invalid_param(),
+        }
+    }
+
+    fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
+        use sbi_spec::hsm as spec;
+        match suspend_type {
+            spec::HART_SUSPEND_TYPE_NON_RETENTIVE => {
+                local_hsm().suspend_non_retentive(Supervisor {
+                    start_addr: resume_addr,
+                    opaque,
+                });
+                SbiRet::success(0)
+            }
+            spec::HART_SUSPEND_TYPE_RETENTIVE => unsafe {
+                local_hsm().suspend();
+                asm!(
+                    "   la     {0}, 1f
+                        csrrw  {0}, mtvec,   {0}
+                        csrr   {1}, mepc
+                        csrrsi {2}, mstatus, {mie}
+                        wfi
+                    1:  csrw   mstatus, {2}
+                        csrw   mepc,    {1}
+                        csrw   mtvec,   {0}
+                    ",
+                    out(reg) _,
+                    out(reg) _,
+                    out(reg) _,
+                    mie = const mstatus::MIE,
+                );
+                local_hsm().resume();
+                SbiRet::success(0)
+            },
+            _ => SbiRet::not_supported(),
         }
     }
 }
