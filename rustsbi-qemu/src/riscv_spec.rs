@@ -48,15 +48,10 @@ pub mod mstatus {
     pub const MPP_SUPERVISOR: usize = 1 << 11;
     pub const MPP_USER: usize = 0 << 11;
 
-    #[inline(always)]
-    pub fn read() -> usize {
-        let bits: usize;
+    pub fn update(f: impl FnOnce(&mut usize)) {
+        let mut bits: usize;
         unsafe { asm!("csrr {}, mstatus", out(reg) bits, options(nomem)) };
-        bits
-    }
-
-    #[inline(always)]
-    pub fn write(bits: usize) {
+        f(&mut bits);
         unsafe { asm!("csrw mstatus, {}", in(reg) bits, options(nomem)) };
     }
 }

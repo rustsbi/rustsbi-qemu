@@ -5,8 +5,8 @@ use riscv::register::mtvec::{self, TrapMode::*};
 
 /// 加载陷入向量。
 #[inline]
-pub(crate) unsafe fn load_trap_vec(vec: bool) {
-    mtvec::write(trap_vec as _, if vec { Vectored } else { Direct });
+pub(crate) fn load(vec: bool) {
+    unsafe { mtvec::write(trap_vec as _, if vec { Vectored } else { Direct }) };
 }
 
 /// 中断向量表
