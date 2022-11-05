@@ -137,9 +137,18 @@ impl<T> RemoteHsmCell<'_, T> {
     /// 取出当前状态。
     #[inline]
     pub fn sbi_get_status(&self) -> usize {
-        match self.0.status.load(Ordering::Acquire) {
+        match self.0.status.load(Ordering::Relaxed) {
             HART_STATE_START_PENDING_EXT => HART_STATE_START_PENDING,
             normal => normal,
         }
+    }
+
+    /// 判断这个 HART 能否接收 IPI。
+    #[inline]
+    pub fn allow_ipi(&self) -> bool {
+        matches!(
+            self.0.status.load(Ordering::Relaxed),
+            HART_STATE_STARTED | HART_STATE_SUSPENDED
+        )
     }
 }

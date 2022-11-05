@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use crate::trap_stack::remote_hsm;
 use core::cell::UnsafeCell;
 use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
 
@@ -8,10 +9,8 @@ pub(crate) struct Clint;
 impl Ipi for Clint {
     #[inline]
     fn send_ipi(&self, hart_mask: HartMask) -> SbiRet {
-        // let hsm = crate::HSM.wait();
         for i in 0..crate::NUM_HART_MAX {
-            if hart_mask.has_bit(i) {
-                //&& hsm.is_ipi_allowed(i) {
+            if hart_mask.has_bit(i) && remote_hsm(i).map_or(false, |hsm| hsm.allow_ipi()) {
                 msip::send(i);
             }
         }
