@@ -65,14 +65,22 @@ impl<T> LocalHsmCell<'_, T> {
                 Ordering::Relaxed,
             ) {
                 Ok(_) => break Ok(unsafe { (*self.0.val.get()).take().unwrap() }),
+                Err(HART_STATE_START_PENDING_EXT) => spin_loop(),
                 Err(HART_STATE_SUSPENDED) => {
                     self.0.status.store(HART_STATE_STARTED, Ordering::Relaxed);
                     break Ok(unsafe { (*self.0.val.get()).take().unwrap() });
                 }
-                Err(HART_STATE_START_PENDING_EXT) => spin_loop(),
                 Err(s) => break Err(s),
             }
         }
+    }
+
+    /// 关闭。
+    #[inline]
+    pub fn stop_pending(&self) {
+        self.0
+            .status
+            .store(HART_STATE_STOP_PENDING, Ordering::Relaxed)
     }
 
     /// 关闭。

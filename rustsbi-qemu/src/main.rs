@@ -238,9 +238,9 @@ extern "C" fn fast_handler(
                     mie::write(mie::MSIE | mie::MTIE | mie::MEIE);
                     load_trap_vec(true);
                 }
-                hart_ctx.trap.a[0] = hart_id;
-                hart_ctx.trap.a[1] = supervisor.opaque;
-                hart_ctx.trap.pc = supervisor.start_addr;
+                ctx.regs().a[0] = hart_id;
+                ctx.regs().a[1] = supervisor.opaque;
+                ctx.regs().pc = supervisor.start_addr;
             }
             Err(_state) => {
                 unsafe {
@@ -251,7 +251,7 @@ extern "C" fn fast_handler(
                     mie::write(mie::MSIE);
                     load_trap_vec(false);
                 };
-                hart_ctx.trap.pc = _stop as usize;
+                ctx.regs().pc = _stop as usize;
             }
         }
         return ctx.call(2);
@@ -271,7 +271,8 @@ extern "C" fn fast_handler(
                     unsafe {
                         load_trap_vec(false);
                         mie::write(mie::MSIE);
-                        ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
+                        ROOT_STACK[hart_id()].hart_context().hsm.local().stop();
+                        ctx.regs().pc = _stop as usize;
                     }
                     return ctx.call(0);
                 }
@@ -281,14 +282,13 @@ extern "C" fn fast_handler(
                 {
                     unsafe {
                         load_trap_vec(false);
-                        ROOT_STACK[hart_id()].hart_context().trap.pc = _stop as usize;
+                        ctx.regs().pc = _stop as usize;
                     }
                     return ctx.call(0);
                 }
             }
             mepc::next();
-            ctx.save_args(ret.value, a2, a3, a4, a5, a6, a7);
-            ctx.write_a(0, ret.error);
+            ctx.regs().a = [ret.error, ret.value, a2, a3, a4, a5, a6, a7];
             ctx.restore()
         }
         // 其他陷入
@@ -444,7 +444,13 @@ impl rustsbi::Hsm for Hsm {
 
     #[inline]
     fn hart_stop(&self) -> SbiRet {
-        unsafe { ROOT_STACK[hart_id()].hart_context().hsm.local().stop() };
+        unsafe {
+            ROOT_STACK[hart_id()]
+                .hart_context()
+                .hsm
+                .local()
+                .stop_pending()
+        };
         SbiRet::success(0)
     }
 
