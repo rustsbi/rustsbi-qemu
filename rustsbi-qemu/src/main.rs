@@ -66,7 +66,7 @@ unsafe extern "C" fn _stop() -> ! {
 }
 
 /// rust 入口。
-extern "C" fn rust_main(_hartid: usize, opaque: usize) {
+extern "C" fn rust_main(hartid: usize, opaque: usize) {
     static GENESIS: AtomicBool = AtomicBool::new(true);
     static DONE: AtomicBool = AtomicBool::new(true);
     static BOARD_INFO: Once<BoardInfo> = Once::new();
@@ -106,7 +106,6 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
             model = board_info.model,
             smp = board_info.smp,
             mem = board_info.mem,
-            hartid = hart_id(),
             dtb = board_info.dtb,
             firmware = _start as usize,
         );
@@ -125,7 +124,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         set_pmp(board_info);
         hart_csr_utils::print_pmps();
         // 设置陷入栈
-        trap_stack::load();
+        trap_stack::prepare_for_trap();
         // 设置内核入口
         local_remote_hsm().start(Supervisor {
             start_addr: SUPERVISOR_ENTRY,
@@ -136,7 +135,7 @@ extern "C" fn rust_main(_hartid: usize, opaque: usize) {
         // 设置 pmp
         set_pmp(BOARD_INFO.wait());
         // 设置陷入栈
-        trap_stack::load();
+        trap_stack::prepare_for_trap();
         while DONE.load(Ordering::SeqCst) {
             core::hint::spin_loop();
         }
@@ -264,17 +263,16 @@ extern "C" fn fast_handler(
         }
         // 其他陷入
         trap => {
-            let mstatus: usize;
-            unsafe { asm!("csrr {}, mstatus", out(reg) mstatus) };
             println!(
                 "
 -----------------------------
 > trap:    {trap:?}
-> mstatus: {mstatus:#018x}
+> mstatus: {:#018x}
 > mepc:    {:#018x}
 > mtval:   {:#018x}
 -----------------------------
             ",
+                mstatus::read(),
                 mepc::read(),
                 mtval::read()
             );

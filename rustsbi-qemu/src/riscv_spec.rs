@@ -54,6 +54,13 @@ pub mod mstatus {
         f(&mut bits);
         unsafe { asm!("csrw mstatus, {}", in(reg) bits, options(nomem)) };
     }
+
+    #[inline(always)]
+    pub fn read() -> usize {
+        let bits: usize;
+        unsafe { asm!("csrr {}, mstatus", out(reg) bits, options(nomem)) };
+        bits
+    }
 }
 
 pub mod mepc {

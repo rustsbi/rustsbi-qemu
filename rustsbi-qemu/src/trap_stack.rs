@@ -10,6 +10,7 @@ use hsm_cell::{HsmCell, LocalHsmCell, RemoteHsmCell};
 #[link_section = ".bss.uninit"]
 static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 
+/// 定位每个 hart 的栈。
 #[naked]
 pub(crate) unsafe extern "C" fn locate() {
     core::arch::asm!(
@@ -30,10 +31,12 @@ pub(crate) unsafe extern "C" fn locate() {
     )
 }
 
-pub(crate) fn load() {
+/// 预备陷入栈。
+pub(crate) fn prepare_for_trap() {
     unsafe { ROOT_STACK.get_unchecked_mut(hart_id()).load_as_stack() };
 }
 
+/// 获取此 hart 的 local hsm 对象。
 pub(crate) fn local_hsm() -> LocalHsmCell<'static, Supervisor> {
     unsafe {
         ROOT_STACK
@@ -44,6 +47,7 @@ pub(crate) fn local_hsm() -> LocalHsmCell<'static, Supervisor> {
     }
 }
 
+/// 获取此 hart 的 remote hsm 对象。
 pub(crate) fn local_remote_hsm() -> RemoteHsmCell<'static, Supervisor> {
     unsafe {
         ROOT_STACK
@@ -54,8 +58,13 @@ pub(crate) fn local_remote_hsm() -> RemoteHsmCell<'static, Supervisor> {
     }
 }
 
-pub(crate) fn remote_hsm(i: usize) -> Option<RemoteHsmCell<'static, Supervisor>> {
-    unsafe { ROOT_STACK.get_mut(i).map(|x| x.hart_context().hsm.remote()) }
+/// 获取任意 hart 的 remote hsm 对象。
+pub(crate) fn remote_hsm(hart_id: usize) -> Option<RemoteHsmCell<'static, Supervisor>> {
+    unsafe {
+        ROOT_STACK
+            .get_mut(hart_id)
+            .map(|x| x.hart_context().hsm.remote())
+    }
 }
 
 /// 类型化栈。
@@ -68,7 +77,7 @@ struct Stack([u8; LEN_STACK_PER_HART]);
 
 impl Stack {
     /// 零初始化以避免加载。
-    pub const ZERO: Self = Self([0; LEN_STACK_PER_HART]);
+    const ZERO: Self = Self([0; LEN_STACK_PER_HART]);
 
     /// 从栈上取出硬件线程状态。
     #[inline]
@@ -76,12 +85,12 @@ impl Stack {
         unsafe { &mut *self.0.as_mut_ptr().cast() }
     }
 
-    pub fn load_as_stack(&'static mut self) {
+    fn load_as_stack(&'static mut self) {
         let hart = self.hart_context();
-        hart.hsm = HsmCell::new();
-        let ptr = unsafe { NonNull::new_unchecked(&mut hart.trap) };
+        let context_ptr = hart.context_ptr();
+        hart.init();
         forget(
-            FreeTrapStack::new(StackRef(self), ptr, fast_handler)
+            FreeTrapStack::new(StackRef(self), context_ptr, fast_handler)
                 .unwrap()
                 .load(),
         );
@@ -114,9 +123,20 @@ impl Drop for StackRef {
 }
 
 /// 硬件线程上下文。
-#[repr(C)]
 struct HartContext {
     /// 陷入上下文。
     trap: FlowContext,
     hsm: HsmCell<Supervisor>,
+}
+
+impl HartContext {
+    #[inline]
+    fn init(&mut self) {
+        self.hsm = HsmCell::new();
+    }
+
+    #[inline]
+    fn context_ptr(&mut self) -> NonNull<FlowContext> {
+        unsafe { NonNull::new_unchecked(&mut self.trap) }
+    }
 }
