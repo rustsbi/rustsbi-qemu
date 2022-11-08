@@ -1,7 +1,7 @@
+use aclint::SifiveClint as Clint;
 use core::arch::asm;
 use fast_trap::trap_entry;
 use riscv::register::mtvec::{self, TrapMode::*};
-use riscv_aclint::SifiveClint as Clint;
 
 /// 加载陷入向量。
 #[inline]

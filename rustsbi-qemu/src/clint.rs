@@ -1,8 +1,6 @@
-#![allow(unused)]
-
 use crate::{hart_id, trap_stack::remote_hsm};
+use aclint::SifiveClint;
 use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull};
-use riscv_aclint::SifiveClint;
 use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
 use spin::Once;
 

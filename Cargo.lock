@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "aclint"
+version = "0.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a01ba40421eca6c4f1afcedd8465fba6d9e5ef8e0e13060d0141e4cded4ab4a"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -274,11 +280,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "riscv-aclint"
-version = "0.1.0"
-source = "git+https://github.com/YdrMaster/riscv-aclint#28182372b17e08c55e760189405673386ad9f5fd"
-
-[[package]]
 name = "rustsbi"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -292,6 +293,7 @@ dependencies = [
 name = "rustsbi-qemu"
 version = "0.2.0-alpha.2"
 dependencies = [
+ "aclint",
  "dtb-walker",
  "fast-trap",
  "hsm-cell",
@@ -299,7 +301,6 @@ dependencies = [
  "r0",
  "rcore-console",
  "riscv",
- "riscv-aclint",
  "rustsbi",
  "sbi-spec",
  "spin",
