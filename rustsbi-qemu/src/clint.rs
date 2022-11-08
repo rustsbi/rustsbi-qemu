@@ -1,8 +1,7 @@
 use crate::{hart_id, trap_stack::remote_hsm};
 use aclint::SifiveClint;
-use core::{cell::UnsafeCell, mem::MaybeUninit, ptr::NonNull};
+use core::{mem::MaybeUninit, ptr::NonNull};
 use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
-use spin::Once;
 
 pub(crate) struct Clint;
 

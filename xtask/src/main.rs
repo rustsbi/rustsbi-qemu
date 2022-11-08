@@ -144,7 +144,7 @@ impl QemuArgs {
             _ => panic!(),
         };
         let status = Qemu::system("riscv64")
-            .args(&["-machine", "virt"])
+            .args(["-machine", "virt"])
             .arg("-nographic")
             .arg("-bios")
             .arg(sbi)
