@@ -28,6 +28,7 @@ dtb-walker = "=0.2.0-alpha.3"
 qemu-exit = "3.0"
 
 hsm-cell = { path = "../hsm-cell" }
+riscv-aclint = { git = "https://github.com/YdrMaster/riscv-aclint" }
 fast-trap = { git = "https://github.com/YdrMaster/fast-trap", rev = "ffb40e2", features = [
     "riscv-m",
 ] }

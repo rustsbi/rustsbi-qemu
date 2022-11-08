@@ -141,8 +141,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
         }
     }
     // 清理 clint
-    clint::msip::clear();
-    clint::mtimecmp::clear();
+    clint::clear();
     // 准备启动调度
     unsafe {
         asm!("csrw mcause, {}", in(reg) cause::BOOT);
@@ -259,15 +258,14 @@ extern "C" fn fast_handler(
                             return ctx.call(0);
                         }
                     }
-                    base::EID_BASE => {
-                        if a6 == base::PROBE_EXTENSION {
-                            if matches!(
+                    base::EID_BASE
+                        if a6 == base::PROBE_EXTENSION
+                            && matches!(
                                 ctx.a0(),
                                 legacy::LEGACY_CONSOLE_PUTCHAR | legacy::LEGACY_CONSOLE_GETCHAR
-                            ) {
-                                ret.value = 1;
-                            }
-                        }
+                            ) =>
+                    {
+                        ret.value = 1;
                     }
                     _ => {}
                 }
@@ -366,7 +364,7 @@ impl rustsbi::Hsm for Hsm {
         match remote_hsm(hartid) {
             Some(remote) => {
                 if remote.start(Supervisor { start_addr, opaque }) {
-                    clint::msip::send(hartid);
+                    clint::set_msip(hartid);
                     SbiRet::success(0)
                 } else {
                     SbiRet::already_started()

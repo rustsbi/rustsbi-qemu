@@ -1,7 +1,7 @@
-use crate::clint;
 use core::arch::asm;
 use fast_trap::trap_entry;
 use riscv::register::mtvec::{self, TrapMode::*};
+use riscv_aclint::SifiveClint as Clint;
 
 /// 加载陷入向量。
 #[inline]
@@ -52,23 +52,28 @@ unsafe extern "C" fn mtimer() {
         // sp      : M sp
         // mscratch: S sp
         "   csrrw sp, mscratch, sp",
-        // 需要 a0 传参，保护
-        "   addi sp, sp, -16
-            sd   ra, 0(sp)
-            sd   a0, 8(sp)
+        // 保护
+        "   sd    ra, -1*8(sp)
+            sd    a0, -2*8(sp)
+            sd    a1, -3*8(sp)
+            sd    a2, -4*8(sp)
         ",
-        // clint::mtimecmp::clear();
-        "   li   a0, {u64_max}
-            call {set_mtimecmp}
+        // 清除 mtimecmp
+        "   la    a0, {clint_ptr}
+            ld    a0, (a0)
+            csrr  a1, mhartid
+            li    a2, {u64_max}
+            call  {set_mtimecmp}
         ",
-        // mip::set_stimer();
-        "   li   a0, {mip_stip}
-           csrrs zero, mip, a0
+        // 设置 stip
+        "   li    a0, {mip_stip}
+            csrrs zero, mip, a0
         ",
-        // 恢复 a0
-        "   ld   a0, 8(sp)
-            ld   ra, 0(sp)
-            addi sp, sp,  16
+        // 恢复
+        "   ld    ra, -1*8(sp)
+            ld    a0, -2*8(sp)
+            ld    a1, -3*8(sp)
+            ld    a2, -4*8(sp)
         ",
         // 换栈：
         // sp      : S sp
@@ -78,7 +83,9 @@ unsafe extern "C" fn mtimer() {
         "   mret",
         u64_max      = const u64::MAX,
         mip_stip     = const 1 << 5,
-        set_mtimecmp =   sym clint::mtimecmp::set_naked,
+        clint_ptr    =   sym crate::clint::CLINT,
+        //                   Clint::write_mtimecmp_naked(&self, hart_idx, val)
+        set_mtimecmp =   sym Clint::write_mtimecmp_naked,
         options(noreturn)
     )
 }
@@ -95,18 +102,22 @@ unsafe extern "C" fn msoft() {
         // sp      : M sp
         // mscratch: S sp
         "   csrrw sp, mscratch, sp",
-        // 保护 ra
-        "   addi sp, sp, -8
-            sd   ra, 0(sp)
+        // 保护
+        "   sd   ra, -1*8(sp)
+            sd   a0, -2*8(sp)
+            sd   a1, -3*8(sp)
         ",
-        // clint::msip::clear();
-        // mip::set_ssoft();
-        "   call   {clear_msip}
+        // 清除 msip 设置 ssip
+        "   la   a0, {clint_ptr}
+            ld   a0, (a0)
+            csrr a1, mhartid
+            call {clear_msip}
             csrrsi zero, mip, 1 << 1
         ",
-        // 恢复 ra
-        "   ld   ra, 0(sp)
-            addi sp, sp,  8
+        // 恢复
+        "   ld   ra, -1*8(sp)
+            ld   a0, -2*8(sp)
+            ld   a1, -3*8(sp)
         ",
         // 换栈：
         // sp      : S sp
@@ -114,7 +125,9 @@ unsafe extern "C" fn msoft() {
         "   csrrw sp, mscratch, sp",
         // 返回
         "   mret",
-        clear_msip = sym clint::msip::clear_naked,
+        clint_ptr  = sym crate::clint::CLINT,
+        //               Clint::clear_msip_naked(&self, hart_idx)
+        clear_msip = sym Clint::clear_msip_naked,
         options(noreturn)
     )
 }
