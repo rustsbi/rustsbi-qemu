@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Use instance based RustSBI interface, with separate functions for legacy stdio
 - Update sbi-testing to version 0.0.1
 - Use crate rcore-console version 0.0.0 in rustsbi-qemu and test-kernel for `print!` and `println!`
+- Use crate aclint version 0.0.0 in rustsbi-qemu for aclint structs
 - Use crate os-xtask-utils version 0.0.0 in xtask builder
 
 ### Fixed
