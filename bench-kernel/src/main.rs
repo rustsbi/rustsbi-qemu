@@ -59,17 +59,17 @@ extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
     for _ in 0..0x20000 {
         unsafe {
             core::arch::asm!(
-                "   la   {0}, 1f
-                    csrw stvec, {0}
-                    mv   a0, a2
-                    mv   a1, zero
+                "   la    {0}, 1f
+                    csrw  stvec, {0}
+                    mv    a0, a2
+                    mv    a1, zero
                     ecall
                     wfi
-                .align 2
-                1:  csrrci zero, sip, 1 << 1
-
+                 .align 2
+                 1: csrci sip, {ssip}
                 ",
                 out(reg) _,
+                ssip = const 1 << 1,
                 in("a7") 0x735049,
                 in("a6") 0,
                 in("a0") 0,
