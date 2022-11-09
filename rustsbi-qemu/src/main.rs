@@ -68,7 +68,6 @@ unsafe extern "C" fn _stop() -> ! {
 /// rust 入口。
 extern "C" fn rust_main(hartid: usize, opaque: usize) {
     static GENESIS: AtomicBool = AtomicBool::new(true);
-    static DONE: AtomicBool = AtomicBool::new(true);
     static BOARD_INFO: Once<BoardInfo> = Once::new();
 
     // 全局初始化过程
@@ -130,15 +129,11 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
             start_addr: SUPERVISOR_ENTRY,
             opaque,
         });
-        DONE.store(false, Ordering::SeqCst);
     } else {
         // 设置 pmp
         set_pmp(BOARD_INFO.wait());
         // 设置陷入栈
         trap_stack::prepare_for_trap();
-        while DONE.load(Ordering::SeqCst) {
-            core::hint::spin_loop();
-        }
     }
     // 清理 clint
     clint::clear();

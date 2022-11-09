@@ -1,18 +1,17 @@
 use crate::{hart_id, trap_stack::remote_hsm};
 use aclint::SifiveClint;
-use core::{mem::MaybeUninit, ptr::NonNull};
+use core::{
+    ptr::null_mut,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
 
 pub(crate) struct Clint;
 
-pub(crate) static mut CLINT: MaybeUninit<NonNull<SifiveClint>> = MaybeUninit::uninit();
+pub(crate) static CLINT: AtomicPtr<SifiveClint> = AtomicPtr::new(null_mut());
 
 pub(crate) fn init(base: usize) {
-    unsafe {
-        CLINT
-            .as_mut_ptr()
-            .write_volatile(NonNull::new(base as _).unwrap())
-    }
+    CLINT.store(base as _, Ordering::Release);
 }
 
 impl Ipi for Clint {
@@ -32,24 +31,25 @@ impl Timer for Clint {
     fn set_timer(&self, time_value: u64) {
         unsafe {
             riscv::register::mip::clear_stimer();
-            clint().write_mtimecmp(hart_id(), time_value);
+            (*CLINT.load(Ordering::Relaxed)).write_mtimecmp(hart_id(), time_value);
         }
     }
 }
 
 #[inline]
-fn clint() -> &'static SifiveClint {
-    unsafe { CLINT.as_ptr().read_volatile().as_ref() }
-}
-
-#[inline]
 pub fn set_msip(hart_idx: usize) {
-    clint().set_msip(hart_idx);
+    unsafe { &*CLINT.load(Ordering::Relaxed) }.set_msip(hart_idx);
 }
 
 #[inline]
 pub fn clear() {
-    let clint = clint();
-    clint.clear_msip(hart_id());
-    clint.write_mtimecmp(hart_id(), u64::MAX);
+    loop {
+        if let Some(clint) = unsafe { CLINT.load(Ordering::Relaxed).as_ref() } {
+            clint.clear_msip(hart_id());
+            clint.write_mtimecmp(hart_id(), u64::MAX);
+            break;
+        } else {
+            continue;
+        }
+    }
 }

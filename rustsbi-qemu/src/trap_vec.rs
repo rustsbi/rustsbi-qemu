@@ -1,3 +1,4 @@
+use crate::clint::CLINT;
 use aclint::SifiveClint as Clint;
 use core::arch::asm;
 use fast_trap::trap_entry;
@@ -63,7 +64,7 @@ unsafe extern "C" fn mtimer() {
         "   la    a0, {clint_ptr}
             ld    a0, (a0)
             csrr  a1, mhartid
-            li    a2, {u64_max}
+            addi  a2, zero, -1
             call  {set_mtimecmp}
         ",
         // 设置 stip
@@ -83,9 +84,8 @@ unsafe extern "C" fn mtimer() {
         "   csrrw sp, mscratch, sp",
         // 返回
         "   mret",
-        u64_max      = const u64::MAX,
         mip_stip     = const 1 << 5,
-        clint_ptr    =   sym crate::clint::CLINT,
+        clint_ptr    =   sym CLINT,
         //                   Clint::write_mtimecmp_naked(&self, hart_idx, val)
         set_mtimecmp =   sym Clint::write_mtimecmp_naked,
         options(noreturn)
@@ -129,7 +129,7 @@ unsafe extern "C" fn msoft() {
         "   csrrw sp, mscratch, sp",
         // 返回
         "   mret",
-        clint_ptr  = sym crate::clint::CLINT,
+        clint_ptr  = sym CLINT,
         //               Clint::clear_msip_naked(&self, hart_idx)
         clear_msip = sym Clint::clear_msip_naked,
         options(noreturn)
