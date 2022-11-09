@@ -53,10 +53,11 @@ unsafe extern "C" fn mtimer() {
         // mscratch: S sp
         "   csrrw sp, mscratch, sp",
         // 保护
-        "   sd    ra, -1*8(sp)
-            sd    a0, -2*8(sp)
-            sd    a1, -3*8(sp)
-            sd    a2, -4*8(sp)
+        "   addi  sp, sp, -4*8
+            sd    ra, 0*8(sp)
+            sd    a0, 1*8(sp)
+            sd    a1, 2*8(sp)
+            sd    a2, 3*8(sp)
         ",
         // 清除 mtimecmp
         "   la    a0, {clint_ptr}
@@ -70,10 +71,11 @@ unsafe extern "C" fn mtimer() {
             csrrs zero, mip, a0
         ",
         // 恢复
-        "   ld    ra, -1*8(sp)
-            ld    a0, -2*8(sp)
-            ld    a1, -3*8(sp)
-            ld    a2, -4*8(sp)
+        "   ld    ra, 0*8(sp)
+            ld    a0, 1*8(sp)
+            ld    a1, 2*8(sp)
+            ld    a2, 3*8(sp)
+            addi  sp, sp,  4*8
         ",
         // 换栈：
         // sp      : S sp
@@ -103,9 +105,10 @@ unsafe extern "C" fn msoft() {
         // mscratch: S sp
         "   csrrw sp, mscratch, sp",
         // 保护
-        "   sd   ra, -1*8(sp)
-            sd   a0, -2*8(sp)
-            sd   a1, -3*8(sp)
+        "   addi sp, sp, -3*8
+            sd   ra, 0*8(sp)
+            sd   a0, 1*8(sp)
+            sd   a1, 2*8(sp)
         ",
         // 清除 msip 设置 ssip
         "   la   a0, {clint_ptr}
@@ -115,9 +118,10 @@ unsafe extern "C" fn msoft() {
             csrrsi zero, mip, 1 << 1
         ",
         // 恢复
-        "   ld   ra, -1*8(sp)
-            ld   a0, -2*8(sp)
-            ld   a1, -3*8(sp)
+        "   ld   ra, 0*8(sp)
+            ld   a0, 1*8(sp)
+            ld   a1, 2*8(sp)
+            addi sp, sp,  3*8
         ",
         // 换栈：
         // sp      : S sp
