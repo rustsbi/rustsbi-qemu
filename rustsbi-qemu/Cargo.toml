@@ -29,6 +29,6 @@ qemu-exit = "3.0"
 aclint = "0.0.0"
 
 hsm-cell = { path = "../hsm-cell" }
-fast-trap = { git = "https://github.com/YdrMaster/fast-trap", rev = "ffb40e2", features = [
+fast-trap = { git = "https://github.com/YdrMaster/fast-trap", rev = "5026ee4", features = [
     "riscv-m",
 ] }
