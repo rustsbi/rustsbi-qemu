@@ -62,7 +62,7 @@ unsafe extern "C" fn _start() -> ! {
 
 #[naked]
 unsafe extern "C" fn _stop() -> ! {
-    asm!("wfi", options(noreturn))
+    asm!("0: wfi", "j 0b", options(noreturn))
 }
 
 /// rust 入口。
@@ -400,8 +400,9 @@ impl rustsbi::Hsm for Hsm {
                         csrrw  {0}, mtvec,   {0}
                         csrr   {1}, mepc
                         csrrsi {2}, mstatus, {mie}
-                        wfi
-                    1:  csrw   mstatus, {2}
+                     0: wfi
+                        j 0b
+                     1: csrw   mstatus, {2}
                         csrw   mepc,    {1}
                         csrw   mtvec,   {0}
                     ",
