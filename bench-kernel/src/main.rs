@@ -43,7 +43,17 @@ extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
     // 测试调用延迟
     let t0 = time::read();
 
-    for _ in 0..0x20000 {
+    for _ in 0..100_0000 {
+        let _ = sbi_rt::get_spec_version();
+    }
+
+    let t1 = time::read();
+    log::info!("spec_version duration = {}", t1 - t0);
+
+    // 测试调用延迟
+    let t0 = time::read();
+
+    for _ in 0..100_0000 {
         let _ = sbi_rt::get_marchid();
     }
 
@@ -54,7 +64,7 @@ extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
     unsafe { sie::set_ssoft() };
     // 测试中断响应延迟
     let t0 = time::read();
-    for _ in 0..0x20000 {
+    for _ in 0..100_0000 {
         unsafe {
             sstatus::set_sie();
             core::arch::asm!(
