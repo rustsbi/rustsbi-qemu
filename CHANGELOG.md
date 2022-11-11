@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Use crate rcore-console version 0.0.0 in rustsbi-qemu and test-kernel for `print!` and `println!`
 - Use crate aclint version 0.0.0 in rustsbi-qemu for aclint structs
 - Use crate os-xtask-utils version 0.0.0 in xtask builder
+- Use crate sifive-test-device version 0.0.0 instead of qemu-exit
 
 ### Fixed
 

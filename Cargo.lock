@@ -200,9 +200,9 @@ dependencies = [
 
 [[package]]
 name = "os_str_bytes"
-version = "6.3.1"
+version = "6.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3baf96e39c5359d2eb0dd6ccb42c62b91d9678aa68160d261b9e0ccbf9e9dea9"
+checksum = "7b5bf27447411e9ee3ff51186bf7a08e16c341efdde93f4d823e8844429bed7e"
 
 [[package]]
 name = "proc-macro-error"
@@ -236,12 +236,6 @@ checksum = "5ea3d908b0e36316caf9e9e2c4625cdde190a7e6f440d794667ed17a1855e725"
 dependencies = [
  "unicode-ident",
 ]
-
-[[package]]
-name = "qemu-exit"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ff023245bfcc73fb890e1f8d5383825b3131cc920020a5c487d6f113dfc428a"
 
 [[package]]
 name = "quote"
@@ -297,12 +291,12 @@ dependencies = [
  "dtb-walker",
  "fast-trap",
  "hsm-cell",
- "qemu-exit",
  "r0",
  "rcore-console",
  "riscv",
  "rustsbi",
  "sbi-spec",
+ "sifive-test-device",
  "spin",
  "uart_16550",
 ]
@@ -348,6 +342,12 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "sifive-test-device"
+version = "0.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba50a6fd7cb5cdb2645fb93fb2bbae7d8d78390677a889bdcfaf13c3d29286d0"
 
 [[package]]
 name = "spin"
