@@ -29,6 +29,6 @@ sifive-test-device = "0.0.0"
 dtb-walker = "=0.2.0-alpha.3"
 
 hsm-cell = { path = "../hsm-cell" }
-fast-trap = { git = "https://github.com/YdrMaster/fast-trap", rev = "5026ee4", features = [
+fast-trap = { git = "https://github.com/YdrMaster/fast-trap", rev = "2f605ee", features = [
     "riscv-m",
 ] }

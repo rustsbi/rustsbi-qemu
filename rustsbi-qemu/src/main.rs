@@ -139,9 +139,9 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
     clint::clear();
     // 准备启动调度
     unsafe {
-        asm!("csrw mcause, {}", in(reg) cause::BOOT);
-        asm!("csrw mideleg, {}", in(reg) !0);
-        asm!("csrw medeleg, {}", in(reg) !0);
+        asm!("csrw mcause,     {}", in(reg) cause::BOOT);
+        asm!("csrw mideleg,    {}", in(reg) !0);
+        asm!("csrw medeleg,    {}", in(reg) !0);
         asm!("csrw mcounteren, {}", in(reg) !0);
         riscv::register::medeleg::clear_supervisor_env_call();
         riscv::register::medeleg::clear_machine_env_call();
@@ -206,7 +206,7 @@ extern "C" fn fast_handler(
                     *bits &= !mstatus::MPP;
                     *bits |= mstatus::MPIE | mstatus::MPP_SUPERVISOR;
                 });
-                mie::write(mie::MSIE | mie::MTIE | mie::MEIE);
+                mie::write(mie::MSIE | mie::MTIE);
                 trap_vec::load(true);
                 ctx.regs().a[0] = hart_id;
                 ctx.regs().a[1] = supervisor.opaque;
