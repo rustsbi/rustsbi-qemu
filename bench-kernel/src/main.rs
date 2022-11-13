@@ -33,7 +33,14 @@ extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
         static mut sbss: u64;
         static mut ebss: u64;
     }
-    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+    unsafe {
+        let mut ptr = &mut sbss as *mut u64;
+        let end = &mut ebss as *mut u64;
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
+    }
     // 初始化打印
     unsafe { UART = MaybeUninit::new(MmioSerialPort::new(0x1000_0000)) };
     rcore_console::init_console(&Console);

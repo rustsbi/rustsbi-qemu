@@ -10,6 +10,5 @@ publish = false
 [dependencies]
 sbi-rt = "0.0.2"
 riscv = "0.9.0"
-r0 = "1"
 uart_16550 = "0.2"
 rcore-console = "0.0.0"

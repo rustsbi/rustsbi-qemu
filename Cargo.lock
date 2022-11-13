@@ -35,7 +35,6 @@ checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 name = "bench-kernel"
 version = "0.0.1"
 dependencies = [
- "r0",
  "rcore-console",
  "riscv",
  "sbi-rt",
@@ -247,12 +246,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "r0"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd7a31eed1591dcbc95d92ad7161908e72f4677f8fabf2a32ca49b4237cbf211"
-
-[[package]]
 name = "rcore-console"
 version = "0.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -291,7 +284,6 @@ dependencies = [
  "dtb-walker",
  "fast-trap",
  "hsm-cell",
- "r0",
  "rcore-console",
  "riscv",
  "rustsbi",
@@ -396,7 +388,6 @@ version = "0.2.0"
 dependencies = [
  "dtb-walker",
  "log",
- "r0",
  "rcore-console",
  "riscv",
  "sbi-testing",

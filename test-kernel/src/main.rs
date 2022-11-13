@@ -29,8 +29,8 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
         "la sp,  {stack} + {stack_size}",
         "j  {main}",
         stack_size = const STACK_SIZE,
-        stack      = sym   STACK,
-        main       = sym   rust_main,
+        stack      =   sym STACK,
+        main       =   sym rust_main,
         options(noreturn),
     )
 }
@@ -40,7 +40,14 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         static mut sbss: u64;
         static mut ebss: u64;
     }
-    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+    unsafe {
+        let mut ptr = &mut sbss as *mut u64;
+        let end = &mut ebss as *mut u64;
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
+    }
     let BoardInfo {
         smp,
         frequency,

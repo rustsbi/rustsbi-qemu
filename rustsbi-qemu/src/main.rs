@@ -33,8 +33,7 @@ use core::{
 use device_tree::BoardInfo;
 use fast_trap::{FastContext, FastResult};
 use riscv_spec::*;
-use rustsbi::RustSBI;
-use sbi_spec::binary::SbiRet;
+use rustsbi::{spec::binary::SbiRet, RustSBI};
 use spin::{Mutex, Once};
 use trap_stack::{local_hsm, local_remote_hsm, remote_hsm};
 use uart_16550::MmioSerialPort;
@@ -76,7 +75,14 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
             static mut sbss: u64;
             static mut ebss: u64;
         }
-        unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+        unsafe {
+            let mut ptr = &mut sbss as *mut u64;
+            let end = &mut ebss as *mut u64;
+            while ptr < end {
+                ptr.write_volatile(0);
+                ptr = ptr.offset(1);
+            }
+        }
         // 解析设备树
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
@@ -227,7 +233,7 @@ extern "C" fn fast_handler(
     match cause.cause() {
         // SBI call
         T::Exception(E::SupervisorEnvCall) => {
-            use sbi_spec::{base, hsm, legacy};
+            use rustsbi::spec::{base, hsm, legacy};
             let mut ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
                 a7,
                 a6,
@@ -384,7 +390,7 @@ impl rustsbi::Hsm for Hsm {
     }
 
     fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
-        use sbi_spec::hsm as spec;
+        use rustsbi::spec::hsm as spec;
         match suspend_type {
             spec::HART_SUSPEND_TYPE_NON_RETENTIVE => {
                 local_hsm().suspend_non_retentive(Supervisor {
