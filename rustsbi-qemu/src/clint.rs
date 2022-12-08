@@ -42,6 +42,11 @@ pub fn set_msip(hart_idx: usize) {
 }
 
 #[inline]
+pub fn clear_msip() {
+    unsafe { &*CLINT.load(Ordering::Relaxed) }.clear_msip(hart_id());
+}
+
+#[inline]
 pub fn clear() {
     loop {
         if let Some(clint) = unsafe { CLINT.load(Ordering::Relaxed).as_ref() } {

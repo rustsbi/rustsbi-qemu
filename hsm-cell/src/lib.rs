@@ -66,10 +66,6 @@ impl<T> LocalHsmCell<'_, T> {
             ) {
                 Ok(_) => break Ok(unsafe { (*self.0.val.get()).take().unwrap() }),
                 Err(HART_STATE_START_PENDING_EXT) => spin_loop(),
-                Err(HART_STATE_SUSPENDED) => {
-                    self.0.status.store(HART_STATE_STARTED, Ordering::Relaxed);
-                    break Ok(unsafe { (*self.0.val.get()).take().unwrap() });
-                }
                 Err(s) => break Err(s),
             }
         }
@@ -77,23 +73,8 @@ impl<T> LocalHsmCell<'_, T> {
 
     /// 关闭。
     #[inline]
-    pub fn stop_pending(&self) {
-        self.0
-            .status
-            .store(HART_STATE_STOP_PENDING, Ordering::Relaxed)
-    }
-
-    /// 关闭。
-    #[inline]
     pub fn stop(&self) {
         self.0.status.store(HART_STATE_STOPPED, Ordering::Release)
-    }
-
-    /// 关闭。
-    #[inline]
-    pub fn suspend_non_retentive(&self, t: T) {
-        unsafe { *self.0.val.get() = Some(t) };
-        self.0.status.store(HART_STATE_SUSPENDED, Ordering::Relaxed)
     }
 
     /// 关闭。
