@@ -401,22 +401,7 @@ impl rustsbi::Hsm for Hsm {
             }
             spec::HART_SUSPEND_TYPE_RETENTIVE => unsafe {
                 local_hsm().suspend();
-                asm!(
-                    "   la     {0}, 1f
-                        csrrw  {0}, mtvec,   {0}
-                        csrr   {1}, mepc
-                        csrrsi {2}, mstatus, {mie}
-                     0: wfi
-                        j 0b
-                     1: csrw   mstatus, {2}
-                        csrw   mepc,    {1}
-                        csrw   mtvec,   {0}
-                    ",
-                    out(reg) _,
-                    out(reg) _,
-                    out(reg) _,
-                    mie = const mstatus::MIE,
-                );
+                riscv::asm::wfi();
                 local_hsm().resume();
                 SbiRet::success(0)
             },
