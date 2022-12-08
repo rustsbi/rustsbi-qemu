@@ -56,7 +56,7 @@ unsafe extern "C" fn _start() -> ! {
         locate_stack = sym trap_stack::locate,
         rust_main    = sym rust_main,
         trap         = sym trap_vec,
-        options(noreturn)
+        options(noreturn),
     )
 }
 
@@ -120,7 +120,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
                     .with_reset(qemu_test::get())
                     .build(),
             );
-        };
+        }
         // 设置并打印 pmp
         set_pmp(board_info);
         hart_csr_utils::print_pmps();
@@ -374,7 +374,7 @@ impl rustsbi::Hsm for Hsm {
     }
 
     fn hart_suspend(&self, suspend_type: u32, _resume_addr: usize, _opaque: usize) -> SbiRet {
-        use rustsbi::spec::hsm::*;
+        use rustsbi::spec::hsm::{HART_SUSPEND_TYPE_NON_RETENTIVE, HART_SUSPEND_TYPE_RETENTIVE};
         if matches!(
             suspend_type,
             HART_SUSPEND_TYPE_NON_RETENTIVE | HART_SUSPEND_TYPE_RETENTIVE
