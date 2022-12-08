@@ -214,6 +214,10 @@ extern "C" fn fast_handler(
                 });
                 mie::write(mie::MSIE | mie::MTIE);
                 trap_vec::load(true);
+                unsafe {
+                    riscv::register::sstatus::clear_sie();
+                    riscv::register::satp::write(0);
+                }
                 ctx.regs().a[0] = hart_id;
                 ctx.regs().a[1] = supervisor.opaque;
                 ctx.regs().pc = supervisor.start_addr;
@@ -254,8 +258,13 @@ extern "C" fn fast_handler(
                         if a6 == hsm::HART_SUSPEND
                             && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
                         {
-                            trap_vec::load(false);
-                            ctx.regs().pc = _stop as _;
+                            unsafe {
+                                riscv::register::sstatus::clear_sie();
+                                riscv::register::satp::write(0);
+                            }
+                            ctx.regs().a[0] = hart_id();
+                            ctx.regs().a[1] = a2;
+                            ctx.regs().pc = a1;
                             return ctx.call(0);
                         }
                     }
@@ -389,23 +398,18 @@ impl rustsbi::Hsm for Hsm {
         }
     }
 
-    fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
-        use rustsbi::spec::hsm as spec;
-        match suspend_type {
-            spec::HART_SUSPEND_TYPE_NON_RETENTIVE => {
-                local_hsm().suspend_non_retentive(Supervisor {
-                    start_addr: resume_addr,
-                    opaque,
-                });
-                SbiRet::success(0)
-            }
-            spec::HART_SUSPEND_TYPE_RETENTIVE => unsafe {
-                local_hsm().suspend();
-                riscv::asm::wfi();
-                local_hsm().resume();
-                SbiRet::success(0)
-            },
-            _ => SbiRet::not_supported(),
+    fn hart_suspend(&self, suspend_type: u32, _resume_addr: usize, _opaque: usize) -> SbiRet {
+        use rustsbi::spec::hsm::*;
+        if matches!(
+            suspend_type,
+            HART_SUSPEND_TYPE_NON_RETENTIVE | HART_SUSPEND_TYPE_RETENTIVE
+        ) {
+            local_hsm().suspend();
+            unsafe { riscv::asm::wfi() };
+            local_hsm().resume();
+            SbiRet::success(0)
+        } else {
+            SbiRet::not_supported()
         }
     }
 }
