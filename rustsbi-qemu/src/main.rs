@@ -272,7 +272,9 @@ extern "C" fn fast_handler(
             } else {
                 match a7 {
                     legacy::LEGACY_CONSOLE_PUTCHAR => {
-                        print!("{}", ctx.a0() as u8 as char);
+                        unsafe {
+                            print!("{}", char::from_u32_unchecked(ctx.a0() as u32));
+                        }
                         ret.error = 0;
                         ret.value = a1;
                     }
