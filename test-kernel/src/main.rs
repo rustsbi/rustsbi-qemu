@@ -26,7 +26,7 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
 
     asm!(
-        "la sp,  {stack} + {stack_size}",
+        "la sp, {stack} + {stack_size}",
         "j  {main}",
         stack_size = const STACK_SIZE,
         stack      =   sym STACK,

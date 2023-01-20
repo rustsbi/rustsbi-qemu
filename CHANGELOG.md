@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 - Xtask will now print error when system does not have qemu installed
+- Fix dtb parsing for qemu 7.2
 
 ## [0.1.1] - 2022-03-23
 
