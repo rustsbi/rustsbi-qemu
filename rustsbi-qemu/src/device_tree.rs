@@ -32,6 +32,7 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
     const MEMORY: &str = "memory";
     const SOC: &str = "soc";
     const UART: &str = "uart";
+    const SERIAL: &str = "serial";
     const TEST: &str = "test";
     const CLINT: &str = "clint";
 
@@ -61,7 +62,11 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
                     StepOver
                 }
             } else if current == Str::from(SOC) {
-                if name.starts_with(UART) || name.starts_with(TEST) || name.starts_with(CLINT) {
+                if name.starts_with(UART)
+                    || name.starts_with(SERIAL)
+                    || name.starts_with(TEST)
+                    || name.starts_with(CLINT)
+                {
                     StepInto
                 } else {
                     StepOver
@@ -80,7 +85,7 @@ pub(crate) fn parse(opaque: usize) -> BoardInfo {
         }
         DtbObj::Property(Property::Reg(mut reg)) => {
             let node = ctx.name();
-            if node.starts_with(UART) {
+            if node.starts_with(UART) || node.starts_with(SERIAL) {
                 ans.uart = reg.next().unwrap();
                 StepOut
             } else if node.starts_with(TEST) {

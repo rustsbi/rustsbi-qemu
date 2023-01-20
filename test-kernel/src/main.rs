@@ -121,14 +121,16 @@ impl BoardInfo {
                 } else if ctx.name() == Str::from("cpus") && name.starts_with("cpu@") {
                     ans.smp += 1;
                     StepOver
-                } else if ctx.name() == Str::from("soc") && name.starts_with("uart") {
+                } else if ctx.name() == Str::from("soc")
+                    && (name.starts_with("uart") || name.starts_with("serial"))
+                {
                     StepInto
                 } else {
                     StepOver
                 }
             }
             DtbObj::Property(Property::Reg(mut reg)) => {
-                if ctx.name().starts_with("uart") {
+                if ctx.name().starts_with("uart") || ctx.name().starts_with("serial") {
                     ans.uart = reg.next().unwrap().start;
                 }
                 StepOut

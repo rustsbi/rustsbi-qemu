@@ -19,7 +19,7 @@ edition = "2021"
 [dependencies]
 rustsbi = "0.3.0"
 sbi-spec = { version = "0.0.4", features = ["legacy"] }
-riscv = "0.9.0"
+riscv = "0.10.1"
 spin = "0.9"
 uart_16550 = "0.2"
 rcore-console = "0.0.0"

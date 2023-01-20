@@ -25,7 +25,7 @@ name = "bench-kernel"
 version = "0.0.1"
 dependencies = [
  "rcore-console",
- "riscv",
+ "riscv 0.10.1",
  "sbi-rt",
  "uart_16550",
 ]
@@ -56,9 +56,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "4.0.32"
+version = "4.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7db700bc935f9e43e88d00b0850dae18a63773cfbec6d8e070fccf7fef89a39"
+checksum = "4ec7a4128863c188deefe750ac1d1dfe66c236909f845af04beed823638dc1b2"
 dependencies = [
  "bitflags",
  "clap_derive",
@@ -71,9 +71,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.0.21"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0177313f9f02afc995627906bbd8967e2be069f5261954222dac78290c2b9014"
+checksum = "684a277d672e91966334af371f1a7b5833f9aa00b07c84e92fbce95e00208ce8"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -90,6 +90,12 @@ checksum = "0d4198f73e42b4936b35b5bb248d81d2b595ecb170da0bac7655c54eedfa8da8"
 dependencies = [
  "os_str_bytes",
 ]
+
+[[package]]
+name = "critical-section"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6548a0ad5d2549e111e1f6a11a6c2e2d00ce6a3dafe22948d67c2b443f775e52"
 
 [[package]]
 name = "dtb-walker"
@@ -228,9 +234,9 @@ checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
 name = "once_cell"
-version = "1.16.0"
+version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
+checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
 
 [[package]]
 name = "os-xtask-utils"
@@ -311,6 +317,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "riscv"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa3145d2fae3778b1e31ec2e827b228bdc6abd9b74bb5705ba46dcb82069bc4f"
+dependencies = [
+ "bit_field",
+ "critical-section",
+ "embedded-hal",
+]
+
+[[package]]
 name = "rustix"
 version = "0.36.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -330,7 +347,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9671db0f50ebfd111cdaf17783ff72ffeb637e76eb1a399ff7fc347408505403"
 dependencies = [
- "riscv",
+ "riscv 0.9.0",
  "sbi-spec",
 ]
 
@@ -343,7 +360,7 @@ dependencies = [
  "fast-trap",
  "hsm-cell",
  "rcore-console",
- "riscv",
+ "riscv 0.10.1",
  "rustsbi",
  "sbi-spec",
  "sifive-test-device",
@@ -382,7 +399,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b5723dcf4011f2d181c2547227344900bd68027b1fa9bc42dfe3bd8f1d57443"
 dependencies = [
  "log",
- "riscv",
+ "riscv 0.9.0",
  "sbi-rt",
  "sbi-spec",
 ]
@@ -447,7 +464,7 @@ dependencies = [
  "dtb-walker",
  "log",
  "rcore-console",
- "riscv",
+ "riscv 0.10.1",
  "sbi-testing",
  "spin",
  "uart_16550",
