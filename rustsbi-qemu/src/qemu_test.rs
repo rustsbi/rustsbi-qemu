@@ -1,4 +1,3 @@
-use qemu_exit::{QEMUExit, RISCV64};
 use rustsbi::{
     spec::{
         binary::SbiRet,
@@ -9,14 +8,15 @@ use rustsbi::{
     },
     Reset,
 };
+use sifive_test_device::SifiveTestDevice;
 use spin::Once;
 
-pub(crate) struct QemuTest(RISCV64);
+pub(crate) struct QemuTest(usize);
 
 static TEST: Once<QemuTest> = Once::new();
 
 pub(crate) fn init(base: usize) {
-    TEST.call_once(|| QemuTest(RISCV64::new(base as _)));
+    TEST.call_once(|| QemuTest(base));
 }
 
 pub(crate) fn get() -> &'static QemuTest {
@@ -25,13 +25,17 @@ pub(crate) fn get() -> &'static QemuTest {
 
 impl Reset for QemuTest {
     fn system_reset(&self, reset_type: u32, reset_reason: u32) -> SbiRet {
+        let test = unsafe { &*(TEST.wait().0 as *const SifiveTestDevice) };
         match reset_type {
             RESET_TYPE_SHUTDOWN => match reset_reason {
-                RESET_REASON_NO_REASON => self.0.exit_success(),
-                RESET_REASON_SYSTEM_FAILURE => self.0.exit_failure(),
-                value => self.0.exit(value),
+                RESET_REASON_NO_REASON => test.pass(),
+                RESET_REASON_SYSTEM_FAILURE => test.fail(-1 as _),
+                value => test.fail(value as _),
             },
-            RESET_TYPE_COLD_REBOOT | RESET_TYPE_WARM_REBOOT => SbiRet::success(0),
+            RESET_TYPE_COLD_REBOOT | RESET_TYPE_WARM_REBOOT => {
+                // test.reset();
+                todo!()
+            }
             _ => SbiRet::invalid_param(),
         }
     }

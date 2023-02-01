@@ -1,9 +1,6 @@
 ﻿use crate::{fast_handler, hart_id, Supervisor, LEN_STACK_PER_HART, NUM_HART_MAX};
-use core::{
-    mem::{forget, size_of},
-    ptr::NonNull,
-};
-use fast_trap::{FlowContext, FreeTrapStack, TrapStackBlock};
+use core::{mem::forget, ptr::NonNull};
+use fast_trap::{FlowContext, FreeTrapStack};
 use hsm_cell::{HsmCell, LocalHsmCell, RemoteHsmCell};
 
 /// 栈空间。
@@ -89,36 +86,17 @@ impl Stack {
         let hart = self.hart_context();
         let context_ptr = hart.context_ptr();
         hart.init();
+        let range = self.0.as_ptr_range();
         forget(
-            FreeTrapStack::new(StackRef(self), context_ptr, fast_handler)
-                .unwrap()
-                .load(),
+            FreeTrapStack::new(
+                range.start as usize..range.end as usize,
+                |_| {},
+                context_ptr,
+                fast_handler,
+            )
+            .unwrap()
+            .load(),
         );
-    }
-}
-
-#[repr(transparent)]
-struct StackRef(&'static mut Stack);
-
-impl AsRef<[u8]> for StackRef {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0 .0[size_of::<HartContext>()..]
-    }
-}
-
-impl AsMut<[u8]> for StackRef {
-    #[inline]
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0 .0[size_of::<HartContext>()..]
-    }
-}
-
-impl TrapStackBlock for StackRef {}
-
-impl Drop for StackRef {
-    fn drop(&mut self) {
-        panic!("Root stack cannot be dropped")
     }
 }
 

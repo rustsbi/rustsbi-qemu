@@ -26,11 +26,11 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
 
     asm!(
-        "la sp,  {stack} + {stack_size}",
+        "la sp, {stack} + {stack_size}",
         "j  {main}",
         stack_size = const STACK_SIZE,
-        stack      = sym   STACK,
-        main       = sym   rust_main,
+        stack      =   sym STACK,
+        main       =   sym rust_main,
         options(noreturn),
     )
 }
@@ -40,7 +40,14 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         static mut sbss: u64;
         static mut ebss: u64;
     }
-    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+    unsafe {
+        let mut ptr = &mut sbss as *mut u64;
+        let end = &mut ebss as *mut u64;
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
+    }
     let BoardInfo {
         smp,
         frequency,
@@ -114,14 +121,16 @@ impl BoardInfo {
                 } else if ctx.name() == Str::from("cpus") && name.starts_with("cpu@") {
                     ans.smp += 1;
                     StepOver
-                } else if ctx.name() == Str::from("soc") && name.starts_with("uart") {
+                } else if ctx.name() == Str::from("soc")
+                    && (name.starts_with("uart") || name.starts_with("serial"))
+                {
                     StepInto
                 } else {
                     StepOver
                 }
             }
             DtbObj::Property(Property::Reg(mut reg)) => {
-                if ctx.name().starts_with("uart") {
+                if ctx.name().starts_with("uart") || ctx.name().starts_with("serial") {
                     ans.uart = reg.next().unwrap().start;
                 }
                 StepOut

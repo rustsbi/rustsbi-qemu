@@ -33,43 +33,60 @@ extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
         static mut sbss: u64;
         static mut ebss: u64;
     }
-    unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+    unsafe {
+        let mut ptr = &mut sbss as *mut u64;
+        let end = &mut ebss as *mut u64;
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
+    }
     // 初始化打印
     unsafe { UART = MaybeUninit::new(MmioSerialPort::new(0x1000_0000)) };
     rcore_console::init_console(&Console);
     rcore_console::set_log_level(option_env!("LOG"));
     rcore_console::test_log();
-    // 打开软中断
-    unsafe {
-        sie::set_ssoft();
-        sstatus::set_sie();
-    };
+
     // 测试调用延迟
     let t0 = time::read();
 
-    for _ in 0..0x20000 {
+    for _ in 0..100_0000 {
+        let _ = sbi_rt::get_spec_version();
+    }
+
+    let t1 = time::read();
+    log::info!("spec_version duration = {}", t1 - t0);
+
+    // 测试调用延迟
+    let t0 = time::read();
+
+    for _ in 0..100_0000 {
         let _ = sbi_rt::get_marchid();
     }
 
     let t1 = time::read();
     log::info!("marchid duration = {}", t1 - t0);
+
+    // 打开软中断
+    unsafe { sie::set_ssoft() };
     // 测试中断响应延迟
     let t0 = time::read();
-
-    for _ in 0..0x20000 {
+    for _ in 0..100_0000 {
         unsafe {
+            sstatus::set_sie();
             core::arch::asm!(
-                "   la   {0}, 1f
-                    csrw stvec, {0}
-                    mv   a0, a2
-                    mv   a1, zero
+                "   la    {0}, 1f
+                    csrw  stvec, {0}
+                    mv    a0, a2
+                    mv    a1, zero
                     ecall
-                    wfi
-                .align 2
-                1:  csrrci zero, sip, 1 << 1
-
+                 0: wfi
+                    j 0b
+                 .align 2
+                 1: csrci sip, {ssip}
                 ",
                 out(reg) _,
+                ssip = const 1 << 1,
                 in("a7") 0x735049,
                 in("a6") 0,
                 in("a0") 0,

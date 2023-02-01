@@ -33,10 +33,10 @@ use core::{
 use device_tree::BoardInfo;
 use fast_trap::{FastContext, FastResult};
 use riscv_spec::*;
-use rustsbi::RustSBI;
-use sbi_spec::binary::SbiRet;
+use rustsbi::{spec::binary::SbiRet, RustSBI};
 use spin::{Mutex, Once};
 use trap_stack::{local_hsm, local_remote_hsm, remote_hsm};
+use trap_vec::trap_vec;
 use uart_16550::MmioSerialPort;
 
 /// 入口。
@@ -55,20 +55,14 @@ unsafe extern "C" fn _start() -> ! {
         ",
         locate_stack = sym trap_stack::locate,
         rust_main    = sym rust_main,
-        trap         = sym trap_vec::trap_vec,
-        options(noreturn)
+        trap         = sym trap_vec,
+        options(noreturn),
     )
-}
-
-#[naked]
-unsafe extern "C" fn _stop() -> ! {
-    asm!("wfi", options(noreturn))
 }
 
 /// rust 入口。
 extern "C" fn rust_main(hartid: usize, opaque: usize) {
     static GENESIS: AtomicBool = AtomicBool::new(true);
-    static DONE: AtomicBool = AtomicBool::new(true);
     static BOARD_INFO: Once<BoardInfo> = Once::new();
 
     // 全局初始化过程
@@ -77,7 +71,14 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
             static mut sbss: u64;
             static mut ebss: u64;
         }
-        unsafe { r0::zero_bss(&mut sbss, &mut ebss) };
+        unsafe {
+            let mut ptr = &mut sbss as *mut u64;
+            let end = &mut ebss as *mut u64;
+            while ptr < end {
+                ptr.write_volatile(0);
+                ptr = ptr.offset(1);
+            }
+        }
         // 解析设备树
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
@@ -119,7 +120,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
                     .with_reset(qemu_test::get())
                     .build(),
             );
-        };
+        }
         // 设置并打印 pmp
         set_pmp(board_info);
         hart_csr_utils::print_pmps();
@@ -130,26 +131,23 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
             start_addr: SUPERVISOR_ENTRY,
             opaque,
         });
-        DONE.store(false, Ordering::SeqCst);
     } else {
         // 设置 pmp
         set_pmp(BOARD_INFO.wait());
         // 设置陷入栈
         trap_stack::prepare_for_trap();
-        while DONE.load(Ordering::SeqCst) {
-            core::hint::spin_loop();
-        }
     }
     // 清理 clint
     clint::clear();
     // 准备启动调度
     unsafe {
-        asm!("csrw mcause, {}", in(reg) cause::BOOT);
-        asm!("csrw mideleg, {}", in(reg) !0);
-        asm!("csrw medeleg, {}", in(reg) !0);
+        asm!("csrw mideleg,    {}", in(reg) !0);
+        asm!("csrw medeleg,    {}", in(reg) !0);
         asm!("csrw mcounteren, {}", in(reg) !0);
-        riscv::register::medeleg::clear_supervisor_env_call();
-        riscv::register::medeleg::clear_machine_env_call();
+        use riscv::register::{medeleg, mtvec};
+        medeleg::clear_supervisor_env_call();
+        medeleg::clear_machine_env_call();
+        mtvec::write(trap_vec as _, mtvec::TrapMode::Vectored);
     }
 }
 
@@ -180,10 +178,6 @@ fn set_pmp(board_info: &BoardInfo) {
     }
 }
 
-mod cause {
-    pub(crate) const BOOT: usize = 24;
-}
-
 extern "C" fn fast_handler(
     mut ctx: FastContext,
     a1: usize,
@@ -195,102 +189,91 @@ extern "C" fn fast_handler(
     a7: usize,
 ) -> FastResult {
     use riscv::register::{
-        mcause::{self, Exception as E, Interrupt as I, Trap as T},
-        mtval,
+        mcause::{self, Exception as E, Trap as T},
+        mtval, satp, sstatus,
     };
 
-    let cause = mcause::read();
-    // 启动
-    if (cause.cause() == T::Exception(E::Unknown) && cause.bits() == cause::BOOT)
-        || cause.cause() == T::Interrupt(I::MachineSoft)
-    {
-        let hart_id = hart_id();
+    #[inline]
+    fn boot(mut ctx: FastContext, start_addr: usize, opaque: usize) -> FastResult {
+        unsafe {
+            sstatus::clear_sie();
+            satp::write(0);
+        }
+        ctx.regs().a[0] = hart_id();
+        ctx.regs().a[1] = opaque;
+        ctx.regs().pc = start_addr;
+        ctx.call(2)
+    }
+    loop {
         match local_hsm().start() {
             Ok(supervisor) => {
                 mstatus::update(|bits| {
                     *bits &= !mstatus::MPP;
                     *bits |= mstatus::MPIE | mstatus::MPP_SUPERVISOR;
                 });
-                mie::write(mie::MSIE | mie::MTIE | mie::MEIE);
-                trap_vec::load(true);
-                ctx.regs().a[0] = hart_id;
-                ctx.regs().a[1] = supervisor.opaque;
-                ctx.regs().pc = supervisor.start_addr;
+                mie::write(mie::MSIE | mie::MTIE);
+                break boot(ctx, supervisor.start_addr, supervisor.opaque);
             }
-            Err(_state) => {
-                mstatus::update(|bits| {
-                    *bits &= !mstatus::MPP;
-                    *bits |= mstatus::MPIE | mstatus::MPP_MACHINE;
-                });
+            Err(sbi_spec::hsm::HART_STOP) => {
                 mie::write(mie::MSIE);
-                trap_vec::load(false);
-                ctx.regs().pc = _stop as usize;
+                unsafe { riscv::asm::wfi() };
+                clint::clear_msip();
             }
-        }
-        return ctx.call(2);
-    }
-    match cause.cause() {
-        // SBI call
-        T::Exception(E::SupervisorEnvCall) => {
-            use sbi_spec::{base, hsm, legacy};
-            let mut ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
-                a7,
-                a6,
-                [ctx.a0(), a1, a2, a3, a4, a5],
-            );
-            if ret.is_ok() {
-                match a7 {
-                    hsm::EID_HSM => {
-                        // 关闭
-                        if a6 == hsm::HART_STOP {
-                            local_hsm().stop();
-                            mie::write(mie::MSIE);
-                            trap_vec::load(false);
-                            ctx.regs().pc = _stop as _;
-                            return ctx.call(0);
+            _ => match mcause::read().cause() {
+                // SBI call
+                T::Exception(E::SupervisorEnvCall) => {
+                    use rustsbi::spec::{base, hsm, legacy};
+                    let mut ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
+                        a7,
+                        a6,
+                        [ctx.a0(), a1, a2, a3, a4, a5],
+                    );
+                    if ret.is_ok() {
+                        match (a7, a6) {
+                            // 关闭
+                            (hsm::EID_HSM, hsm::HART_STOP) => continue,
+                            // 不可恢复挂起
+                            (hsm::EID_HSM, hsm::HART_SUSPEND)
+                                if matches!(
+                                    ctx.a0() as u32,
+                                    hsm::HART_SUSPEND_TYPE_NON_RETENTIVE
+                                ) =>
+                            {
+                                break boot(ctx, a1, a2);
+                            }
+                            // legacy console 探测
+                            (base::EID_BASE, base::PROBE_EXTENSION)
+                                if matches!(
+                                    ctx.a0(),
+                                    legacy::LEGACY_CONSOLE_PUTCHAR | legacy::LEGACY_CONSOLE_GETCHAR
+                                ) =>
+                            {
+                                ret.value = 1;
+                            }
+                            _ => {}
                         }
-                        // 不可恢复挂起
-                        if a6 == hsm::HART_SUSPEND
-                            && ctx.a0() == hsm::HART_SUSPEND_TYPE_NON_RETENTIVE as usize
-                        {
-                            trap_vec::load(false);
-                            ctx.regs().pc = _stop as _;
-                            return ctx.call(0);
+                    } else {
+                        match a7 {
+                            legacy::LEGACY_CONSOLE_PUTCHAR => {
+                                print!("{}", ctx.a0() as u8 as char);
+                                ret.error = 0;
+                                ret.value = a1;
+                            }
+                            legacy::LEGACY_CONSOLE_GETCHAR => {
+                                ret.error = unsafe { UART.lock().assume_init_mut() }.receive() as _;
+                                ret.value = a1;
+                            }
+                            _ => {}
                         }
                     }
-                    base::EID_BASE
-                        if a6 == base::PROBE_EXTENSION
-                            && matches!(
-                                ctx.a0(),
-                                legacy::LEGACY_CONSOLE_PUTCHAR | legacy::LEGACY_CONSOLE_GETCHAR
-                            ) =>
-                    {
-                        ret.value = 1;
-                    }
-                    _ => {}
+                    ctx.regs().a = [ret.error, ret.value, a2, a3, a4, a5, a6, a7];
+                    mepc::next();
+                    break ctx.restore();
                 }
-            } else {
-                match a7 {
-                    legacy::LEGACY_CONSOLE_PUTCHAR => {
-                        print!("{}", ctx.a0() as u8 as char);
-                        ret.error = 0;
-                        ret.value = a1;
-                    }
-                    legacy::LEGACY_CONSOLE_GETCHAR => {
-                        ret.error = unsafe { UART.lock().assume_init_mut() }.receive() as _;
-                        ret.value = a1;
-                    }
-                    _ => {}
-                }
-            }
-            ctx.regs().a = [ret.error, ret.value, a2, a3, a4, a5, a6, a7];
-            mepc::next();
-            ctx.restore()
-        }
-        // 其他陷入
-        trap => {
-            println!(
-                "
+                // 其他陷入
+                trap => {
+                    println!(
+                        "
 -----------------------------
 > trap:    {trap:?}
 > mstatus: {:#018x}
@@ -298,11 +281,13 @@ extern "C" fn fast_handler(
 > mtval:   {:#018x}
 -----------------------------
             ",
-                mstatus::read(),
-                mepc::read(),
-                mtval::read()
-            );
-            panic!("stopped with unsupported trap")
+                        mstatus::read(),
+                        mepc::read(),
+                        mtval::read()
+                    );
+                    panic!("stopped with unsupported trap")
+                }
+            },
         }
     }
 }
@@ -376,7 +361,7 @@ impl rustsbi::Hsm for Hsm {
 
     #[inline]
     fn hart_stop(&self) -> SbiRet {
-        local_hsm().stop_pending();
+        local_hsm().stop();
         SbiRet::success(0)
     }
 
@@ -388,37 +373,18 @@ impl rustsbi::Hsm for Hsm {
         }
     }
 
-    fn hart_suspend(&self, suspend_type: u32, resume_addr: usize, opaque: usize) -> SbiRet {
-        use sbi_spec::hsm as spec;
-        match suspend_type {
-            spec::HART_SUSPEND_TYPE_NON_RETENTIVE => {
-                local_hsm().suspend_non_retentive(Supervisor {
-                    start_addr: resume_addr,
-                    opaque,
-                });
-                SbiRet::success(0)
-            }
-            spec::HART_SUSPEND_TYPE_RETENTIVE => unsafe {
-                local_hsm().suspend();
-                asm!(
-                    "   la     {0}, 1f
-                        csrrw  {0}, mtvec,   {0}
-                        csrr   {1}, mepc
-                        csrrsi {2}, mstatus, {mie}
-                        wfi
-                    1:  csrw   mstatus, {2}
-                        csrw   mepc,    {1}
-                        csrw   mtvec,   {0}
-                    ",
-                    out(reg) _,
-                    out(reg) _,
-                    out(reg) _,
-                    mie = const mstatus::MIE,
-                );
-                local_hsm().resume();
-                SbiRet::success(0)
-            },
-            _ => SbiRet::not_supported(),
+    fn hart_suspend(&self, suspend_type: u32, _resume_addr: usize, _opaque: usize) -> SbiRet {
+        use rustsbi::spec::hsm::{HART_SUSPEND_TYPE_NON_RETENTIVE, HART_SUSPEND_TYPE_RETENTIVE};
+        if matches!(
+            suspend_type,
+            HART_SUSPEND_TYPE_NON_RETENTIVE | HART_SUSPEND_TYPE_RETENTIVE
+        ) {
+            local_hsm().suspend();
+            unsafe { riscv::asm::wfi() };
+            local_hsm().resume();
+            SbiRet::success(0)
+        } else {
+            SbiRet::not_supported()
         }
     }
 }
