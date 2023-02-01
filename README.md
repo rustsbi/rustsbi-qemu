@@ -5,12 +5,6 @@ file and implement simple SBI directly, thus RustSBI provides a bootable ELF fil
 
 ## Try it out!
 
-_Note: we have discovered some issues on incompability by this project with QEMU 7.2.0.
-If you are using this project on QEMU 7.x, it is temporarily required to revert to version 7.1.0.
-You may get some help from documents of package manager software. For example, if you are using Homebrew,
-try this [link](https://shockerli.net/post/homebrew-install-formula-specific-version/).
-We thank to @ericliuhusky for pointing out this issue. (See [issue 48](https://github.com/rustsbi/rustsbi-qemu/issues/48))_
-
 To prepare for environment, you should have Rust compiler and QEMU installed.
 You may install Rust by [rustup](https://rustup.rs) or using vendor provided rustc and cargo packages.
 To install QEMU, your may need to use package manager (e.g. apt, dnf etc.) from system distribution
@@ -134,7 +128,7 @@ You should build RustSBI-QEMU on nightly at least `rustc 1.66.0-nightly (a24a020
 This project is licensed under Mulan PSL v2.
 
 ```text
-Copyright (c) 2021-2022 RustSBI Team
+Copyright (c) 2021-2023 RustSBI Team
 RustSBI-QEMU is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
 You may obtain a copy of Mulan PSL v2 at:
