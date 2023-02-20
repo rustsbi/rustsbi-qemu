@@ -20,7 +20,7 @@ version = "0.0.1"
 dependencies = [
  "rcore-console",
  "riscv",
- "sbi-rt",
+ "sbi-rt 0.0.3-rc.1",
  "uart_16550",
 ]
 
@@ -50,9 +50,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "4.1.4"
+version = "4.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f13b9c79b5d1dd500d20ef541215a6423c75829ef43117e1b4d17fd8af0b5d76"
+checksum = "ec0b0588d44d4d63a87dbd75c136c166bbfd9a86a31cb89e09906521c7d3f5e3"
 dependencies = [
  "bitflags",
  "clap_derive",
@@ -136,31 +136,28 @@ checksum = "7fbe69badc2e0dc98ad2787648fa140b5772d24b49e9a6b180a67e1348f7544c"
 
 [[package]]
 name = "heck"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
+checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "hermit-abi"
-version = "0.2.6"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee512640fe35acbfb4bb779db6f0d80704c2cacfa2e39b601ef3e3f47d1ae4c7"
-dependencies = [
- "libc",
-]
+checksum = "fed44880c466736ef9a5c5b5facefb5ed0785676d0c02d612db14e54f0d84286"
 
 [[package]]
 name = "hsm-cell"
 version = "0.1.0"
 dependencies = [
- "sbi-spec",
+ "sbi-spec 0.0.4",
 ]
 
 [[package]]
 name = "io-lifetimes"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7d6c6f8c91b4b9ed43484ad1a938e393caf35960fce7f82a040497207bd8e9e"
+checksum = "1abeb7a0dd0f8181267ff8adc397075586500b81b28a73e8a0208b00fc170fb3"
 dependencies = [
  "libc",
  "windows-sys",
@@ -168,9 +165,9 @@ dependencies = [
 
 [[package]]
 name = "is-terminal"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28dfb6c8100ccc63462345b67d1bbc3679177c75ee4bf59bf29c8b1d110b8189"
+checksum = "22e18b0a45d56fe973d6db23972bf5bc46f988a4a2385deac9cc29572f09daef"
 dependencies = [
  "hermit-abi",
  "io-lifetimes",
@@ -226,9 +223,9 @@ checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
 name = "once_cell"
-version = "1.17.0"
+version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
+checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 
 [[package]]
 name = "os-xtask-utils"
@@ -271,9 +268,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.50"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef7d57beacfaf2d8aee5937dab7b7f28de3cb8b1828479bb5de2a7106f2bae2"
+checksum = "5d727cae5b39d21da60fa540906919ad737832fe0b1c165da3a34d6548c849d6"
 dependencies = [
  "unicode-ident",
 ]
@@ -310,9 +307,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.36.7"
+version = "0.36.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4fdebc4b395b7fbb9ab11e462e20ed9051e7b16e42d24042c776eca0ac81b03"
+checksum = "f43abb88211988493c1abb44a70efa56ff0ce98f233b7b276146f1f3f7ba9644"
 dependencies = [
  "bitflags",
  "errno",
@@ -324,12 +321,11 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92aa8dfaaa1376f99da2979fc8393137c1b8a4aa6023369191e179c420e9487d"
+version = "0.3.2-rc.1"
+source = "git+https://github.com/rustsbi/rustsbi?rev=7118c8c#7118c8cb2aca28b9b64d298731b1c81322eaa93d"
 dependencies = [
  "riscv",
- "sbi-spec",
+ "sbi-spec 0.0.5",
 ]
 
 [[package]]
@@ -343,7 +339,7 @@ dependencies = [
  "rcore-console",
  "riscv",
  "rustsbi",
- "sbi-spec",
+ "sbi-spec 0.0.5",
  "sifive-test-device",
  "spin",
  "uart_16550",
@@ -361,7 +357,16 @@ version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c113c53291db8ac141e01f43224ed488b8d6001ab66737b82e04695a43a42b7"
 dependencies = [
- "sbi-spec",
+ "sbi-spec 0.0.4",
+]
+
+[[package]]
+name = "sbi-rt"
+version = "0.0.3-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4434f94ae7a9e42d3292a9552ca6ef6ac774918859626d5e1259096755c04683"
+dependencies = [
+ "sbi-spec 0.0.5",
 ]
 
 [[package]]
@@ -374,14 +379,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sbi-spec"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a535b1f16d5517a020539569f7e37e61fad35ed0d5352f9fd7073304e2f2dc72"
+dependencies = [
+ "static_assertions",
+]
+
+[[package]]
 name = "sbi-testing"
 version = "0.0.2"
 source = "git+https://github.com/rustsbi/sbi-testing?rev=7a5e920#7a5e9204f62f9cf3c4dcb7a033371dd347bbc8a4"
 dependencies = [
  "log",
  "riscv",
- "sbi-rt",
- "sbi-spec",
+ "sbi-rt 0.0.2",
+ "sbi-spec 0.0.4",
 ]
 
 [[package]]
@@ -398,9 +412,9 @@ checksum = "ba50a6fd7cb5cdb2645fb93fb2bbae7d8d78390677a889bdcfaf13c3d29286d0"
 
 [[package]]
 name = "spin"
-version = "0.9.4"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f6002a767bff9e83f8eeecf883ecb8011875a21ae8da43bffb817a57e78cc09"
+checksum = "7dccf47db1b41fa1573ed27ccf5e08e3ca771cb994f776668c5ebda893b248fc"
 dependencies = [
  "lock_api",
 ]
@@ -518,9 +532,18 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows-sys"
-version = "0.42.0"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a3e1820f08b8513f676f7ab6c1f99ff312fb97b553d30ff4dd86f9f15728aa7"
+checksum = "75283be5efb2831d37ea142365f009c02ec203cd29a3ebecbc093d52315b66d0"
+dependencies = [
+ "windows-targets",
+]
+
+[[package]]
+name = "windows-targets"
+version = "0.42.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e2522491fbfcd58cc84d47aeb2958948c4b8982e9a2d8a2a35bbaed431390e7"
 dependencies = [
  "windows_aarch64_gnullvm",
  "windows_aarch64_msvc",
