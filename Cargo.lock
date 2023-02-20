@@ -321,8 +321,9 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
-version = "0.3.2-rc.1"
-source = "git+https://github.com/rustsbi/rustsbi?rev=7118c8c#7118c8cb2aca28b9b64d298731b1c81322eaa93d"
+version = "0.3.2-rc.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97f4052d1eb0f283b1b781a9b89a5fa4ed332ea31e2343e34372c61188664724"
 dependencies = [
  "riscv",
  "sbi-spec 0.0.5",

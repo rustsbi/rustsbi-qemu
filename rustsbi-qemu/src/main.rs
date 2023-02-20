@@ -4,6 +4,7 @@
 #![deny(warnings)]
 
 mod clint;
+mod dbcn;
 mod device_tree;
 mod hart_csr_utils;
 mod qemu_test;
@@ -87,6 +88,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
         rcore_console::set_log_level(option_env!("LOG"));
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
+        dbcn::init(SUPERVISOR_ENTRY..board_info.mem.end);
         // 打印启动信息
         print!(
             "\
@@ -118,6 +120,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
                     .with_timer(&clint::Clint)
                     .with_hsm(Hsm)
                     .with_reset(qemu_test::get())
+                    .with_console(dbcn::get())
                     .build(),
             );
         }
@@ -340,6 +343,7 @@ type FixedRustSBI<'a> = RustSBI<
     Hsm,
     &'a qemu_test::QemuTest,
     Infallible,
+    &'a dbcn::DBCN,
 >;
 
 struct Hsm;
