@@ -117,7 +117,9 @@ You should use these following line of parameters:
     command.args(&["-cpu", "rv64,x-h=true"]);
 ```
 
-... to enable H extension on QEMU software.
+... to enable H extension on QEMU software.  
+  
+The H extension is enabled by default when QEMU version >= 7.0.0.
 
 3. What is the minimum supported Rust version of this package?
 
