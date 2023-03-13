@@ -120,7 +120,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
                     .with_timer(&clint::Clint)
                     .with_hsm(Hsm)
                     .with_reset(qemu_test::get())
-                    .with_console(dbcn::get())
+                    // .with_console(dbcn::get())
                     .build(),
             );
         }
@@ -343,7 +343,8 @@ type FixedRustSBI<'a> = RustSBI<
     Hsm,
     &'a qemu_test::QemuTest,
     Infallible,
-    &'a dbcn::DBCN,
+    Infallible,
+    // &'a dbcn::DBCN,
 >;
 
 struct Hsm;

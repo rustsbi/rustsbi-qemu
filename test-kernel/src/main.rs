@@ -70,14 +70,17 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
 | dtb physical address  | {dtb_pa:#20x} |
 ------------------------------------------------"
     );
-    sbi_testing::Testing {
+    let testing = sbi_testing::Testing {
         hartid,
         hart_mask: (1 << smp) - 1,
         hart_mask_base: 0,
         delay: frequency,
+    };
+    if testing.test() {
+        sbi::system_reset(sbi::Shutdown, sbi::NoReason);
+    } else {
+        sbi::system_reset(sbi::Shutdown, sbi::SystemFailure);
     }
-    .test();
-    sbi::system_reset(sbi::Shutdown, sbi::NoReason);
     unreachable!()
 }
 

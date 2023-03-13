@@ -17,7 +17,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = { version = "0.3.2-rc.2", features = ["sbi_2_0"] }
+rustsbi = { git = "https://github.com/rustsbi/rustsbi", rev = "91cfa36", features = [
+    "machine",
+] }
 sbi-spec = { version = "0.0.5", features = ["legacy"] }
 riscv = "0.10.1"
 spin = "0.9"

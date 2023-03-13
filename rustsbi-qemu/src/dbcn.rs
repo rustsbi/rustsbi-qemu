@@ -1,4 +1,6 @@
-﻿use crate::UART;
+﻿#![allow(unused)]
+
+use crate::UART;
 use core::ops::Range;
 use rustsbi::{spec::binary::SbiRet, Console, Physical};
 use spin::Once;
