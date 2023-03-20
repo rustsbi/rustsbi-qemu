@@ -349,6 +349,7 @@ dependencies = [
  "sbi-spec",
  "sifive-test-device",
  "spin",
+ "uart16550",
 ]
 
 [[package]]
@@ -451,6 +452,11 @@ dependencies = [
  "spin",
  "uart_16550",
 ]
+
+[[package]]
+name = "uart16550"
+version = "0.0.0"
+source = "git+https://github.com/YdrMaster/uart16550?rev=68ad4d8#68ad4d86dd28b72c72ff132c3efa7457ce5427d8"
 
 [[package]]
 name = "uart_16550"

@@ -262,14 +262,17 @@ extern "C" fn fast_handler(
                                 ret.error = 0;
                                 ret.value = a1;
                             }
-                            legacy::LEGACY_CONSOLE_GETCHAR => loop {
+                            legacy::LEGACY_CONSOLE_GETCHAR => {
+                                let mut c = 0u8;
                                 let uart = uart16550::UART.lock();
-                                if let Some(c) = uart.get().read() {
-                                    ret.error = c as _;
-                                    ret.value = a1;
-                                    break;
+                                loop {
+                                    if uart.get().read(core::slice::from_mut(&mut c)) == 1 {
+                                        ret.error = c as _;
+                                        ret.value = a1;
+                                        break;
+                                    }
                                 }
-                            },
+                            }
                             _ => {}
                         }
                     }
@@ -325,7 +328,7 @@ impl rcore_console::Console for Console {
     #[inline]
     fn put_char(&self, c: u8) {
         let uart = uart16550::UART.lock();
-        while !uart.get().write(c) {
+        while uart.get().write(&[c]) == 0 {
             core::hint::spin_loop();
         }
     }
@@ -333,10 +336,10 @@ impl rcore_console::Console for Console {
     #[inline]
     fn put_str(&self, s: &str) {
         let uart = uart16550::UART.lock();
-        for c in s.bytes() {
-            while !uart.get().write(c) {
-                core::hint::spin_loop();
-            }
+        let mut bytes = s.as_bytes();
+        while !bytes.is_empty() {
+            let count = uart.get().write(bytes);
+            bytes = &bytes[count..];
         }
     }
 }

@@ -22,14 +22,8 @@ impl Console for DBCN {
         let start = bytes.phys_addr_lo();
         let end = start + bytes.num_bytes();
         if self.0.contains(&start) && self.0.contains(&(end - 1)) {
-            let uart = uart16550::UART.lock();
-            for ptr in start..end {
-                let c = unsafe { (ptr as *const u8).read_volatile() };
-                if !uart.get().write(c) {
-                    return SbiRet::success(ptr - start);
-                }
-            }
-            SbiRet::success(bytes.num_bytes())
+            let buf = unsafe { core::slice::from_raw_parts(start as *const u8, bytes.num_bytes()) };
+            SbiRet::success(uart16550::UART.lock().get().write(buf))
         } else {
             SbiRet::invalid_param()
         }
@@ -39,15 +33,9 @@ impl Console for DBCN {
         let start = bytes.phys_addr_lo();
         let end = start + bytes.num_bytes();
         if self.0.contains(&start) && self.0.contains(&(end - 1)) {
-            let uart = uart16550::UART.lock();
-            for ptr in start..end {
-                if let Some(c) = uart.get().read() {
-                    unsafe { (ptr as *mut u8).write_volatile(c) };
-                } else {
-                    return SbiRet::success(ptr - start);
-                }
-            }
-            SbiRet::success(bytes.num_bytes())
+            let buf =
+                unsafe { core::slice::from_raw_parts_mut(start as *mut u8, bytes.num_bytes()) };
+            SbiRet::success(uart16550::UART.lock().get().read(buf))
         } else {
             SbiRet::invalid_param()
         }
@@ -57,7 +45,7 @@ impl Console for DBCN {
     fn write_byte(&self, byte: u8) -> SbiRet {
         let uart = uart16550::UART.lock();
         loop {
-            if uart.get().write(byte) {
+            if uart.get().write(&[byte]) == 1 {
                 return SbiRet::success(0);
             }
         }
