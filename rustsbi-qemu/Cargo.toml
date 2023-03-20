@@ -23,7 +23,6 @@ rustsbi = { git = "https://github.com/rustsbi/rustsbi", rev = "91cfa36", feature
 sbi-spec = { version = "0.0.5", features = ["legacy"] }
 riscv = "0.10.1"
 spin = "0.9"
-uart_16550 = "0.2"
 rcore-console = "0.0.0"
 aclint = "0.0.0"
 sifive-test-device = "0.0.0"

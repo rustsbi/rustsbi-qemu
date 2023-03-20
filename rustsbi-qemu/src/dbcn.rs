@@ -1,6 +1,6 @@
 ﻿#![allow(unused)]
 
-use crate::UART;
+use crate::uart16550;
 use core::ops::Range;
 use rustsbi::{spec::binary::SbiRet, Console, Physical};
 use spin::Once;
@@ -22,11 +22,12 @@ impl Console for DBCN {
         let start = bytes.phys_addr_lo();
         let end = start + bytes.num_bytes();
         if self.0.contains(&start) && self.0.contains(&(end - 1)) {
-            let mut uart = UART.lock();
-            let uart = unsafe { uart.assume_init_mut() };
+            let uart = uart16550::UART.lock();
             for ptr in start..end {
-                let c = ptr as *const u8;
-                unsafe { uart.send(c.read_volatile()) };
+                let c = unsafe { (ptr as *const u8).read_volatile() };
+                if !uart.get().write(c) {
+                    return SbiRet::success(ptr - start);
+                }
             }
             SbiRet::success(bytes.num_bytes())
         } else {
@@ -38,11 +39,13 @@ impl Console for DBCN {
         let start = bytes.phys_addr_lo();
         let end = start + bytes.num_bytes();
         if self.0.contains(&start) && self.0.contains(&(end - 1)) {
-            let mut uart = UART.lock();
-            let uart = unsafe { uart.assume_init_mut() };
+            let uart = uart16550::UART.lock();
             for ptr in start..end {
-                let c = ptr as *mut u8;
-                unsafe { c.write_volatile(uart.receive()) };
+                if let Some(c) = uart.get().read() {
+                    unsafe { (ptr as *mut u8).write_volatile(c) };
+                } else {
+                    return SbiRet::success(ptr - start);
+                }
             }
             SbiRet::success(bytes.num_bytes())
         } else {
@@ -52,9 +55,11 @@ impl Console for DBCN {
 
     #[inline]
     fn write_byte(&self, byte: u8) -> SbiRet {
-        let mut uart = UART.lock();
-        let uart = unsafe { uart.assume_init_mut() };
-        uart.send(byte);
-        SbiRet::success(0)
+        let uart = uart16550::UART.lock();
+        loop {
+            if uart.get().write(byte) {
+                return SbiRet::success(0);
+            }
+        }
     }
 }
