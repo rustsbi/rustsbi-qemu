@@ -9,17 +9,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - Hint spin loop in hart state monitor module
-- Add bench-kernel crate to workspace for sbi call bench
+- Add crate *bench-kernel* to workspace for sbi call bench
+- Add crate *uart16550* for 16550 define
+- Add SBI DBCN extension support
 
 ### Modified
 
 - Use instance based RustSBI interface, with separate functions for legacy stdio
 - Update sbi-testing to version 0.0.1
-- Use crate fast-trap version 0.0.1 in rustsbi-qemu for trap handling
-- Use crate rcore-console version 0.0.0 in rustsbi-qemu and test-kernel for `print!` and `println!`
-- Use crate aclint version 0.0.0 in rustsbi-qemu for aclint structs
-- Use crate os-xtask-utils version 0.0.0 in xtask builder
-- Use crate sifive-test-device version 0.0.0 instead of qemu-exit
+- Update sbi-spec to version 0.0.5
+- Use crate *fast-trap* version 0.0.1 in rustsbi-qemu for trap handling
+- Use crate *rcore-console* version 0.0.0 in rustsbi-qemu and test-kernel for `print!` and `println!`
+- Use crate *aclint* version 0.0.0 in rustsbi-qemu for aclint structs
+- Use crate *os-xtask-utils* version 0.0.0 in xtask builder
+- Use crate *sifive-test-device* version 0.0.0 instead of qemu-exit
 - Use `wfi` for suspend and stop without enable mie
 
 ### Fixed

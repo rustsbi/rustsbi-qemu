@@ -18,55 +18,100 @@ cargo qemu
 
 When running `cargo qemu`, the test kernel will build and run. Expected output should be:
 
-```
-[rustsbi] RustSBI version 0.2.2, adapting to RISC-V SBI v1.0.0
+```plaintext
+[rustsbi] RustSBI version 0.4.0-alpha.1, adapting to RISC-V SBI v1.0.0
 .______       __    __      _______.___________.  _______..______   __
 |   _  \     |  |  |  |    /       |           | /       ||   _  \ |  |
 |  |_)  |    |  |  |  |   |   (----`---|  |----`|   (----`|  |_)  ||  |
 |      /     |  |  |  |    \   \       |  |      \   \    |   _  < |  |
 |  |\  \----.|  `--'  |.----)   |      |  |  .----)   |   |  |_)  ||  |
 | _| `._____| \______/ |_______/       |__|  |_______/    |______/ |__|
+[rustsbi] Implementation     : RustSBI-QEMU Version 0.2.0-alpha.2
+[rustsbi] Platform Name      : riscv-virtio,qemu
+[rustsbi] Platform SMP       : 8
+[rustsbi] Platform Memory    : 0x80000000..0x88000000
+[rustsbi] Boot HART          : 6
+[rustsbi] Device Tree Region : 0x87e00000..0x87e01a8e
+[rustsbi] Firmware Address   : 0x80000000
+[rustsbi] Supervisor Address : 0x80200000
+[rustsbi] pmp01: 0x00000000..0x80000000 (-wr)
+[rustsbi] pmp02: 0x80000000..0x80200000 (---)
+[rustsbi] pmp03: 0x80200000..0x88000000 (xwr)
+[rustsbi] pmp04: 0x88000000..0x00000000 (-wr)
 
-[rustsbi] Implementation: RustSBI-QEMU Version 0.1.1
-[rustsbi-dtb] Hart count: cluster0 with 8 cores
-[rustsbi] misa: RV64ACDFIMSU
-[rustsbi] mideleg: ssoft, stimer, sext (0x222)
-[rustsbi] medeleg: ima, ia, bkpt, la, sa, uecall, ipage, lpage, spage (0xb1ab)
-[rustsbi] pmp0: 0x10000000 ..= 0x10001fff (rw-)
-[rustsbi] pmp1: 0x2000000 ..= 0x200ffff (rw-)
-[rustsbi] pmp2: 0xc000000 ..= 0xc3fffff (rw-)
-[rustsbi] pmp3: 0x80000000 ..= 0x8fffffff (rwx)
-[rustsbi] enter supervisor 0x80200000
-<< Test-kernel: Hart id = 0, DTB physical address = 0x87000000
->> Test-kernel: Testing base extension
-<< Test-kernel: Base extension version: 1
-<< Test-kernel: SBI specification version: 1.0
-<< Test-kernel: SBI implementation Id: 4
-<< Test-kernel: SBI implementation version: 202
-<< Test-kernel: Device mvendorid: 0
-<< Test-kernel: Device marchid: 0
-<< Test-kernel: Device mimpid: 0
->> Test-kernel: Testing SBI instruction emulation
-<< Test-kernel: Current time: d78c9
-<< Test-kernel: Time after operation: da00f
->> Test-kernel: Trigger illegal exception
-<< Test-kernel: Value of scause: Exception(IllegalInstruction)
-<< Test-kernel: Illegal exception delegate success
->> Stop hart 3, return value 0
->> Hart 0 state return value: 0
->> Hart 1 state return value: 4
->> Hart 2 state return value: 4
->> Hart 3 state return value: 1
->> Hart 4 state return value: 0
-<< Test-kernel: test for hart 0 success, wake another hart
->> Wake hart 1, sbi return value 0
->> Start test for hart 1, retentive suspend return value 0
->> Wake hart 2, sbi return value 0
-<< The parameter passed to hart 2 resume is: 0x4567890a
->> Start hart 3 with parameter 0x12345678
->> SBI return value: 0
-<< The parameter passed to hart 3 start is: 0x12345678
-<< Test-kernel: All hart SBI test SUCCESS, shutdown
+ _____         _     _  __                    _
+|_   _|__  ___| |_  | |/ /___ _ __ _ __   ___| |
+  | |/ _ \/ __| __| | ' // _ \ '__| '_ \ / _ \ |
+  | |  __/\__ \ |_  | . \  __/ |  | | | |  __/ |
+  |_|\___||___/\__| |_|\_\___|_|  |_| |_|\___|_|
+================================================
+| boot hart id          |                    6 |
+| smp                   |                    8 |
+| timebase frequency    |          10000000 Hz |
+| dtb physical address  |           0x87e00000 |
+------------------------------------------------
+[ INFO] Testing `Base`
+[ INFO] sbi spec version = 2.0
+[ INFO] sbi impl = RustSBI
+[ INFO] sbi impl version = 0x400
+[ INFO] sbi extensions = [Base, TIME, sPI, HSM, SRST]
+[ INFO] mvendor id = 0x0
+[ INFO] march id = 0x70200
+[ INFO] mimp id = 0x70200
+[ INFO] Sbi `Base` test pass
+[ INFO] Testing `TIME`
+[ INFO] read time register successfuly, set timer +1s
+[ INFO] timer interrupt delegate successfuly
+[ INFO] Sbi `TIME` test pass
+[ INFO] Testing `sPI`
+[ INFO] send ipi successfuly
+[ INFO] Sbi `sPI` test pass
+[ INFO] Testing `HSM`
+[ INFO] Testing harts: [0, 1, 2, 3]
+[DEBUG] hart 0 started
+[DEBUG] hart 0 suspended nonretentive
+[DEBUG] hart 1 started
+[DEBUG] hart 1 suspended nonretentive
+[DEBUG] hart 2 started
+[DEBUG] hart 2 suspended nonretentive
+[DEBUG] hart 3 started
+[DEBUG] hart 3 suspended nonretentive
+[DEBUG] hart 0 resumed
+[DEBUG] hart 0 suspended retentive
+[DEBUG] hart 0 stopped
+[DEBUG] hart 1 resumed
+[DEBUG] hart 1 suspended retentive
+[DEBUG] hart 1 stopped
+[DEBUG] hart 2 resumed
+[DEBUG] hart 2 suspended retentive
+[DEBUG] hart 2 stopped
+[DEBUG] hart 3 resumed
+[DEBUG] hart 3 suspended retentive
+[DEBUG] hart 3 stopped
+[ INFO] Testing Pass: [0, 1, 2, 3]
+[ INFO] Testing harts: [4, 5, 7]
+[DEBUG] hart 4 started
+[DEBUG] hart 4 suspended nonretentive
+[DEBUG] hart 5 started
+[DEBUG] hart 5 suspended nonretentive
+[DEBUG] hart 7 started
+[DEBUG] hart 7 suspended nonretentive
+[DEBUG] hart 4 resumed
+[DEBUG] hart 4 suspended retentive
+[DEBUG] hart 4 stopped
+[DEBUG] hart 5 resumed
+[DEBUG] hart 5 suspended retentive
+[DEBUG] hart 5 stopped
+[DEBUG] hart 7 resumed
+[DEBUG] hart 7 suspended retentive
+[DEBUG] hart 7 stopped
+[ INFO] Testing Pass: [4, 5, 7]
+[ INFO] Sbi `HSM` test pass
+[ INFO] Testing `DBCN`
+Hello, world!
+[ INFO] writing slice successfuly
+[ INFO] reading 0 bytes from console
+[ INFO] Sbi `DBCN` test pass
 ```
 
 ## Run test kernel
@@ -75,7 +120,7 @@ When running `cargo qemu`, the test kernel will build and run. Expected output s
 
 You should have `cargo-binutils` installed.
 
-```
+```shell
 cargo install cargo-binutils
 ```
 
@@ -87,10 +132,10 @@ Run with:
 cargo test
 ```
 
-It will run RustSBI-QEMU with a test kernel. The test kernel will test all SBI functions, 
+It will run RustSBI-QEMU with a test kernel. The test kernel will test all SBI functions,
 its command emulation and other features. If it succeeds, there would be output like:
 
-```
+```plaintext
 running 1 test
     Finished dev [unoptimized + debuginfo] target(s) in 0.14s
    Compiling test-kernel v0.1.0 (D:\RustProjects\rustsbi-qemu\test-kernel)
@@ -104,32 +149,32 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 1. What kind of kernel does this project support?
 
-The rustsbi-qemu project supports raw binary kernels for educational or
-competition use. This project itself is only a showcase example illustrating how
-implementations should use RustSBI, it does not include a Linux boot support.
-You may visit downstream bootloader projects for a Linux capable bootloader.
+   The rustsbi-qemu project supports raw binary kernels for educational or
+   competition use. This project itself is only a showcase example illustrating how
+   implementations should use RustSBI, it does not include a Linux boot support.
+   You may visit downstream bootloader projects for a Linux capable bootloader.
 
 2. How to enable hypervisor H extension on QEMU?
 
-You should use these following line of parameters:
+   You should use these following line of parameters:
 
-```rust
-    command.args(&["-cpu", "rv64,x-h=true"]);
-```
+   ```rust
+       command.args(&["-cpu", "rv64,x-h=true"]);
+   ```
 
-... to enable H extension on QEMU software.  
-  
-The H extension is enabled by default when QEMU version >= 7.0.0.
+   ... to enable H extension on QEMU software.
+
+   The H extension is enabled by default when QEMU version >= 7.0.0.
 
 3. What is the minimum supported Rust version of this package?
 
-You should build RustSBI-QEMU on nightly at least `rustc 1.66.0-nightly (a24a020e6 2022-10-18)`.
+   You should build RustSBI-QEMU on nightly at least `rustc 1.66.0-nightly (a24a020e6 2022-10-18)`.
 
-## License 
+## License
 
 This project is licensed under Mulan PSL v2.
 
-```text
+```plaintext
 Copyright (c) 2021-2023 RustSBI Team
 RustSBI-QEMU is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
