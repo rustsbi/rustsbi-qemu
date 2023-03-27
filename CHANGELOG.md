@@ -10,7 +10,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Hint spin loop in hart state monitor module
 - Add crate *bench-kernel* to workspace for sbi call bench
-- Add crate *uart16550* for 16550 define
 - Add SBI DBCN extension support
 
 ### Modified
@@ -23,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Use crate *aclint* version 0.0.0 in rustsbi-qemu for aclint structs
 - Use crate *os-xtask-utils* version 0.0.0 in xtask builder
 - Use crate *sifive-test-device* version 0.0.0 instead of qemu-exit
+- Use crate *uart16550* version 0.0.0 for 16550 definition
 - Use `wfi` for suspend and stop without enable mie
 
 ### Fixed
