@@ -27,7 +27,7 @@ rcore-console = "0.0.0"
 aclint = "0.0.0"
 sifive-test-device = "0.0.0"
 dtb-walker = "=0.2.0-alpha.3"
-uart16550 = "0.0.0"
+uart16550 = "0.0.1"
 
 hsm-cell = { path = "../hsm-cell" }
 fast-trap = { version = "=0.0.1", features = ["riscv-m"] }
