@@ -225,7 +225,7 @@ extern "C" fn fast_handler(
             _ => match mcause::read().cause() {
                 // SBI call
                 T::Exception(E::SupervisorEnvCall) => {
-                    use rustsbi::spec::{base, hsm, legacy};
+                    use sbi_spec::{base, hsm, legacy};
                     let mut ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
                         a7,
                         a6,

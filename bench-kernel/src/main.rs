@@ -3,11 +3,10 @@
 #![feature(naked_functions, asm_const)]
 #![deny(warnings)]
 
-use core::mem::MaybeUninit;
 use rcore_console::log;
 use riscv::register::*;
 use sbi_rt::*;
-use uart_16550::MmioSerialPort;
+use uart16550::Uart16550;
 
 #[naked]
 #[no_mangle]
@@ -42,7 +41,7 @@ extern "C" fn rust_main(hartid: usize, _dtb_pa: usize) -> ! {
         }
     }
     // 初始化打印
-    unsafe { UART = MaybeUninit::new(MmioSerialPort::new(0x1000_0000)) };
+    unsafe { UART = Uart16550Map(0x1000_0000 as _) };
     rcore_console::init_console(&Console);
     rcore_console::set_log_level(option_env!("LOG"));
     rcore_console::test_log();
@@ -112,11 +111,27 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 struct Console;
-static mut UART: MaybeUninit<MmioSerialPort> = MaybeUninit::uninit();
+static mut UART: Uart16550Map = Uart16550Map(core::ptr::null());
+
+pub struct Uart16550Map(*const Uart16550<u8>);
+
+unsafe impl Sync for Uart16550Map {}
+
+impl Uart16550Map {
+    #[inline]
+    pub fn get(&self) -> &Uart16550<u8> {
+        unsafe { &*self.0 }
+    }
+}
 
 impl rcore_console::Console for Console {
     #[inline]
     fn put_char(&self, c: u8) {
-        unsafe { UART.assume_init_mut() }.send(c);
+        unsafe { UART.get().write(core::slice::from_ref(&c)) };
+    }
+
+    #[inline]
+    fn put_str(&self, s: &str) {
+        unsafe { UART.get().write(s.as_bytes()) };
     }
 }
