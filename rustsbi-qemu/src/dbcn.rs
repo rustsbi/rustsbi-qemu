@@ -2,7 +2,10 @@
 
 use crate::uart16550;
 use core::ops::Range;
-use rustsbi::{spec::binary::SbiRet, Console, Physical};
+use rustsbi::{
+    spec::binary::{Physical, SbiRet},
+    Console,
+};
 use spin::Once;
 
 pub(crate) struct DBCN(Range<usize>);

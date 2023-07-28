@@ -1,3 +1,4 @@
 [workspace]
 members = ["rustsbi-qemu", "hsm-cell", "test-kernel", "bench-kernel", "xtask"]
 default-members = ["xtask"]
+resolver = "2"

@@ -354,6 +354,8 @@ type FixedRustSBI<'a> = RustSBI<
     &'a qemu_test::QemuTest,
     Infallible,
     &'a dbcn::DBCN,
+    Infallible,
+    Infallible,
 >;
 
 struct Hsm;
