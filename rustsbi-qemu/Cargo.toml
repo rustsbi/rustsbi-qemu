@@ -1,7 +1,7 @@
 [package]
 name = "rustsbi-qemu"
 description = "RustSBI support package for QEMU"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 authors = [
     "Luo Jia <me@luojia.cc>",
     "YdrMaster <ydrmaster@hotmail.com>",
@@ -17,8 +17,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = "0.3.1"
-sbi-spec = { version = "0.0.4", features = ["legacy"] }
+rustsbi = { git = "https://github.com/rustsbi/rustsbi", features = ["machine"] }
+sbi-spec = { version = "0.0.7-alpha.3", features = ["legacy"] }
 riscv = "0.10.1"
 spin = "0.9"
 uart_16550 = "0.2"

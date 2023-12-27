@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Modified
 
-- Use instance based RustSBI interface, with separate functions for legacy stdio
+- Use derive macro based RustSBI interface, with separate functions for legacy stdio
 - Update sbi-testing to version 0.0.1
 - Use crate fast-trap version 0.0.1 in rustsbi-qemu for trap handling
 - Use crate rcore-console version 0.0.0 in rustsbi-qemu and test-kernel for `print!` and `println!`
