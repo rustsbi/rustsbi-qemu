@@ -89,7 +89,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
         // 打印启动信息
         print!(
             "\
-[rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v1.0.0
+[rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v2.0.0
 {logo}
 [rustsbi] Implementation     : RustSBI-QEMU Version {ver_impl}
 [rustsbi] Platform Name      : {model}

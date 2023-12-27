@@ -2,3 +2,6 @@
 resolver = "2"
 members = ["rustsbi-qemu", "hsm-cell", "test-kernel", "bench-kernel", "xtask"]
 default-members = ["xtask"]
+
+[profile.release]
+opt-level = 3
