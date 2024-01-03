@@ -1,6 +1,4 @@
-﻿#![allow(unused)]
-
-use crate::uart16550;
+﻿use crate::uart16550;
 use core::ops::Range;
 use rustsbi::{
     spec::binary::{Physical, SbiRet},
