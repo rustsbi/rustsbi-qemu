@@ -17,15 +17,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustsbi = { git = "https://github.com/rustsbi/rustsbi", features = ["machine"] }
+rustsbi = { git = "https://github.com/rustsbi/rustsbi", rev = "4c40cd", features = [
+    "machine",
+] }
 sbi-spec = { version = "0.0.7-alpha.3", features = ["legacy"] }
 riscv = "0.10.1"
 spin = "0.9"
-uart_16550 = "0.2"
 rcore-console = "0.0.0"
 aclint = "0.0.0"
 sifive-test-device = "0.0.0"
 dtb-walker = "=0.2.0-alpha.3"
+uart16550 = "0.0.1"
 
 hsm-cell = { path = "../hsm-cell" }
 fast-trap = { version = "=0.0.1", features = ["riscv-m"] }

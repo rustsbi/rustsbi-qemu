@@ -6,10 +6,9 @@
 #[macro_use]
 extern crate rcore_console;
 
-use core::{arch::asm, mem::MaybeUninit};
+use core::{arch::asm, ptr::null};
 use sbi_testing::sbi;
-use spin::Mutex;
-use uart_16550::MmioSerialPort;
+use uart16550::Uart16550;
 
 /// 内核入口。
 ///
@@ -53,7 +52,7 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
         frequency,
         uart,
     } = BoardInfo::parse(dtb_pa);
-    *UART.lock() = MaybeUninit::new(unsafe { MmioSerialPort::new(uart) });
+    unsafe { UART = Uart16550Map(uart as _) };
     rcore_console::init_console(&Console);
     rcore_console::set_log_level(option_env!("LOG"));
     println!(
@@ -70,14 +69,17 @@ extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
 | dtb physical address  | {dtb_pa:#20x} |
 ------------------------------------------------"
     );
-    sbi_testing::Testing {
+    let testing = sbi_testing::Testing {
         hartid,
         hart_mask: (1 << smp) - 1,
         hart_mask_base: 0,
         delay: frequency,
+    };
+    if testing.test() {
+        sbi::system_reset(sbi::Shutdown, sbi::NoReason);
+    } else {
+        sbi::system_reset(sbi::Shutdown, sbi::SystemFailure);
     }
-    .test();
-    sbi::system_reset(sbi::Shutdown, sbi::NoReason);
     unreachable!()
 }
 
@@ -152,20 +154,27 @@ impl BoardInfo {
 }
 
 struct Console;
-static UART: Mutex<MaybeUninit<MmioSerialPort>> = Mutex::new(MaybeUninit::uninit());
+static mut UART: Uart16550Map = Uart16550Map(null());
+
+pub struct Uart16550Map(*const Uart16550<u8>);
+
+unsafe impl Sync for Uart16550Map {}
+
+impl Uart16550Map {
+    #[inline]
+    pub fn get(&self) -> &Uart16550<u8> {
+        unsafe { &*self.0 }
+    }
+}
 
 impl rcore_console::Console for Console {
     #[inline]
     fn put_char(&self, c: u8) {
-        unsafe { UART.lock().assume_init_mut() }.send(c);
+        unsafe { UART.get().write(core::slice::from_ref(&c)) };
     }
 
     #[inline]
     fn put_str(&self, s: &str) {
-        let mut uart = UART.lock();
-        let uart = unsafe { uart.assume_init_mut() };
-        for c in s.bytes() {
-            uart.send(c);
-        }
+        unsafe { UART.get().write(s.as_bytes()) };
     }
 }

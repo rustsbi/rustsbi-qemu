@@ -4,12 +4,14 @@
 #![deny(warnings)]
 
 mod clint;
+mod dbcn;
 mod device_tree;
 mod hart_csr_utils;
 mod qemu_test;
 mod riscv_spec;
 mod trap_stack;
 mod trap_vec;
+mod uart16550;
 
 mod constants {
     /// 特权软件入口。
@@ -33,10 +35,9 @@ use device_tree::BoardInfo;
 use fast_trap::{FastContext, FastResult};
 use riscv_spec::*;
 use rustsbi::{RustSBI, SbiRet};
-use spin::{Mutex, Once};
+use spin::Once;
 use trap_stack::{local_hsm, local_remote_hsm, remote_hsm};
 use trap_vec::trap_vec;
-use uart_16550::MmioSerialPort;
 
 /// 入口。
 ///
@@ -81,11 +82,12 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
         // 解析设备树
         let board_info = BOARD_INFO.call_once(|| device_tree::parse(opaque));
         // 初始化外设
-        *UART.lock() = MaybeUninit::new(unsafe { MmioSerialPort::new(board_info.uart.start) });
+        uart16550::init(board_info.uart.start);
         rcore_console::init_console(&Console);
         rcore_console::set_log_level(option_env!("LOG"));
         clint::init(board_info.clint.start);
         qemu_test::init(board_info.test.start);
+        dbcn::init(SUPERVISOR_ENTRY..board_info.mem.end);
         // 打印启动信息
         print!(
             "\
@@ -115,6 +117,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
                 clint: &clint::Clint,
                 hsm: Hsm,
                 reset: qemu_test::get(),
+                dbcn: dbcn::get(),
             });
         }
         // 设置并打印 pmp
@@ -253,8 +256,15 @@ extern "C" fn fast_handler(
                                 ret.value = a1;
                             }
                             legacy::LEGACY_CONSOLE_GETCHAR => {
-                                ret.error = unsafe { UART.lock().assume_init_mut() }.receive() as _;
-                                ret.value = a1;
+                                let mut c = 0u8;
+                                let uart = uart16550::UART.lock();
+                                loop {
+                                    if uart.get().read(core::slice::from_mut(&mut c)) == 1 {
+                                        ret.error = c as _;
+                                        ret.value = a1;
+                                        break;
+                                    }
+                                }
                             }
                             _ => {}
                         }
@@ -306,20 +316,23 @@ struct Supervisor {
 }
 
 struct Console;
-static UART: Mutex<MaybeUninit<MmioSerialPort>> = Mutex::new(MaybeUninit::uninit());
 
 impl rcore_console::Console for Console {
     #[inline]
     fn put_char(&self, c: u8) {
-        unsafe { UART.lock().assume_init_mut() }.send(c);
+        let uart = uart16550::UART.lock();
+        while uart.get().write(&[c]) == 0 {
+            core::hint::spin_loop();
+        }
     }
 
     #[inline]
     fn put_str(&self, s: &str) {
-        let mut uart = UART.lock();
-        let uart = unsafe { uart.assume_init_mut() };
-        for c in s.bytes() {
-            uart.send(c);
+        let uart = uart16550::UART.lock();
+        let mut bytes = s.as_bytes();
+        while !bytes.is_empty() {
+            let count = uart.get().write(bytes);
+            bytes = &bytes[count..];
         }
     }
 }
@@ -332,6 +345,7 @@ struct FixedRustSBI<'a> {
     clint: &'a clint::Clint,
     hsm: Hsm,
     reset: &'a qemu_test::QemuTest,
+    dbcn: &'a dbcn::DBCN,
 }
 
 struct Hsm;
