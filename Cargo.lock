@@ -162,7 +162,7 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 name = "hsm-cell"
 version = "0.1.0"
 dependencies = [
- "sbi-spec 0.0.7-alpha.3",
+ "sbi-spec",
 ]
 
 [[package]]
@@ -257,7 +257,7 @@ source = "git+https://github.com/rustsbi/rustsbi?rev=4c40cd#4c40cdce2de8d92d69e7
 dependencies = [
  "riscv",
  "rustsbi-macros",
- "sbi-spec 0.0.7-alpha.3",
+ "sbi-spec",
 ]
 
 [[package]]
@@ -280,7 +280,7 @@ dependencies = [
  "rcore-console",
  "riscv",
  "rustsbi",
- "sbi-spec 0.0.7-alpha.3",
+ "sbi-spec",
  "sifive-test-device",
  "spin",
  "uart16550",
@@ -292,16 +292,7 @@ version = "0.0.3-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16fd1c8d9255a1cc094f2dde32da32dbae1ab945656a684b168bf75ed5dccbb6"
 dependencies = [
- "sbi-spec 0.0.7-alpha.3",
-]
-
-[[package]]
-name = "sbi-spec"
-version = "0.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ebf26c3dc91286b60cf8ac92beed06259b42c1a111cef74e0a05348ddfca224"
-dependencies = [
- "static_assertions",
+ "sbi-spec",
 ]
 
 [[package]]
@@ -315,13 +306,13 @@ dependencies = [
 
 [[package]]
 name = "sbi-testing"
-version = "0.0.2"
-source = "git+https://github.com/rustsbi/sbi-testing?rev=37b9a3c#37b9a3c75d5e7b1f68fafef5138d4e4beab459d1"
+version = "0.0.3-rc.0"
+source = "git+https://github.com/rustsbi/sbi-testing?rev=3b0089#3b0089d073b2ff43d986f01807cd2759aee90ec7"
 dependencies = [
  "log",
  "riscv",
  "sbi-rt",
- "sbi-spec 0.0.6",
+ "sbi-spec",
 ]
 
 [[package]]
