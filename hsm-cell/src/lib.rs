@@ -31,7 +31,7 @@ impl<T> HsmCell<T> {
     /// 创建一个新的共享对象。
     pub const fn new() -> Self {
         Self {
-            status: AtomicUsize::new(HART_STATE_STOPPED),
+            status: AtomicUsize::new(hart_state::STOPPED),
             val: UnsafeCell::new(None),
         }
     }
@@ -59,8 +59,8 @@ impl<T> LocalHsmCell<'_, T> {
     pub fn start(&self) -> Result<T, usize> {
         loop {
             match self.0.status.compare_exchange(
-                HART_STATE_START_PENDING,
-                HART_STATE_STARTED,
+                hart_state::START_PENDING,
+                hart_state::STARTED,
                 Ordering::AcqRel,
                 Ordering::Relaxed,
             ) {
@@ -74,19 +74,21 @@ impl<T> LocalHsmCell<'_, T> {
     /// 关闭。
     #[inline]
     pub fn stop(&self) {
-        self.0.status.store(HART_STATE_STOPPED, Ordering::Release)
+        self.0.status.store(hart_state::STOPPED, Ordering::Release)
     }
 
     /// 关闭。
     #[inline]
     pub fn suspend(&self) {
-        self.0.status.store(HART_STATE_SUSPENDED, Ordering::Relaxed)
+        self.0
+            .status
+            .store(hart_state::SUSPENDED, Ordering::Relaxed)
     }
 
     /// 关闭。
     #[inline]
     pub fn resume(&self) {
-        self.0.status.store(HART_STATE_STARTED, Ordering::Relaxed)
+        self.0.status.store(hart_state::STARTED, Ordering::Relaxed)
     }
 }
 
@@ -98,7 +100,7 @@ impl<T> RemoteHsmCell<'_, T> {
             .0
             .status
             .compare_exchange(
-                HART_STATE_STOPPED,
+                hart_state::STOPPED,
                 HART_STATE_START_PENDING_EXT,
                 Ordering::Acquire,
                 Ordering::Relaxed,
@@ -108,7 +110,7 @@ impl<T> RemoteHsmCell<'_, T> {
             unsafe { *self.0.val.get() = Some(t) };
             self.0
                 .status
-                .store(HART_STATE_START_PENDING, Ordering::Release);
+                .store(hart_state::START_PENDING, Ordering::Release);
             true
         } else {
             false
@@ -119,7 +121,7 @@ impl<T> RemoteHsmCell<'_, T> {
     #[inline]
     pub fn sbi_get_status(&self) -> usize {
         match self.0.status.load(Ordering::Relaxed) {
-            HART_STATE_START_PENDING_EXT => HART_STATE_START_PENDING,
+            HART_STATE_START_PENDING_EXT => hart_state::START_PENDING,
             normal => normal,
         }
     }
@@ -129,7 +131,7 @@ impl<T> RemoteHsmCell<'_, T> {
     pub fn allow_ipi(&self) -> bool {
         matches!(
             self.0.status.load(Ordering::Relaxed),
-            HART_STATE_STARTED | HART_STATE_SUSPENDED
+            hart_state::STARTED | hart_state::SUSPENDED
         )
     }
 }

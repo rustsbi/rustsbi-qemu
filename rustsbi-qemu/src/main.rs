@@ -28,14 +28,13 @@ extern crate rcore_console;
 use constants::*;
 use core::{
     arch::asm,
-    convert::Infallible,
     mem::MaybeUninit,
     sync::atomic::{AtomicBool, Ordering},
 };
 use device_tree::BoardInfo;
 use fast_trap::{FastContext, FastResult};
 use riscv_spec::*;
-use rustsbi::{spec::binary::SbiRet, RustSBI};
+use rustsbi::{RustSBI, SbiRet};
 use spin::Once;
 use trap_stack::{local_hsm, local_remote_hsm, remote_hsm};
 use trap_vec::trap_vec;
@@ -92,7 +91,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
         // 打印启动信息
         print!(
             "\
-[rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v1.0.0
+[rustsbi] RustSBI version {ver_sbi}, adapting to RISC-V SBI v2.0.0
 {logo}
 [rustsbi] Implementation     : RustSBI-QEMU Version {ver_impl}
 [rustsbi] Platform Name      : {model}
@@ -114,15 +113,12 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
         );
         // 初始化 SBI
         unsafe {
-            SBI = MaybeUninit::new(
-                rustsbi::Builder::new_machine()
-                    .with_ipi(&clint::Clint)
-                    .with_timer(&clint::Clint)
-                    .with_hsm(Hsm)
-                    .with_reset(qemu_test::get())
-                    .with_console(dbcn::get())
-                    .build(),
-            );
+            SBI = MaybeUninit::new(FixedRustSBI {
+                clint: &clint::Clint,
+                hsm: Hsm,
+                reset: qemu_test::get(),
+                dbcn: dbcn::get(),
+            });
         }
         // 设置并打印 pmp
         set_pmp(board_info);
@@ -237,10 +233,7 @@ extern "C" fn fast_handler(
                             (hsm::EID_HSM, hsm::HART_STOP) => continue,
                             // 不可恢复挂起
                             (hsm::EID_HSM, hsm::HART_SUSPEND)
-                                if matches!(
-                                    ctx.a0() as u32,
-                                    hsm::HART_SUSPEND_TYPE_NON_RETENTIVE
-                                ) =>
+                                if matches!(ctx.a0() as u32, hsm::suspend_type::NON_RETENTIVE) =>
                             {
                                 break boot(ctx, a1, a2);
                             }
@@ -346,17 +339,14 @@ impl rcore_console::Console for Console {
 
 static mut SBI: MaybeUninit<FixedRustSBI> = MaybeUninit::uninit();
 
-type FixedRustSBI<'a> = RustSBI<
-    &'a clint::Clint,
-    &'a clint::Clint,
-    Infallible,
-    Hsm,
-    &'a qemu_test::QemuTest,
-    Infallible,
-    &'a dbcn::DBCN,
-    Infallible,
-    Infallible,
->;
+#[derive(RustSBI)]
+struct FixedRustSBI<'a> {
+    #[rustsbi(ipi, timer)]
+    clint: &'a clint::Clint,
+    hsm: Hsm,
+    reset: &'a qemu_test::QemuTest,
+    dbcn: &'a dbcn::DBCN,
+}
 
 struct Hsm;
 
@@ -390,11 +380,8 @@ impl rustsbi::Hsm for Hsm {
     }
 
     fn hart_suspend(&self, suspend_type: u32, _resume_addr: usize, _opaque: usize) -> SbiRet {
-        use rustsbi::spec::hsm::{HART_SUSPEND_TYPE_NON_RETENTIVE, HART_SUSPEND_TYPE_RETENTIVE};
-        if matches!(
-            suspend_type,
-            HART_SUSPEND_TYPE_NON_RETENTIVE | HART_SUSPEND_TYPE_RETENTIVE
-        ) {
+        use rustsbi::spec::hsm::suspend_type::{NON_RETENTIVE, RETENTIVE};
+        if matches!(suspend_type, NON_RETENTIVE | RETENTIVE) {
             local_hsm().suspend();
             unsafe { riscv::asm::wfi() };
             local_hsm().resume();
