@@ -72,8 +72,8 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
             static mut ebss: u64;
         }
         unsafe {
-            let mut ptr = &mut sbss as *mut u64;
-            let end = &mut ebss as *mut u64;
+            let mut ptr = sbss as *mut u64;
+            let end = ebss as *mut u64;
             while ptr < end {
                 ptr.write_volatile(0);
                 ptr = ptr.offset(1);
