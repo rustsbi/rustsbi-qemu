@@ -10,9 +10,9 @@ checksum = "8a01ba40421eca6c4f1afcedd8465fba6d9e5ef8e0e13060d0141e4cded4ab4a"
 
 [[package]]
 name = "anstream"
-version = "0.6.5"
+version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d664a92ecae85fd0a7392615844904654d1d5f5514837f471ddef4a057aba1b6"
+checksum = "6e2e1ebcb11de5c03c67de28a7df593d32191b44939c482e97702baaaa6ab6a5"
 dependencies = [
  "anstyle",
  "anstyle-parse",
@@ -24,9 +24,9 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.4"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7079075b41f533b8c61d2a4d073c4676e1f8b249ff94a393b0595db304e0dd87"
+checksum = "8901269c6307e8d93993578286ac0edf7f195079ffff5ebdeea6a59ffb7e36bc"
 
 [[package]]
 name = "anstyle-parse"
@@ -67,7 +67,7 @@ name = "bench-kernel"
 version = "0.0.1"
 dependencies = [
  "rcore-console",
- "riscv",
+ "riscv 0.10.1",
  "sbi-rt",
  "uart16550",
 ]
@@ -80,9 +80,9 @@ checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
 
 [[package]]
 name = "clap"
-version = "4.4.12"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcfab8ba68f3668e89f6ff60f5b205cea56aa7b769451a59f34b8682f51c056d"
+checksum = "80c21025abd42669a92efc996ef13cfb2c5c627858421ea58d5c3b331a6c134f"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -90,9 +90,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.4.12"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb7fb5e4e979aec3be7791562fcba452f94ad85e954da024396433e0e25a79e9"
+checksum = "458bf1f341769dfcf849846f65dffdf9146daa56bcd2a47cb4e1de9915567c99"
 dependencies = [
  "anstream",
  "anstyle",
@@ -102,9 +102,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.4.7"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf9804afaaf59a91e75b022a30fb7229a7901f60c755489cc61c9b423b836442"
+checksum = "307bc0538d5f0f83b8248db3087aa92fe504e4691294d0c96c0eabc33f47ba47"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -114,9 +114,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
+checksum = "98cc8fbded0c607b7ba9dd60cd98df59af97e84d24e49c8557331cfc26d301ce"
 
 [[package]]
 name = "colorchoice"
@@ -145,6 +145,12 @@ dependencies = [
  "nb 0.1.3",
  "void",
 ]
+
+[[package]]
+name = "embedded-hal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
 name = "fast-trap"
@@ -213,9 +219,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.74"
+version = "1.0.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2de98502f212cfcea8d0bb305bd0f49d7ebdd75b64ba0a68f937d888f4e0d6db"
+checksum = "e2422ad645d89c99f8f3e6b88a9fdeca7fabeac836b1002371c4367c8f984aae"
 dependencies = [
  "unicode-ident",
 ]
@@ -247,15 +253,26 @@ checksum = "aa3145d2fae3778b1e31ec2e827b228bdc6abd9b74bb5705ba46dcb82069bc4f"
 dependencies = [
  "bit_field",
  "critical-section",
- "embedded-hal",
+ "embedded-hal 0.2.7",
+]
+
+[[package]]
+name = "riscv"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "575e01d1b3282801143c2a09e5ddddb0be7fc9bec2f1d624b789c9e9559a0023"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
 ]
 
 [[package]]
 name = "rustsbi"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/rustsbi/rustsbi?rev=4c40cd#4c40cdce2de8d92d69e7ea200e51fdc23c9635fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0744b6a074f4ab221e43646c9354e17c44105d23270aee4f86b9a7736ca824f"
 dependencies = [
- "riscv",
+ "riscv 0.11.0",
  "rustsbi-macros",
  "sbi-spec",
 ]
@@ -263,7 +280,8 @@ dependencies = [
 [[package]]
 name = "rustsbi-macros"
 version = "0.0.0"
-source = "git+https://github.com/rustsbi/rustsbi?rev=4c40cd#4c40cdce2de8d92d69e7ea200e51fdc23c9635fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6991154c41fa778262e77b2e4f3320b2620d51489f65ea26fd8c8912aae142f6"
 dependencies = [
  "quote",
  "syn",
@@ -278,9 +296,8 @@ dependencies = [
  "fast-trap",
  "hsm-cell",
  "rcore-console",
- "riscv",
+ "riscv 0.10.1",
  "rustsbi",
- "sbi-spec",
  "sifive-test-device",
  "spin",
  "uart16550",
@@ -288,21 +305,18 @@ dependencies = [
 
 [[package]]
 name = "sbi-rt"
-version = "0.0.3-rc.5"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16fd1c8d9255a1cc094f2dde32da32dbae1ab945656a684b168bf75ed5dccbb6"
+checksum = "7fbaa69be1eedc61c426e6d489b2260482e928b465360576900d52d496a58bd0"
 dependencies = [
  "sbi-spec",
 ]
 
 [[package]]
 name = "sbi-spec"
-version = "0.0.7-alpha.3"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c890910c48a523b53b7cb0a27f20d169facd2281a2cae2220cddd314c7bee951"
-dependencies = [
- "static_assertions",
-]
+checksum = "e6e36312fb5ddc10d08ecdc65187402baba4ac34585cb9d1b78522ae2358d890"
 
 [[package]]
 name = "sbi-testing"
@@ -310,7 +324,7 @@ version = "0.0.3-rc.0"
 source = "git+https://github.com/rustsbi/sbi-testing?rev=3b0089#3b0089d073b2ff43d986f01807cd2759aee90ec7"
 dependencies = [
  "log",
- "riscv",
+ "riscv 0.10.1",
  "sbi-rt",
  "sbi-spec",
 ]
@@ -337,22 +351,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
 name = "strsim"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+checksum = "5ee073c9e4cd00e28217186dbe12796d692868f432bf2e97ee73bed0c56dfa01"
 
 [[package]]
 name = "syn"
-version = "2.0.46"
+version = "2.0.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89456b690ff72fddcecf231caedbe615c59480c93358a93dfae7fc29e3ebbf0e"
+checksum = "0f3531638e407dfc0814761abb7c00a5b54992b849452a0646b7f65c9f770f3f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -366,7 +374,7 @@ dependencies = [
  "dtb-walker",
  "log",
  "rcore-console",
- "riscv",
+ "riscv 0.10.1",
  "sbi-testing",
  "spin",
  "uart16550",
@@ -467,6 +475,5 @@ name = "xtask"
 version = "0.2.0"
 dependencies = [
  "clap",
- "once_cell",
  "os-xtask-utils",
 ]

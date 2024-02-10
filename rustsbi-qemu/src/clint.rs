@@ -4,7 +4,7 @@ use core::{
     ptr::null_mut,
     sync::atomic::{AtomicPtr, Ordering},
 };
-use rustsbi::{spec::binary::SbiRet, HartMask, Ipi, Timer};
+use rustsbi::{HartMask, Ipi, SbiRet, Timer};
 
 pub(crate) struct Clint;
 

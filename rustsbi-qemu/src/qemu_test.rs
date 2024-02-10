@@ -1,12 +1,9 @@
 use rustsbi::{
-    spec::{
-        binary::SbiRet,
-        srst::{
-            RESET_REASON_NO_REASON, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_COLD_REBOOT,
-            RESET_TYPE_SHUTDOWN, RESET_TYPE_WARM_REBOOT,
-        },
+    spec::srst::{
+        RESET_REASON_NO_REASON, RESET_REASON_SYSTEM_FAILURE, RESET_TYPE_COLD_REBOOT,
+        RESET_TYPE_SHUTDOWN, RESET_TYPE_WARM_REBOOT,
     },
-    Reset,
+    Reset, SbiRet,
 };
 use sifive_test_device::SifiveTestDevice;
 use spin::Once;
