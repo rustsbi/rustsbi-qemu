@@ -298,7 +298,6 @@ dependencies = [
  "rcore-console",
  "riscv 0.10.1",
  "rustsbi",
- "sbi-spec",
  "sifive-test-device",
  "spin",
  "uart16550",

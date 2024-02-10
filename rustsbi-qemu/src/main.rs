@@ -213,7 +213,7 @@ extern "C" fn fast_handler(
                 mie::write(mie::MSIE | mie::MTIE);
                 break boot(ctx, supervisor.start_addr, supervisor.opaque);
             }
-            Err(sbi_spec::hsm::HART_STOP) => {
+            Err(rustsbi::spec::hsm::HART_STOP) => {
                 mie::write(mie::MSIE);
                 unsafe { riscv::asm::wfi() };
                 clint::clear_msip();
