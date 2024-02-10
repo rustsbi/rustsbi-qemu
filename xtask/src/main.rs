@@ -2,16 +2,18 @@
 extern crate clap;
 
 use clap::Parser;
-use once_cell::sync::Lazy;
 use os_xtask_utils::{BinUtil, Cargo, CommandExt, Qemu};
 use std::{
     fs, io,
     path::{Path, PathBuf},
     process,
+    sync::OnceLock,
 };
 
-static PROJECT: Lazy<&'static Path> =
-    Lazy::new(|| Path::new(std::env!("CARGO_MANIFEST_DIR")).parent().unwrap());
+fn project() -> &'static Path {
+    static PROJECT: OnceLock<&'static Path> = OnceLock::new();
+    PROJECT.get_or_init(|| Path::new(std::env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+}
 
 #[derive(Parser)]
 #[clap(name = "RustSBI-Qemu")]
@@ -68,7 +70,7 @@ impl BuildArgs {
             })
             .target(target)
             .invoke();
-        let elf = PROJECT
+        let elf = project()
             .join("target")
             .join(target)
             .join(if self.debug { "debug" } else { "release" })
@@ -105,7 +107,7 @@ impl AsmArgs {
     /// 如果设置了 `kernel` 但不是 'test' 或 'test-kernel'，将 `kernel` 指定的二进制文件反汇编，并保存到指定位置。
     fn dump(self) {
         let elf = self.build.make(package(self.build.kernel.as_ref()), false);
-        let out = PROJECT.join(self.output.unwrap_or(format!(
+        let out = project().join(self.output.unwrap_or(format!(
             "{}.asm",
             elf.file_stem().unwrap().to_string_lossy()
         )));

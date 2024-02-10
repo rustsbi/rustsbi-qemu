@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Use derive macro based RustSBI interface, with separate functions for legacy stdio
 - Update sbi-testing to version 0.0.1
-- Update sbi-spec to version 0.0.6
+- Update sbi-spec to version 0.0.7
 - Use crate *fast-trap* version 0.0.1 in rustsbi-qemu for trap handling
 - Use crate *rcore-console* version 0.0.0 in rustsbi-qemu and test-kernel for `print!` and `println!`
 - Use crate *aclint* version 0.0.0 in rustsbi-qemu for aclint structs
@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Use crate *sifive-test-device* version 0.0.0 instead of qemu-exit
 - Use crate *uart16550* version 0.0.1 for 16550 definition
 - Use `wfi` for suspend and stop without enable mie
+- Remove crate *once_cell* from dependencies
 
 ### Fixed
 
