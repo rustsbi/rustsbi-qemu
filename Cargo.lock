@@ -298,6 +298,7 @@ dependencies = [
  "rcore-console",
  "riscv 0.10.1",
  "rustsbi",
+ "sbi-spec",
  "sifive-test-device",
  "spin",
  "uart16550",
@@ -320,11 +321,12 @@ checksum = "e6e36312fb5ddc10d08ecdc65187402baba4ac34585cb9d1b78522ae2358d890"
 
 [[package]]
 name = "sbi-testing"
-version = "0.0.3-rc.0"
-source = "git+https://github.com/rustsbi/sbi-testing?rev=3b0089#3b0089d073b2ff43d986f01807cd2759aee90ec7"
+version = "0.0.3-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "135c0f1ce07ede77a7e1c3daff35d20d37b54fd1037ac02ab9595c231518531e"
 dependencies = [
  "log",
- "riscv 0.10.1",
+ "riscv 0.11.0",
  "sbi-rt",
  "sbi-spec",
 ]
