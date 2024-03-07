@@ -60,11 +60,11 @@ When running `cargo qemu`, the test kernel will build and run. Expected output s
 [ INFO] mimp id = 0x70200
 [ INFO] Sbi `Base` test pass
 [ INFO] Testing `TIME`
-[ INFO] read time register successfuly, set timer +1s
-[ INFO] timer interrupt delegate successfuly
+[ INFO] read time register successfully, set timer +1s
+[ INFO] timer interrupt delegate successfully
 [ INFO] Sbi `TIME` test pass
 [ INFO] Testing `sPI`
-[ INFO] send ipi successfuly
+[ INFO] send ipi successfully
 [ INFO] Sbi `sPI` test pass
 [ INFO] Testing `HSM`
 [ INFO] Testing harts: [0, 1, 2, 3]
@@ -109,7 +109,7 @@ When running `cargo qemu`, the test kernel will build and run. Expected output s
 [ INFO] Sbi `HSM` test pass
 [ INFO] Testing `DBCN`
 Hello, world!
-[ INFO] writing slice successfuly
+[ INFO] writing slice successfully
 [ INFO] reading 0 bytes from console
 [ INFO] Sbi `DBCN` test pass
 ```
