@@ -1,16 +1,24 @@
 ﻿use crate::{fast_handler, hart_id, Supervisor, LEN_STACK_PER_HART, NUM_HART_MAX};
-use core::{mem::forget, ptr::NonNull};
+use core::{cell::UnsafeCell, mem::forget, ptr::NonNull};
 use fast_trap::{FlowContext, FreeTrapStack};
 use hsm_cell::{HsmCell, LocalHsmCell, RemoteHsmCell};
 
+#[repr(transparent)]
+struct HartLocal(UnsafeCell<Stack>);
+
+unsafe impl Sync for HartLocal {}
+
 /// 栈空间。
 #[link_section = ".bss.uninit"]
-static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
+static ROOT_STACK: [HartLocal; NUM_HART_MAX] = {
+    const INIT: HartLocal = HartLocal(UnsafeCell::new(Stack::ZERO));
+    [INIT; NUM_HART_MAX]
+};
 
 /// 定位每个 hart 的栈。
-#[naked]
+#[unsafe(naked)]
 pub(crate) unsafe extern "C" fn locate() {
-    core::arch::asm!(
+    core::arch::naked_asm!(
         "   la   sp, {stack}
             li   t0, {per_hart_stack_size}
             csrr t1, mhartid
@@ -24,43 +32,40 @@ pub(crate) unsafe extern "C" fn locate() {
         per_hart_stack_size = const LEN_STACK_PER_HART,
         stack               =   sym ROOT_STACK,
         move_stack          =   sym fast_trap::reuse_stack_for_trap,
-        options(noreturn),
     )
 }
 
 /// 预备陷入栈。
 pub(crate) fn prepare_for_trap() {
-    unsafe { ROOT_STACK.get_unchecked_mut(hart_id()).load_as_stack() };
+    unsafe {
+        let stack = &mut *ROOT_STACK.get_unchecked(hart_id()).0.get();
+        stack.load_as_stack()
+    };
 }
 
 /// 获取此 hart 的 local hsm 对象。
 pub(crate) fn local_hsm() -> LocalHsmCell<'static, Supervisor> {
     unsafe {
-        ROOT_STACK
-            .get_unchecked_mut(hart_id())
-            .hart_context()
-            .hsm
-            .local()
+        let stack = &mut *ROOT_STACK.get_unchecked(hart_id()).0.get();
+        stack.hart_context().hsm.local()
     }
 }
 
 /// 获取此 hart 的 remote hsm 对象。
 pub(crate) fn local_remote_hsm() -> RemoteHsmCell<'static, Supervisor> {
     unsafe {
-        ROOT_STACK
-            .get_unchecked_mut(hart_id())
-            .hart_context()
-            .hsm
-            .remote()
+        let stack = &mut *ROOT_STACK.get_unchecked(hart_id()).0.get();
+        stack.hart_context().hsm.remote()
     }
 }
 
 /// 获取任意 hart 的 remote hsm 对象。
 pub(crate) fn remote_hsm(hart_id: usize) -> Option<RemoteHsmCell<'static, Supervisor>> {
     unsafe {
-        ROOT_STACK
-            .get_mut(hart_id)
-            .map(|x| x.hart_context().hsm.remote())
+        ROOT_STACK.get(hart_id).map(|cell| {
+            let stack = &mut *cell.0.get();
+            stack.hart_context().hsm.remote()
+        })
     }
 }
 

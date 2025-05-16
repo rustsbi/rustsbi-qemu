@@ -33,6 +33,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Xtask will now print error when system does not have qemu installed
 - Fix dtb parsing for qemu 7.2
 
+## [0.1.0] - 2022-02-13
+
+### Added
+
+- Adapts to RustSBI version 0.2.0
+- Implement SBI non-retentive resume procedure
+- PMP updates, use stabilized core::arch::asm! macro, thanks to @wyfcyx
+- Fixes on usage of CLINT peripheral, thanks to @duskmoon314
+- Numerous fixes to HSM module implementation, more documents
+
 ## [0.1.1] - 2022-03-23
 
 ### Added
@@ -45,15 +55,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Use Rust Edition 2021
 - Modify test kernel message
 
-## [0.1.0] - 2022-02-13
+## [0.1.2] - 2025-05-16
 
-### Added
+### Modified
 
-- Adapts to RustSBI version 0.2.0
-- Implement SBI non-retentive resume procedure
-- PMP updates, use stabilized core::arch::asm! macro, thanks to @wyfcyx
-- Fixes on usage of CLINT peripheral, thanks to @duskmoon314
-- Numerous fixes to HSM module implementation, more documents
+- Bump fast-trap version to 0.1.0
+- Bump aclint version to 0.1.0
+
+### Fixed
+
+- Reorder date for CHANGELOG.md
+- Replace #[naked] with #[unsafe(naked)] across all relevant functions.
+- Remove `#![feature(naked_functions, asm_const)]` as they are no longer needed.
+- Switche to the `naked_asm!` macro to comply with new naked function requirements.
+- Remove `options(noreturn)`, which is not allowed in `naked_asm!`.
+- Fix warning `creating a mutable/shared reference to mutable static` in multiple files.
 
 [Unreleased]: https://github.com/rustsbi/rustsbi-qemu/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/rustsbi/rustsbi-qemu/compare/v0.1.0...v0.1.1

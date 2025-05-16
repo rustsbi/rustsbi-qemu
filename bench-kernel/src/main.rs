@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const)]
 #![deny(warnings)]
 
 use rcore_console::log;
@@ -8,7 +7,7 @@ use riscv::register::*;
 use sbi_rt::*;
 use uart16550::Uart16550;
 
-#[naked]
+#[unsafe(naked)]
 #[no_mangle]
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
@@ -17,13 +16,12 @@ unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     #[link_section = ".bss.uninit"]
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
 
-    core::arch::asm!(
+    core::arch::naked_asm!(
         "la sp,  {stack} + {stack_size}",
         "j  {main}",
         stack_size = const STACK_SIZE,
         stack      = sym   STACK,
         main       = sym   rust_main,
-        options(noreturn),
     )
 }
 
@@ -127,11 +125,17 @@ impl Uart16550Map {
 impl rcore_console::Console for Console {
     #[inline]
     fn put_char(&self, c: u8) {
-        unsafe { UART.get().write(core::slice::from_ref(&c)) };
+        unsafe {
+            let mut_ref_uart = (*(&raw mut UART)).get();
+            mut_ref_uart.write(core::slice::from_ref(&c));
+        }
     }
 
     #[inline]
     fn put_str(&self, s: &str) {
-        unsafe { UART.get().write(s.as_bytes()) };
+        unsafe {
+            let mut_ref_uart = (*(&raw mut UART)).get();
+            mut_ref_uart.write(s.as_bytes());
+        }
     }
 }

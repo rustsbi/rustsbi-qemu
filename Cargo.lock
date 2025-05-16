@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "aclint"
-version = "0.0.0"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a01ba40421eca6c4f1afcedd8465fba6d9e5ef8e0e13060d0141e4cded4ab4a"
+checksum = "8cc30f3f60fd3106787fa9b540e64372dd4793813c400ba12d113506e94dcb8c"
 
 [[package]]
 name = "anstream"
@@ -154,9 +154,9 @@ checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
 name = "fast-trap"
-version = "0.0.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fbe69badc2e0dc98ad2787648fa140b5772d24b49e9a6b180a67e1348f7544c"
+checksum = "46da95e6fcc7619a12d05594693e48591c0b574aef6fe5d7a7e765e6763a2cb2"
 
 [[package]]
 name = "heck"

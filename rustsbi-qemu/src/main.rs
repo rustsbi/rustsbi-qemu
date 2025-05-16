@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const)]
 #![deny(warnings)]
 
 mod clint;
@@ -27,15 +26,13 @@ extern crate rcore_console;
 
 use constants::*;
 use core::{
-    arch::asm,
-    mem::MaybeUninit,
-    sync::atomic::{AtomicBool, Ordering},
+    arch::{asm, naked_asm}, mem::MaybeUninit, sync::atomic::{AtomicBool, Ordering}
 };
 use device_tree::BoardInfo;
 use fast_trap::{FastContext, FastResult};
 use riscv_spec::*;
 use rustsbi::{RustSBI, SbiRet};
-use spin::Once;
+use spin::{Mutex, Once};
 use trap_stack::{local_hsm, local_remote_hsm, remote_hsm};
 use trap_vec::trap_vec;
 
@@ -44,11 +41,11 @@ use trap_vec::trap_vec;
 /// # Safety
 ///
 /// 裸函数。
-#[naked]
+#[unsafe(naked)]
 #[no_mangle]
 #[link_section = ".text.entry"]
 unsafe extern "C" fn _start() -> ! {
-    asm!(
+    naked_asm!(
         "   call {locate_stack}
             call {rust_main}
             j    {trap}
@@ -56,7 +53,6 @@ unsafe extern "C" fn _start() -> ! {
         locate_stack = sym trap_stack::locate,
         rust_main    = sym rust_main,
         trap         = sym trap_vec,
-        options(noreturn),
     )
 }
 
@@ -112,13 +108,14 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
             firmware = _start as usize,
         );
         // 初始化 SBI
+        let sbi = SBI.lock().as_mut_ptr();
         unsafe {
-            SBI = MaybeUninit::new(FixedRustSBI {
+            *sbi = FixedRustSBI {
                 clint: &clint::Clint,
                 hsm: Hsm,
                 reset: qemu_test::get(),
                 dbcn: dbcn::get(),
-            });
+            };
         }
         // 设置并打印 pmp
         set_pmp(board_info);
@@ -222,11 +219,14 @@ extern "C" fn fast_handler(
                 // SBI call
                 T::Exception(E::SupervisorEnvCall) => {
                     use sbi_spec::{base, hsm, legacy};
-                    let mut ret = unsafe { SBI.assume_init_mut() }.handle_ecall(
-                        a7,
-                        a6,
-                        [ctx.a0(), a1, a2, a3, a4, a5],
-                    );
+                    let mut ret = unsafe {
+                        let sbi = SBI.lock().as_mut_ptr();
+                        (*sbi).handle_ecall(
+                            a7,
+                            a6,
+                            [ctx.a0(), a1, a2, a3, a4, a5],
+                        )
+                    };
                     if ret.is_ok() {
                         match (a7, a6) {
                             // 关闭
@@ -337,7 +337,7 @@ impl rcore_console::Console for Console {
     }
 }
 
-static mut SBI: MaybeUninit<FixedRustSBI> = MaybeUninit::uninit();
+static SBI: Mutex<MaybeUninit<FixedRustSBI>> = Mutex::new(MaybeUninit::uninit());
 
 #[derive(RustSBI)]
 struct FixedRustSBI<'a> {
