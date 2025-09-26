@@ -1,3 +1,6 @@
+Project archived: see RustSBI Prototyper instead. Link: https://github.com/rustsbi/rustsbi
+
+
 # QEMU support from RustSBI
 
 RustSBI is designed as a library to craft a bootable binary or ELF file. However, QEMU provides us a way to load ELF
