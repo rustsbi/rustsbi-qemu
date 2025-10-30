@@ -55,6 +55,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fixes on usage of CLINT peripheral, thanks to @duskmoon314
 - Numerous fixes to HSM module implementation, more documents
 
+## [0.1.1] - 2025-04-22
+
+### Modified
+- Replaced #[naked] with #[unsafe(naked)] across all relevant functions.
+- Removed `#![feature(naked_functions, asm_const)]` as they are no longer needed.
+- Switched to the `naked_asm!` macro to comply with new naked function requirements.
+- Removed `options(noreturn)`, which is not allowed in `naked_asm!`.
+- Updated implementations of `put_char` and `put_str` in 
+  `impl rcore_console::Console for Console` to avoid errors caused by 
+  creating shared references to mutable statics.
+- Updated GitHub Actions YAML workflow files to replace `ubuntu-20.04` with 
+  `ubuntu-22.04` for CI compatibility.
+- Updated GitHub Actions YAML workflow files to replace `ubuntu-20.04` with 
+  `ubuntu-22.04` for CI test.
+
 [Unreleased]: https://github.com/rustsbi/rustsbi-qemu/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/rustsbi/rustsbi-qemu/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rustsbi/rustsbi-qemu/releases/tag/v0.1.0
