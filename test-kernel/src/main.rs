@@ -1,12 +1,13 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const)]
+#![feature(naked_functions)]
 #![deny(warnings)]
+#![allow(static_mut_refs)]
 
 #[macro_use]
 extern crate rcore_console;
 
-use core::{arch::asm, ptr::null};
+use core::{arch::{asm,naked_asm}, ptr::null};
 use sbi_testing::sbi;
 use uart16550::Uart16550;
 
@@ -16,26 +17,26 @@ use uart16550::Uart16550;
 ///
 /// 裸函数。
 #[naked]
-#[no_mangle]
-#[link_section = ".text.entry"]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text.entry")]
 unsafe extern "C" fn _start(hartid: usize, device_tree_paddr: usize) -> ! {
     const STACK_SIZE: usize = 16384; // 16 KiB
 
-    #[link_section = ".bss.uninit"]
+    #[unsafe(link_section = ".bss.uninit")]
     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
-
-    asm!(
-        "la sp, {stack} + {stack_size}",
-        "j  {main}",
-        stack_size = const STACK_SIZE,
-        stack      =   sym STACK,
-        main       =   sym rust_main,
-        options(noreturn),
-    )
+    unsafe{
+        naked_asm!(
+            "la sp, {stack} + {stack_size}",
+            "j  {main}",
+            stack_size = const STACK_SIZE,
+            stack      =   sym STACK,
+            main       =   sym rust_main,
+        )
+    }
 }
 
 extern "C" fn rust_main(hartid: usize, dtb_pa: usize) -> ! {
-    extern "C" {
+    unsafe extern "C" {
         static mut sbss: u64;
         static mut ebss: u64;
     }

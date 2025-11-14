@@ -2,13 +2,13 @@
 name = "test-kernel"
 version = "0.2.0"
 authors = ["Luo Jia <me@luojia.cc>", "YdrMaster <ydrml@hotmail.com>"]
-edition = "2021"
+edition = "2024"
 publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sbi-testing = { version = "0.0.3-alpha.2", features = ["log"] }
+sbi-testing = {  git = "https://github.com/rustsbi/rustsbi", features = ["log"],rev = "c53f4dd68e99adeb5030d3ff1f1c78ca413754ab" }
 log = "0.4"
 riscv = "0.10.1"
 spin = "0.9"

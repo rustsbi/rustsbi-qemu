@@ -1,7 +1,8 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const)]
+#![feature(naked_functions)]
 #![deny(warnings)]
+#![allow(static_mut_refs)]
 
 mod clint;
 mod dbcn;
@@ -38,6 +39,7 @@ use rustsbi::{RustSBI, SbiRet};
 use spin::Once;
 use trap_stack::{local_hsm, local_remote_hsm, remote_hsm};
 use trap_vec::trap_vec;
+use core::arch::naked_asm;
 
 /// 入口。
 ///
@@ -45,19 +47,20 @@ use trap_vec::trap_vec;
 ///
 /// 裸函数。
 #[naked]
-#[no_mangle]
-#[link_section = ".text.entry"]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text.entry")]
 unsafe extern "C" fn _start() -> ! {
-    asm!(
-        "   call {locate_stack}
-            call {rust_main}
-            j    {trap}
-        ",
-        locate_stack = sym trap_stack::locate,
-        rust_main    = sym rust_main,
-        trap         = sym trap_vec,
-        options(noreturn),
-    )
+    unsafe{
+        naked_asm!(
+            "   call {locate_stack}
+                call {rust_main}
+                j    {trap}
+            ",
+            locate_stack = sym trap_stack::locate,
+            rust_main    = sym rust_main,
+            trap         = sym trap_vec,
+        )
+    }
 }
 
 /// rust 入口。
@@ -67,7 +70,7 @@ extern "C" fn rust_main(hartid: usize, opaque: usize) {
 
     // 全局初始化过程
     if GENESIS.swap(false, Ordering::AcqRel) {
-        extern "C" {
+        unsafe extern "C" {
             static mut sbss: u64;
             static mut ebss: u64;
         }

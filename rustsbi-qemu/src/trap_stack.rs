@@ -4,28 +4,29 @@ use fast_trap::{FlowContext, FreeTrapStack};
 use hsm_cell::{HsmCell, LocalHsmCell, RemoteHsmCell};
 
 /// 栈空间。
-#[link_section = ".bss.uninit"]
+#[unsafe(link_section = ".bss.uninit")]
 static mut ROOT_STACK: [Stack; NUM_HART_MAX] = [Stack::ZERO; NUM_HART_MAX];
 
 /// 定位每个 hart 的栈。
 #[naked]
 pub(crate) unsafe extern "C" fn locate() {
-    core::arch::asm!(
-        "   la   sp, {stack}
-            li   t0, {per_hart_stack_size}
-            csrr t1, mhartid
-            addi t1, t1,  1
-         1: add  sp, sp, t0
-            addi t1, t1, -1
-            bnez t1, 1b
-            call t1, {move_stack}
-            ret
-        ",
-        per_hart_stack_size = const LEN_STACK_PER_HART,
-        stack               =   sym ROOT_STACK,
-        move_stack          =   sym fast_trap::reuse_stack_for_trap,
-        options(noreturn),
-    )
+    unsafe{
+        core::arch::naked_asm!(
+            "   la   sp, {stack}
+                li   t0, {per_hart_stack_size}
+                csrr t1, mhartid
+                addi t1, t1,  1
+            1: add  sp, sp, t0
+                addi t1, t1, -1
+                bnez t1, 1b
+                call t1, {move_stack}
+                ret
+            ",
+            per_hart_stack_size = const LEN_STACK_PER_HART,
+            stack               =   sym ROOT_STACK,
+            move_stack          =   sym fast_trap::reuse_stack_for_trap,
+        )
+    }
 }
 
 /// 预备陷入栈。
